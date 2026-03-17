@@ -1,16 +1,28 @@
+# Byte-compiled files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.sqlite3
-.env
-.env.*
+*.py[cod]
+
+# Virtual environments
 .venv/
 venv/
+
+# Environment variables
+.env
+.env.*
+
+# Local database
+*.sqlite3
+
+# Media and static
 media/
 staticfiles/
+
+# IDE
 .idea/
 .vscode/
-.DS_Store
-tasks.txt
 
+# OS
+.DS_Store
+
+# Tasks
+Tasks.txt

@@ -1,0 +1,16 @@
+-r base.txt
+
+# Linters and formatters
+isort==5.13.2
+flake8==4.0.1
+black==24.8.0
+
+# Shell
+ipdb==0.13.9
+ipython==8.4.0
+
+# Remove Print Statements
+remove-print-statements==0.4.0
+
+# Pre-commit
+pre-commit==4.5.1
