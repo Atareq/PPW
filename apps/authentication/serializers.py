@@ -2,13 +2,11 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from rest_framework import serializers
 
-from apps.users.models import UserAccount
+from apps.authentication.models import UserAccount
 from apps.authentication.services import build_token_for_user
 
 from apps.users.models import CustomerProfile
-from apps.authentication.models import UserAccount
 
-from apps.users.constants import ProfileType
 from django.db import transaction
 
 from apps.users.serializers import CustomerProfileMobileSerializer
@@ -36,7 +34,7 @@ class CustomerRegisterSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             user = UserAccount.objects.create_user(**validated_data)
             CustomerProfile.objects.create(
-                user=user,
+                owner=user,
                 is_active=True,  # The user's first profile
                 **profile_data
             )

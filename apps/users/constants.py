@@ -4,6 +4,7 @@ from django.db import models
 class ProfileType(models.TextChoices):
     SELLER = "Seller", "Seller"
     CUSTOMER = "Customer", "Customer"
+    MANAGER = "Manager", "Manager"
 
 
 class CountryOptions(models.TextChoices):
