@@ -51,6 +51,8 @@ THIRD_PARTY_APPS = [
     "safedelete",
     "rest_framework",
     "rest_framework_simplejwt",
+    "phonenumber_field",
+
 ]
 
 APPS = [
@@ -98,6 +100,9 @@ WSGI_APPLICATION = "ppw.wsgi.application"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
     ),
 }
 
@@ -166,3 +171,5 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "authentication.UserAccount"
+
+PHONENUMBER_DEFAULT_REGION = "EG" 

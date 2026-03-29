@@ -7,23 +7,26 @@ from django.db import transaction
 
 def switch_user_profile(user, new_profile_type: str) -> bool:
     with transaction.atomic():
-        Profile.objects.filter(user=user, is_active=True).update(
-            is_active=False
-        )
-        profile = Profile.objects.filter(
-            user=user, type=new_profile_type
-        ).first()
-        if profile:
-            profile.is_active = True
-            profile.save(update_fields=["is_active"])
-            return True
+        if user.role != new_profile_type or not user.role=='MANAGER':
+            Profile.objects.filter(owner=user, is_active=True).update(
+                is_active=False
+            )
+            profile = Profile.objects.filter(
+                owner=user, type=new_profile_type
+            ).first()
+            if profile:
+                profile.is_active = True
+                profile.save(update_fields=["is_active"])
+                return True
+            else:
+                transaction.set_rollback(True)
+                return False
         else:
-            transaction.set_rollback(True)
             return False
 
 
 def build_token_for_user(user):
-    profile = Profile.objects.filter(user=user, is_active=True).first()
+    profile = Profile.objects.filter(owner=user, is_active=True).first()
     if not profile:
         raise ValidationError("No active profile found for this user.")
 
