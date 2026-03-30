@@ -17,6 +17,7 @@ from django.db import transaction
 
 
 class CustomerRegisterAPIView(APIView):
+    permission_classes = []
     with transaction.atomic():
 
         def post(self, request):
@@ -30,13 +31,13 @@ class CustomerRegisterAPIView(APIView):
             return Response(
                 {
                     "message": "User created successfully",
-                    "user_id": user.id,
                 },
                 status=status.HTTP_201_CREATED,
             )
 
 
 class LoginAPIView(TokenObtainPairView):
+    permission_classes = []
     serializer_class = CustomTokenSerializer
 
 
