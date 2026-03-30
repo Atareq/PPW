@@ -13,8 +13,6 @@ from django.db import transaction
 
 from apps.users.serializers import CustomerProfileMobileSerializer
 
-from phonenumber_field.serializerfields import PhoneNumberField
-
 
 class CustomTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
 

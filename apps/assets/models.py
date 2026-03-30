@@ -1,9 +1,9 @@
 from django.db import models
 from apps.users.models import Profile
-from apps.general.models import OwnedEntityModel
+from apps.general.models import OwnerBaseModel
 
 
-class Asset(OwnedEntityModel):
+class Asset(OwnerBaseModel):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)

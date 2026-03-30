@@ -1,3 +1,5 @@
+from datetime import timezone
+from django.http import Http404
 from rest_framework.response import Response
 from rest_framework import viewsets, permissions, status
 from apps.users.models import SellerProfile, CustomerProfile
@@ -39,8 +41,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         user = request.user
-
-        if user.profiles.filter(type="Seller").exists():
+        if user.profiles.filter(type=ProfileType.SELLER).exists():
             return Response(
                 {"message": "Profile already exists"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -58,22 +59,21 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
+
         return SellerProfile.objects.filter(
-            user=self.request.user, deleted=False
+            user=self.request.user, deleted__isnull=True, is_active=True
         )
 
     def get_object(self):
-        return self.get_queryset().first()
+        if self.get_queryset():
+            return self.get_queryset().first()
+        raise Http404
 
     def perform_destroy(self, instance):
+
         if instance.is_active:
-            other_profile = instance.user.profiles.exclude(
-                id=instance.id
-            ).first()
-            if other_profile:
-                switch_user_profile(instance.user, other_profile.type)
-        instance.deleted = True
-        instance.save(update_fields=["deleted"])
+            instance.deleted = timezone.now()
+            instance.save(update_fields=["deleted"])
 
 
 class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
@@ -82,7 +82,7 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return CustomerProfile.objects.filter(
-            user=self.request.user, deleted=False
+            user=self.request.user, deleted__isnull=True
         )
 
     def perform_destroy(self, instance):

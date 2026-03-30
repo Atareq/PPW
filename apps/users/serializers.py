@@ -1,6 +1,6 @@
 from rest_framework import serializers
+from apps.users.constants import ProfileType
 from apps.users.models import SellerProfile, CustomerProfile
-from apps.authentication.services import switch_user_profile
 
 
 # ---------------- Dashboard Serializer ----------------
@@ -20,13 +20,8 @@ class CustomerProfileAdminSerializer(serializers.ModelSerializer):
 class SellerProfileMobileSerializer(serializers.ModelSerializer):
     class Meta:
         model = SellerProfile
-        exclude = ["type", "is_active", "user"]
-        read_only_fields = ["activated"]
-
-    def update(self, instance, validated_data):
-        if validated_data.pop("is_active", False):
-            switch_user_profile(instance.user, "Seller")
-        return super().update(instance, validated_data)
+        fields = ["country", "currency", "recoded_voice", "nickname"]
+        read_only_fields = ["activated", "is_active"]
 
 
 class CustomerProfileMobileSerializer(serializers.ModelSerializer):

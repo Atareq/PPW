@@ -7,7 +7,8 @@ from django.db import transaction
 
 def switch_user_profile(user, new_profile_type: str) -> bool:
     with transaction.atomic():
-        if user.role != new_profile_type or not user.role == "MANAGER":
+
+        if user.role != new_profile_type and user.role != "MANAGER":
             Profile.objects.filter(user=user, is_active=True).update(
                 is_active=False
             )
