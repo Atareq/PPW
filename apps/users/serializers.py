@@ -32,5 +32,5 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
 class CustomerProfileMobileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerProfile
-        exclude = ["type", "is_active", "owner"]
+        exclude = ["type", "is_active", "user"]
         read_only_fields = ["activated"]
