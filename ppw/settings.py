@@ -60,6 +60,7 @@ APPS = [
     "apps.users",
     "apps.general",
     "apps.authentication",
+    "apps.auctions",
 ]
 
 DEBUG_APPS = []
