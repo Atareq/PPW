@@ -22,6 +22,7 @@ from apps.users.constants import ProfileType
 
 
 # still needs the approve of what the user can update and do
+# We need to create API for adding a manager `is_staff = True`
 class SellerProfileAdminViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileAdminSerializer
     queryset = SellerProfile.objects.all()
@@ -51,7 +52,6 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         serializer.save(user=user, is_active=False, type="Seller")
-        switch_user_profile(user, ProfileType.SELLER)
 
         return Response(
             {"message": "Seller profile created successfully"},
