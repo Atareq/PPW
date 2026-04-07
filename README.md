@@ -79,6 +79,21 @@ Create database and user:
 
 ### 7. Run server
 
+### 8. Craete super_user
+
+python manage.py shell_plus
+
+
+from apps.authentication.models import UserAccount
+
+user = UserAccount.objects.create_superuser(
+    username="super_user",
+    phone_number="012345678",
+    password="123",
+)
+
+print("Superuser created:", user.id)
+
 ---------------------------------------------------------
 
 ---
