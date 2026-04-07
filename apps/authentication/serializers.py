@@ -2,7 +2,6 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from rest_framework import serializers
 
-from apps.authentication.constants import PhoneCode
 from apps.authentication.mixins import PhoneValidationMixin
 from apps.authentication.models import UserAccount
 from apps.authentication.services import build_token_for_user
@@ -16,13 +15,9 @@ from apps.users.serializers import CustomerProfileMobileSerializer, ManagerProfi
 
 class CustomTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
 
-    phone_code = serializers.CharField()
+    region = serializers.CharField()
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True)
-
-    def validate(self, attrs):
-        attrs = self.normalize_phone(attrs)
-        return super().validate(attrs)
 
     @classmethod
     def get_token(cls, user):
@@ -34,23 +29,20 @@ class CustomerRegisterSerializer(
 ):
     password = serializers.CharField(write_only=True)
     customer_profile = CustomerProfileMobileSerializer()
-    phone_code = serializers.ChoiceField(choices=PhoneCode.MAP)
+    region = serializers.CharField(max_length=2, read_only=True)
 
     class Meta:
         model = UserAccount
         fields = [
             "username",
             "phone_number",
-            "phone_code",
+            "region",
             "password",
             "customer_profile",
         ]
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
         extra_kwargs = {"password": {"write_only": True}}
 
-    def validate(self, attrs):
-        attrs = self.normalize_phone(attrs)
-        return attrs
 
     def create(self, validated_data):
         profile_data = validated_data.pop("customer_profile")
@@ -71,23 +63,20 @@ class ManagerRegisterSerializer(
 ):
     password = serializers.CharField(write_only=True)
     manager_profile = ManagerProfileadminSerializer()
-    phone_code = serializers.ChoiceField(choices=PhoneCode.MAP)
+    region = serializers.CharField(max_length=2)
 
+    region = serializers.CharField(max_length=2, read_only=True)
     class Meta:
         model = UserAccount
         fields = [
             "username",
             "phone_number",
-            "phone_code",
+            "region",
             "password",
             "manager_profile",
         ]
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
         extra_kwargs = {"password": {"write_only": True}}
-
-    def validate(self, attrs):
-        attrs = self.normalize_phone(attrs)
-        return attrs
 
     def create(self, validated_data):
         profile_data = validated_data.pop("manager_profile")

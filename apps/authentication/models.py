@@ -3,7 +3,7 @@ from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
 
 from apps.general.models import BaseModel
-from apps.authentication.constants import PhoneCode, AppPermissions
+from apps.authentication.constants import AppPermissions
 
 
 # ------------------------------
