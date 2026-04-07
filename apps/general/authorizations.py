@@ -32,7 +32,7 @@ class AuthorizationService:
                 return False
 
             if obj:
-                # Because assets are tied with the profiles not with the users.
+                # Because resources are tied with the profiles not with the users.
                 return getattr(obj, "owner_id", None) == user.active_profile.id
 
             return True
