@@ -1,5 +1,5 @@
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -10,10 +10,13 @@ from apps.authentication.services import build_token_for_user
 from apps.authentication.serializers import (
     CustomTokenSerializer,
     CustomerRegisterSerializer,
+    ManagerRegisterSerializer,
 )
 
 from apps.authentication.serializers import CustomerRegisterSerializer
 from django.db import transaction
+
+from apps.users.serializers import ManagerProfileadminSerializer
 
 
 class CustomerRegisterAPIView(APIView):
@@ -23,6 +26,25 @@ class CustomerRegisterAPIView(APIView):
         def post(self, request):
 
             customer_register_serializer = CustomerRegisterSerializer(
+                data=request.data
+            )
+            customer_register_serializer.is_valid(raise_exception=True)
+            user = customer_register_serializer.save()
+
+            return Response(
+                {
+                    "message": "User created successfully",
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
+class ManagerRegisterAPIView(APIView):
+    permission_classes = [IsAdminUser]
+    with transaction.atomic():
+
+        def post(self, request):
+
+            customer_register_serializer = ManagerRegisterSerializer(
                 data=request.data
             )
             customer_register_serializer.is_valid(raise_exception=True)

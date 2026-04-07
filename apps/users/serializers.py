@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from apps.users.constants import ProfileType
-from apps.users.models import SellerProfile, CustomerProfile
+from apps.users.models import ManagerProfile, SellerProfile, CustomerProfile
 
 
 # ---------------- Dashboard Serializer ----------------
@@ -29,3 +29,9 @@ class CustomerProfileMobileSerializer(serializers.ModelSerializer):
         model = CustomerProfile
         exclude = ["type", "is_active", "user"]
         read_only_fields = ["activated"]
+
+
+class ManagerProfileadminSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ManagerProfile
+        exclude = ["type", "user"]

@@ -9,5 +9,5 @@ class BirdSerializer(serializers.ModelSerializer):
         read_only_fields = ['owner']
 
     def create(self, validated_data):
-        validated_data['owner'] = self.context['request'].user
+        validated_data['owner'] = self.context['request'].user.active_profile
         return super().create(validated_data)

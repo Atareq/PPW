@@ -14,7 +14,7 @@ class AuthorizationService:
     ) -> bool:
 
         if user.is_superuser:
-            return True
+            return False
 
         action = action or "list"
 
@@ -32,7 +32,8 @@ class AuthorizationService:
                 return False
 
             if obj:
-                return getattr(obj, "owner_id", None) == user.id
+                # Because resources are tied with the profiles not with the users.
+                return getattr(obj, "owner_id", None) == user.active_profile.id
 
             return True
 

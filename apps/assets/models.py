@@ -87,4 +87,4 @@ class Bird(Asset):
         ]
 
     def __str__(self):
-        return f"{self.asset.title} - {self.ring_number} ({self.gender})"
+        return f"{self.title} - {self.ring_number} ({self.gender})"

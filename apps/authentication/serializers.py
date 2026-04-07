@@ -7,11 +7,11 @@ from apps.authentication.mixins import PhoneValidationMixin
 from apps.authentication.models import UserAccount
 from apps.authentication.services import build_token_for_user
 
-from apps.users.models import CustomerProfile
+from apps.users.models import CustomerProfile, ManagerProfile
 
 from django.db import transaction
 
-from apps.users.serializers import CustomerProfileMobileSerializer
+from apps.users.serializers import CustomerProfileMobileSerializer, ManagerProfileadminSerializer
 
 
 class CustomTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
@@ -35,7 +35,6 @@ class CustomerRegisterSerializer(
     password = serializers.CharField(write_only=True)
     customer_profile = CustomerProfileMobileSerializer()
     phone_code = serializers.ChoiceField(choices=PhoneCode.MAP)
-    phone_number = serializers.CharField()
 
     class Meta:
         model = UserAccount
@@ -61,6 +60,44 @@ class CustomerRegisterSerializer(
             CustomerProfile.objects.create(
                 user=user,
                 is_active=True,  # The user's first profile
+                **profile_data
+            )
+
+        return user
+
+
+class ManagerRegisterSerializer(
+    PhoneValidationMixin, serializers.ModelSerializer
+):
+    password = serializers.CharField(write_only=True)
+    manager_profile = ManagerProfileadminSerializer()
+    phone_code = serializers.ChoiceField(choices=PhoneCode.MAP)
+
+    class Meta:
+        model = UserAccount
+        fields = [
+            "username",
+            "phone_number",
+            "phone_code",
+            "password",
+            "manager_profile",
+        ]
+        read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
+        extra_kwargs = {"password": {"write_only": True}}
+
+    def validate(self, attrs):
+        attrs = self.normalize_phone(attrs)
+        return attrs
+
+    def create(self, validated_data):
+        profile_data = validated_data.pop("manager_profile")
+
+        with transaction.atomic():
+            user = UserAccount.objects.create_user(**validated_data)
+            ManagerProfile.objects.create(
+                user=user,
+                is_active=True,  # Already made by admins
+                activated=True,
                 **profile_data
             )
 

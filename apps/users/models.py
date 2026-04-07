@@ -15,8 +15,6 @@ class Profile(BaseModel):
         db_index=True,
         related_name="profiles",
     )
-    country = models.CharField(max_length=2, choices=CountryOptions.choices)
-    currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
 
     type = models.CharField(max_length=20, choices=ProfileType.choices)
     activated = models.BooleanField(
@@ -41,6 +39,8 @@ class Profile(BaseModel):
             self.type = ProfileType.SELLER
         elif isinstance(self, CustomerProfile):
             self.type = ProfileType.CUSTOMER
+        elif isinstance(self, ManagerProfile):
+            self.type = ProfileType.MANAGER
 
         super().save(*args, **kwargs)
 
@@ -54,12 +54,16 @@ class SellerProfile(Profile):
     )
     nickname = models.CharField(max_length=150, blank=True)
     recoded_voice = models.CharField(max_length=150, blank=True)
+    country = models.CharField(max_length=2, choices=CountryOptions.choices)
+    currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
 
 
 class CustomerProfile(Profile):
     balance = models.DecimalField(
         max_digits=10, decimal_places=2, default=0.00
     )
+    country = models.CharField(max_length=2, choices=CountryOptions.choices)
+    currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
 
 
 class ManagerProfile(Profile):
