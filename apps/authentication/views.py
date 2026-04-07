@@ -16,7 +16,6 @@ from apps.authentication.serializers import (
 from apps.authentication.serializers import CustomerRegisterSerializer
 from django.db import transaction
 
-from apps.users.serializers import ManagerProfileadminSerializer
 
 
 class CustomerRegisterAPIView(APIView):
