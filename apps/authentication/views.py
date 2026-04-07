@@ -37,8 +37,9 @@ class CustomerRegisterAPIView(APIView):
                 status=status.HTTP_201_CREATED,
             )
 
+
 class ManagerRegisterAPIView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [] # Needs to be for admin users only
     with transaction.atomic():
 
         def post(self, request):

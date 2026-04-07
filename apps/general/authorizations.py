@@ -22,7 +22,7 @@ class AuthorizationService:
             "Customer": CUSTOMERPERMISSIONS,
             "Seller": SELLERPERMISSIONS,
         }
-
+        # print(user.role,role_permissions_map[user.role])
         if user.role in role_permissions_map:
             permissions_dict = role_permissions_map[user.role]
 
@@ -37,8 +37,8 @@ class AuthorizationService:
 
             return True
 
-        if user.role == "MANAGER":
-            return user.has_app_permission(app_label)
+        if user.role == "Manager":
+            return True
 
         return False
 
@@ -64,7 +64,7 @@ class HasAppAccess(BasePermission):
         user = request.user
         action = getattr(view, "action", None)
         resource = getattr(view, "permission_resource", None)
-
+        print(obj)
         return AuthorizationService.can_access_app(
             user=user,
             app_label=obj._meta.app_label,
