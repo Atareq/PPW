@@ -1,6 +1,7 @@
 from django.db import models
 from apps.users.models import Profile
 from apps.general.models import OwnerBaseModel
+from django.core.exceptions import ValidationError
 
 
 class Asset(OwnerBaseModel):
@@ -70,16 +71,16 @@ class Bird(Asset):
         related_name="children_from_mother",
     )
 
-    acheivements = models.CharField(max_length=500)
+    achievements = models.CharField(max_length=500)
     flying_speed = models.DecimalField(
         max_digits=6, decimal_places=2, blank=True, null=True
     )
-    stamina_CHOICES = [
+    STAMINA_CHOICES = [
         ("excellent", "Excellent"),
         ("verygood", "VeryGood"),
         ("good", "Good"),
     ]
-    stamina_ability = models.CharField(max_length=10, choices=stamina_CHOICES)
+    stamina_ability = models.CharField(max_length=10, choices=STAMINA_CHOICES)
 
     class Meta:
         indexes = [
