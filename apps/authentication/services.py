@@ -1,8 +1,8 @@
-from rest_framework_simplejwt.tokens import RefreshToken
-from apps.users.models import Profile
-from rest_framework.exceptions import ValidationError
-
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from apps.users.models import Profile
 
 
 def switch_user_profile(user, new_profile_type: str) -> bool:

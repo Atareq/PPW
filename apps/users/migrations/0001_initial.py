@@ -29,7 +29,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -86,7 +88,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "balance",
-                    models.DecimalField(decimal_places=2, default=0.0, max_digits=10),
+                    models.DecimalField(
+                        decimal_places=2, default=0.0, max_digits=10
+                    ),
                 ),
                 (
                     "country",
@@ -186,10 +190,15 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "balance",
-                    models.DecimalField(decimal_places=2, default=0.0, max_digits=10),
+                    models.DecimalField(
+                        decimal_places=2, default=0.0, max_digits=10
+                    ),
                 ),
                 ("nickname", models.CharField(blank=True, max_length=150)),
-                ("recoded_voice", models.CharField(blank=True, max_length=150)),
+                (
+                    "recoded_voice",
+                    models.CharField(blank=True, max_length=150),
+                ),
                 (
                     "country",
                     models.CharField(

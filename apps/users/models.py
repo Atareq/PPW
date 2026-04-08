@@ -5,7 +5,8 @@ from apps.general.models import BaseModel
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 
 # Still needs to add the rest of data for the two profile types
-# need to make sure the flutter will upload to s3 and then send key for the profile picture for backend to store
+# need to make sure the flutter will upload to s3 and then send key 
+# for the profile picture for backend to store
 
 
 class Profile(BaseModel):

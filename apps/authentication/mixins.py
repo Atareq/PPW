@@ -1,6 +1,6 @@
-from rest_framework import serializers
 import phonenumbers
 from phonenumbers import NumberParseException, PhoneNumberFormat
+from rest_framework import serializers
 
 
 class PhoneValidationMixin:
@@ -19,7 +19,6 @@ class PhoneValidationMixin:
     @staticmethod
     def normalize_phone(phone_number: str, region: str) -> str:
         if not phone_number:
-            print(phone_number)
             raise ValueError("Phone number is required.")
 
         if not region:
@@ -46,9 +45,9 @@ class PhoneValidationMixin:
         region = attrs.get("region")
 
         if not region:
-            raise serializers.ValidationError({
-                "region": "Region is required."
-            })
+            raise serializers.ValidationError(
+                {"region": "Region is required."}
+            )
 
         region = str(region).strip().upper()
 
@@ -58,9 +57,7 @@ class PhoneValidationMixin:
                 region=region,
             )
         except ValueError as e:
-            raise serializers.ValidationError({
-                "phone_number": str(e)
-            })
+            raise serializers.ValidationError({"phone_number": str(e)})
 
         attrs["phone_number"] = phone_number_e164
         attrs["region"] = region

@@ -19,9 +19,8 @@ SELLERPERMISSIONS = {
         "ended",
         "publish",
         "ending_soon",
-        "cancel"
+        "cancel",
     ],
-
 }
 
 CUSTOMERPERMISSIONS = {
@@ -35,7 +34,5 @@ CUSTOMERPERMISSIONS = {
     "AUCTION": [
         "list",
         "retrieve",
-
     ],
-
 }

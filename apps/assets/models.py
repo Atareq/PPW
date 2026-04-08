@@ -1,7 +1,6 @@
 from django.db import models
-from apps.users.models import Profile
+
 from apps.general.models import OwnerBaseModel
-from django.core.exceptions import ValidationError
 
 
 class Asset(OwnerBaseModel):

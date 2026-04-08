@@ -1,6 +1,7 @@
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from apps.assets.views import BirdViewSet
-from django.urls import path, include
 
 router = DefaultRouter()
 

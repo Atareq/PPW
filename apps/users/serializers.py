@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from apps.users.constants import ProfileType
-from apps.users.models import ManagerProfile, SellerProfile, CustomerProfile
+
+from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
 
 
 # ---------------- Dashboard Serializer ----------------

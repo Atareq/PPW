@@ -1,9 +1,9 @@
 from django.urls import path
 
 from apps.authentication.views import (
+    CustomerRegisterAPIView,
     LoginAPIView,
     ManagerRegisterAPIView,
-    CustomerRegisterAPIView,
     SwitchProfileAPIView,
 )
 

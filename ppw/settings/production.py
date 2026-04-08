@@ -2,7 +2,7 @@
 Production settings for ppw project.
 """
 
-from .base import *
+from ppw.settings.base import *
 
 DEBUG = False
 

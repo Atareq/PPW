@@ -1,16 +1,15 @@
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
+from django.db import transaction
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.authentication.mixins import PhoneValidationMixin
 from apps.authentication.models import UserAccount
 from apps.authentication.services import build_token_for_user
-
 from apps.users.models import CustomerProfile, ManagerProfile
-
-from django.db import transaction
-
-from apps.users.serializers import CustomerProfileMobileSerializer, ManagerProfileadminSerializer
+from apps.users.serializers import (
+    CustomerProfileMobileSerializer,
+    ManagerProfileadminSerializer,
+)
 
 
 class CustomTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
@@ -43,7 +42,6 @@ class CustomerRegisterSerializer(
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
         extra_kwargs = {"password": {"write_only": True}}
 
-
     def create(self, validated_data):
         profile_data = validated_data.pop("customer_profile")
 
@@ -66,6 +64,7 @@ class ManagerRegisterSerializer(
     region = serializers.CharField(max_length=2)
 
     region = serializers.CharField(max_length=2, read_only=True)
+
     class Meta:
         model = UserAccount
         fields = [

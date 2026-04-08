@@ -1,6 +1,8 @@
-from apps.general.constants import CUSTOMERPERMISSIONS, SELLERPERMISSIONS
-from rest_framework.permissions import BasePermission
 from typing import Optional
+
+from rest_framework.permissions import BasePermission
+
+from apps.general.constants import CUSTOMERPERMISSIONS, SELLERPERMISSIONS
 
 
 class AuthorizationService:
@@ -64,7 +66,6 @@ class HasAppAccess(BasePermission):
         user = request.user
         action = getattr(view, "action", None)
         resource = getattr(view, "permission_resource", None)
-        print(obj)
         return AuthorizationService.can_access_app(
             user=user,
             app_label=obj._meta.app_label,

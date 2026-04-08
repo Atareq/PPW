@@ -26,7 +26,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",

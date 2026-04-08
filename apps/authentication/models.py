@@ -2,9 +2,8 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
 
-from apps.general.models import BaseModel
 from apps.authentication.constants import AppPermissions
-
+from apps.general.models import BaseModel
 
 # ------------------------------
 # User / Identity model

@@ -1,8 +1,6 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.assets.models import Bird
-
 
 class BirdValidator:
     """
@@ -15,19 +13,22 @@ class BirdValidator:
         father = attrs.get("father", getattr(instance, "father", None))
         mother = attrs.get("mother", getattr(instance, "mother", None))
         birthday = attrs.get("birthday", getattr(instance, "birthday", None))
-        flying_speed = attrs.get("flying_speed", getattr(instance, "flying_speed", None))
+        flying_speed = attrs.get(
+            "flying_speed", getattr(instance, "flying_speed", None)
+        )
 
         errors = {}
 
         cls._validate_birthday(errors, birthday)
         cls._validate_flying_speed(errors, flying_speed)
-        cls._validate_parents(errors, instance, father, mother, birthday, owner)
+        cls._validate_parents(
+            errors, instance, father, mother, birthday, owner
+        )
 
         if errors:
             raise serializers.ValidationError(errors)
 
         return attrs
-
 
     @staticmethod
     def _validate_birthday(errors, birthday):
@@ -40,7 +41,9 @@ class BirdValidator:
             errors["flying_speed"] = "Flying speed cannot be negative."
 
     @classmethod
-    def _validate_parents(cls, errors, instance, father, mother, birthday, owner):
+    def _validate_parents(
+        cls, errors, instance, father, mother, birthday, owner
+    ):
         cls._validate_father(errors, instance, father, birthday, owner)
         cls._validate_mother(errors, instance, mother, birthday, owner)
 
@@ -82,4 +85,3 @@ class BirdValidator:
 
         if birthday and mother.birthday and mother.birthday >= birthday:
             errors["mother"] = "Mother must be older than the bird."
-

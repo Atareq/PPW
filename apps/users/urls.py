@@ -1,10 +1,11 @@
-from django.urls import path, include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from apps.users.views import (
-    SellerProfileAdminViewSet,
     CustomerProfileAdminViewSet,
-    SellerProfileMobileViewSet,
     CustomerProfileMobileViewSet,
+    SellerProfileAdminViewSet,
+    SellerProfileMobileViewSet,
 )
 
 router = DefaultRouter()

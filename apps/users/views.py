@@ -1,24 +1,19 @@
 from datetime import timezone
-from django.http import Http404
-from rest_framework.response import Response
-from rest_framework import viewsets, permissions, status
-from apps.users.models import SellerProfile, CustomerProfile
-from apps.users.serializers import (
-    SellerProfileAdminSerializer,
-    CustomerProfileAdminSerializer,
-)
 
-
-from rest_framework import viewsets, permissions
-from apps.users.serializers import (
-    SellerProfileMobileSerializer,
-    CustomerProfileMobileSerializer,
-)
-from apps.authentication.services import switch_user_profile
 from django.db import transaction
+from django.http import Http404
+from rest_framework import permissions, status, viewsets
+from rest_framework.response import Response
 
-
+from apps.authentication.services import switch_user_profile
 from apps.users.constants import ProfileType
+from apps.users.models import CustomerProfile, SellerProfile
+from apps.users.serializers import (
+    CustomerProfileAdminSerializer,
+    CustomerProfileMobileSerializer,
+    SellerProfileAdminSerializer,
+    SellerProfileMobileSerializer,
+)
 
 
 # still needs the approve of what the user can update and do

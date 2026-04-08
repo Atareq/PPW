@@ -1,34 +1,32 @@
+from django.db import transaction
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from apps.authentication.services import switch_user_profile
-from apps.authentication.services import build_token_for_user
-
 from apps.authentication.serializers import (
-    CustomTokenSerializer,
     CustomerRegisterSerializer,
+    CustomTokenSerializer,
     ManagerRegisterSerializer,
 )
-
-from apps.authentication.serializers import CustomerRegisterSerializer
-from django.db import transaction
-
+from apps.authentication.services import (
+    build_token_for_user,
+    switch_user_profile,
+)
 
 
 class CustomerRegisterAPIView(APIView):
     permission_classes = []
-    with transaction.atomic():
 
-        def post(self, request):
+    def post(self, request):
+        with transaction.atomic():
 
             customer_register_serializer = CustomerRegisterSerializer(
                 data=request.data
             )
             customer_register_serializer.is_valid(raise_exception=True)
-            user = customer_register_serializer.save()
+            customer_register_serializer.save()
 
             return Response(
                 {
@@ -39,23 +37,23 @@ class CustomerRegisterAPIView(APIView):
 
 
 class ManagerRegisterAPIView(APIView):
-    permission_classes = [] # Needs to be for admin users only
-    with transaction.atomic():
+    permission_classes = []  # Needs to be for admin users only
 
-        def post(self, request):
+    def post(self, request):
+        with transaction.atomic():
 
             customer_register_serializer = ManagerRegisterSerializer(
                 data=request.data
             )
             customer_register_serializer.is_valid(raise_exception=True)
-            user = customer_register_serializer.save()
+            customer_register_serializer.save()
 
-            return Response(
-                {
-                    "message": "User created successfully",
-                },
-                status=status.HTTP_201_CREATED,
-            )
+        return Response(
+            {
+                "message": "User created successfully",
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class LoginAPIView(TokenObtainPairView):
