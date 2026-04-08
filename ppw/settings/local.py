@@ -3,11 +3,14 @@ Local development settings for ppw project.
 """
 
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-from .base import *
-
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
+
+from .base import *  # noqa
 
 DEBUG = True
 
