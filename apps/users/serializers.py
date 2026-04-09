@@ -21,13 +21,13 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
     class Meta:
         model = SellerProfile
         fields = ["country", "currency", "recoded_voice", "nickname"]
-        read_only_fields = ["activated", "is_active"]
+        read_only_fields = ["activated", "is_active", "balance", "type"]
 
 
 class CustomerProfileMobileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerProfile
-        exclude = ["type", "is_active", "user"]
+        exclude = ["type", "is_active", "user", "balance"]
         read_only_fields = ["activated"]
 
 
