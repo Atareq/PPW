@@ -59,7 +59,6 @@ class CustomerRegisterSerializer(
 class ManagerRegisterSerializer(
     PhoneValidationMixin, serializers.ModelSerializer
 ):
-    password = serializers.CharField(write_only=True)
     manager_profile = ManagerProfileadminSerializer()
     region = serializers.CharField(max_length=2)
 
@@ -75,13 +74,12 @@ class ManagerRegisterSerializer(
             "manager_profile",
         ]
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
-        extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
         profile_data = validated_data.pop("manager_profile")
 
         with transaction.atomic():
-            user = UserAccount.objects.create_user(**validated_data)
+            user = UserAccount.objects.create_user(**validated_data, is_staff=True)
             ManagerProfile.objects.create(
                 user=user,
                 is_active=True,  # Already made by admins

@@ -135,8 +135,8 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
 class AuctionEventSerializer(serializers.ModelSerializer):
     """Audit trail of auction events"""
 
-    user_username = serializers.CharField(
-        source="user.username", read_only=True, allow_null=True
+    user_phone = serializers.CharField(
+        source="performer.user.phone_number", read_only=True, allow_null=True
     )
     event_type_display = serializers.CharField(
         source="get_event_type_display", read_only=True
@@ -144,17 +144,7 @@ class AuctionEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuctionEvent
-        fields = [
-            "id",
-            "event_type",
-            "event_type_display",
-            "user",
-            "user_username",
-            "item",
-            "bid",
-            "metadata",
-            "created",
-        ]
+        fields = '__all__'
         read_only_fields = [
             "id",
             "event_type",
@@ -269,6 +259,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "is_visible",
             "time_remaining",
             "created",
+            "status"
         ]
         read_only_fields = [
             "id",

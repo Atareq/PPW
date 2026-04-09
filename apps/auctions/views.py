@@ -263,7 +263,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         auction = self.get_object()
 
         try:
-            SettlementService.settle_auction(auction)
+            SettlementService.settle_auction(auction,self.request.user)
 
             return Response(
                 AuctionDetailSerializer(auction).data,

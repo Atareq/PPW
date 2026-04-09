@@ -35,7 +35,8 @@ class AuctionStatus(models.TextChoices):
 
     ACTIVE = "active", "Active"
     ENDED = "ended", "Ended"
-    CANCELLED = "cancelled", "Cancelled"
+    CANCELLED = "cancelled", "Cancelled" # By owner
+    CLOSED = "closed" , "Closed" # By admin
 
 
 class Auction(OwnerBaseModel):
@@ -351,7 +352,7 @@ class AuctionEvent(BaseModel):
         related_name="events",
     )
 
-    user = models.ForeignKey(
+    performer = models.ForeignKey(
         Profile,
         on_delete=models.SET_NULL,
         null=True,

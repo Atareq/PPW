@@ -37,6 +37,7 @@ from apps.auctions.models import (
     AuctionType,
     Bid,
 )
+from apps.authentication.models import UserAccount
 from apps.users.constants import ProfileType
 
 AUCTION_AUTO_EXTEND_MINUTES = 10
@@ -372,7 +373,7 @@ class AuctionService:
         AuctionService._log_event(
             auction=auction,
             event_type="CREATED",
-            user=owner,
+            performer=owner,
             item=None,
             bid=None,
             metadata={"item_count": len(items)},
@@ -416,7 +417,7 @@ class AuctionService:
         AuctionService._log_event(
             auction=auction,
             event_type=AuctionItemStatus.CANCELLED,
-            user=auction.owner,
+            performer=auction.owner,
             item=None,
             bid=None,
             metadata={"reason": reason},
@@ -455,7 +456,7 @@ class AuctionService:
     def _log_event(
         auction: Auction,
         event_type: str,
-        user=None,
+        performer=None,
         item: AuctionItem = None,
         bid: Bid = None,
         metadata: dict = None,
@@ -464,7 +465,7 @@ class AuctionService:
         return AuctionEvent.objects.create(
             auction=auction,
             event_type=event_type,
-            user=user,
+            performer=performer,
             item=item,
             bid=bid,
             metadata=metadata or {},
@@ -625,7 +626,7 @@ class BiddingService:
         AuctionService._log_event(
             auction=auction,
             event_type="BID_PLACED",
-            user=bidder,
+            performer=bidder,
             item=item,
             bid=bid,
             metadata={"amount": str(amount)},
@@ -664,7 +665,7 @@ class SettlementService:
 
     @staticmethod
     @transaction.atomic
-    def settle_auction(auction: Auction) -> Auction:
+    def settle_auction(auction: Auction,user: UserAccount) -> Auction:
         """
         Settle auction: determine winners, mark items, close auction.
 
@@ -677,21 +678,21 @@ class SettlementService:
         if auction.status == AuctionStatus.CANCELLED:
             raise ValidationError("Auction is already cancelled")
 
-        if not auction.is_ended():
-            raise ValidationError("Auction has not ended yet")
+        if auction.status == AuctionStatus.CLOSED:
+            raise ValidationError("Auction is already cancelled")
 
         # Determine winners for each item
         for item in auction.items.all():
             SettlementService._settle_item(item)
 
         # Mark auction as ended
-        auction.status = AuctionStatus.ENDED
+        auction.status = AuctionStatus.CLOSED
         auction.save()
 
         AuctionService._log_event(
             auction=auction,
-            event_type="SETTLED",
-            user=None,
+            event_type=AuctionStatus.CLOSED,
+            performer=user.active_profile,
             item=None,
             bid=None,
             metadata={"settled_at": timezone.now().isoformat()},
@@ -771,7 +772,7 @@ class SettlementService:
             AuctionService._log_event(
                 auction=auction,
                 event_type="BUY_NOW_TRIGGERED",
-                user=buyer,
+                performer=buyer,
                 item=item,
                 bid=bid,
                 metadata={"buy_now_price": str(auction.buy_now_price)},

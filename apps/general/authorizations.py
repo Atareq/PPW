@@ -15,6 +15,9 @@ class AuthorizationService:
         obj: Optional[object] = None,
     ) -> bool:
 
+        if user.role == "Manager":
+            return True
+
         if user.is_superuser:
             return False
 
@@ -24,7 +27,6 @@ class AuthorizationService:
             "Customer": CUSTOMERPERMISSIONS,
             "Seller": SELLERPERMISSIONS,
         }
-        # print(user.role,role_permissions_map[user.role])
         if user.role in role_permissions_map:
             permissions_dict = role_permissions_map[user.role]
 
@@ -37,9 +39,6 @@ class AuthorizationService:
                 # Because resources are tied with the profiles not with the users.
                 return getattr(obj, "owner_id", None) == user.active_profile.id
 
-            return True
-
-        if user.role == "Manager":
             return True
 
         return False
