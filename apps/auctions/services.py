@@ -39,6 +39,7 @@ from apps.auctions.models import (
 )
 from apps.authentication.models import UserAccount
 from apps.users.constants import ProfileType
+from apps.users.models import CustomerProfile
 
 AUCTION_AUTO_EXTEND_MINUTES = 10
 
@@ -490,7 +491,7 @@ class BidBusinessValidator:
     def __init__(
         self,
         item: AuctionItem,
-        bidder,
+        bidder: CustomerProfile,
         amount: Decimal,
     ):
         """
@@ -527,11 +528,8 @@ class BidBusinessValidator:
             )
 
     def _validate_bidder(self) -> None:
-        """Validate bidder is not the auction owner"""
-        if self.bidder == self.auction.owner:
-            raise ValidationError(
-                "Auction owner cannot bid on their own auction"
-            )
+        """Validate bidder is not a Seller"""
+
         if self.bidder.type != ProfileType.CUSTOMER:
             raise ValidationError("Only customers can place bids")
 
@@ -588,10 +586,9 @@ class BiddingService:
 
         Flow:
         1. Lock item for update
-        2. Create bid with bid_number
-        3. Update current price
-        4. Trigger auto-extend if needed
-        5. Log event
+        2. Update current price
+        3. Trigger auto-extend if needed
+        4. Log event
 
         Args:
             item: AuctionItem to bid on (will be re-locked)
@@ -605,13 +602,10 @@ class BiddingService:
         item = AuctionItem.objects.select_for_update().get(id=item.id)
         auction = item.auction
 
-        # Create bid with sequential bid_number
-        bid_number = Bid.objects.filter(item=item).count() + 1
         bid = Bid.objects.create(
             item=item,
             bidder=bidder,
             amount=amount,
-            bid_number=bid_number,
         )
 
         item.current_price = amount
@@ -663,7 +657,7 @@ class SettlementService:
 
     @staticmethod
     @transaction.atomic
-    def settle_auction(auction: Auction,user: UserAccount) -> Auction:
+    def settle_auction(auction: Auction, user: UserAccount) -> Auction:
         """
         Settle auction: determine winners, mark items, close auction.
 
@@ -756,7 +750,6 @@ class SettlementService:
                 item=item,
                 bidder=buyer,
                 amount=auction.buy_now_price,
-                bid_number=1,
             )
 
             # Mark item as sold

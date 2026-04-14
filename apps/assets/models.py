@@ -24,7 +24,7 @@ class Asset(OwnerBaseModel):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="available"
     )
-    count = models.IntegerField()
+    count = models.IntegerField()  # needs to be moved for product
     # 'thumbnail_url' => picture preview about the asset
     thumbnail_url = models.URLField(blank=True, null=True)
 
