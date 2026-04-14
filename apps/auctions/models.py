@@ -45,7 +45,7 @@ class Auction(OwnerBaseModel):
 
     Responsibilities:
     - Container for one or multiple auction items
-    - Lifecycle management (draft → active → ended)
+    - Lifecycle management (active → ended)
     - Global timing and rules
     - Seller context
     - Visibility and publication
