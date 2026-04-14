@@ -225,7 +225,7 @@ def test_something(user, profile, authenticated_client, auth_headers):
 | `authenticated_client` | APIClient | Authenticated REST client |
 | `user` | UserAccount | Test user with active profile |
 | `seller_user` | UserAccount | Seller user |
-| `buyer_user` | UserAccount | Buyer user |
+| `customer_user` | UserAccount | customer user |
 | `manager_user` | UserAccount | Manager user (admin) |
 | `profile` | Profile | Active profile |
 | `bird` | Bird | Test bird |

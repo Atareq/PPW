@@ -10,11 +10,11 @@ from apps.users.serializers import (
     CustomerProfileMobileSerializer,
     ManagerProfileadminSerializer,
 )
+from django.contrib.auth.password_validation import validate_password
 
 
-class CustomTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
+class CustomerTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
 
-    region = serializers.CharField()
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
@@ -41,6 +41,15 @@ class CustomerRegisterSerializer(
         ]
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
         extra_kwargs = {"password": {"write_only": True}}
+
+    def validate_password(self, value):
+        user = UserAccount(
+            username=self.initial_data.get("username", ""),
+            phone_number=self.initial_data.get("phone_number", ""),
+        )
+
+        validate_password(password=value, user=user)
+        return value
 
     def create(self, validated_data):
         profile_data = validated_data.pop("customer_profile")
@@ -74,6 +83,15 @@ class ManagerRegisterSerializer(
             "manager_profile",
         ]
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
+
+    def validate_password(self, value):
+        user = UserAccount(
+            username=self.initial_data.get("username", ""),
+            phone_number=self.initial_data.get("phone_number", ""),
+        )
+
+        validate_password(password=value, user=user)
+        return value
 
     def create(self, validated_data):
         profile_data = validated_data.pop("manager_profile")

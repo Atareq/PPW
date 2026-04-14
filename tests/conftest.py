@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.users.constants import ProfileType
 from tests.factories import (
     SellerProfileFactory,
     UserAccountFactory,
@@ -18,7 +19,7 @@ from tests.factories import (
     AuctionItemFactory,
     BidFactory,
     create_seller_with_bird,
-    create_buyer,
+    create_customer,
     create_active_auction_with_item,
 )
 
@@ -61,6 +62,35 @@ def authenticated_client(user):
     return client
 
 
+@pytest.fixture
+def authenticated_customer_client(customer_user):
+    """Return authenticated API client with user token."""
+    client = APIClient()
+    refresh = RefreshToken.for_user(customer_user)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    return client
+
+
+
+@pytest.fixture
+def authenticated_seller_client(seller_user):
+    """Return authenticated API client with user token."""
+    client = APIClient()
+    refresh = RefreshToken.for_user(seller_user)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    return client
+
+
+@pytest.fixture
+def authenticated_seller_client_2(seller_user_2):
+    """Return authenticated API client with user token."""
+    client = APIClient()
+    refresh = RefreshToken.for_user(seller_user_2)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    return client
+
+
+
 # ============================================================================
 # USER & PROFILE FIXTURES
 # ============================================================================
@@ -69,27 +99,38 @@ def authenticated_client(user):
 @pytest.fixture
 def user():
     """Create a test user with active profile."""
-    return UserAccountFactory(with_profile="seller")
+    return UserAccountFactory()
 
 
 @pytest.fixture
 def seller_user():
     """Create a seller user."""
-    return UserAccountFactory(with_profile="seller")
+    return UserAccountFactory(with_profile=ProfileType.SELLER,)
+
+@pytest.fixture
+def seller_user_2():
+    """Create a seller user."""
+    return UserAccountFactory(with_profile=ProfileType.SELLER,)
 
 
 @pytest.fixture
-def buyer_user():
-    """Create a buyer user."""
-    return UserAccountFactory(with_profile="seller")
+def customer_user():
+    """Create a customer user."""
+    return UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+
+@pytest.fixture
+def customer_user_2():
+    return UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
 
 
 @pytest.fixture
 def manager_user():
     """Create a manager user."""
-    user = UserAccountFactory(with_profile="manager")
+    user = UserAccountFactory(with_profile=ProfileType.MANAGER)
     user.is_staff = True
-    user.is_superuser = True
+    user.is_superuser = False
     user.save()
     return user
 
@@ -103,7 +144,7 @@ def profile(user):
 @pytest.fixture
 def seller_profile():
     """Create a seller profile."""
-    return SellerProfileFactory(type="seller")
+    return SellerProfileFactory(type=ProfileType.SELLER)
 
 
 # ============================================================================
@@ -155,12 +196,12 @@ def active_auction_with_item():
 
 
 @pytest.fixture
-def bid(seller_profile, buyer_user, auction_with_item):
+def bid(seller_profile, customer_user, auction_with_item):
     """Create a bid on item."""
     auction, item = auction_with_item
     return BidFactory(
         item=item,
-        bidder=buyer_user.active_profile,
+        bidder=customer_user.active_profile,
         amount="150.00"
     )
 

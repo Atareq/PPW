@@ -1,4 +1,4 @@
-SELLERPERMISSIONS = {
+SELLER_PERMISSIONS = {
     "BIRD": [
         "list",
         "retrieve",
@@ -23,7 +23,7 @@ SELLERPERMISSIONS = {
     ],
 }
 
-CUSTOMERPERMISSIONS = {
+CUSTOMER_PERMISSIONS = {
     "BIRD": [
         "list",
         "retrieve",
@@ -34,5 +34,7 @@ CUSTOMERPERMISSIONS = {
     "AUCTION": [
         "list",
         "retrieve",
+        "active",
+
     ],
 }

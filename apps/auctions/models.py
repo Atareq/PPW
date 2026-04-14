@@ -55,7 +55,8 @@ class Auction(OwnerBaseModel):
     description = models.TextField()
 
     status = models.CharField(
-        choices=AuctionStatus.choices, default=AuctionStatus.ACTIVE
+        choices=AuctionStatus.choices, default=AuctionStatus.ACTIVE,
+        max_length=20,
     )
     # Auction type determines behavior
     auction_type = models.CharField(
@@ -280,8 +281,6 @@ class Bid(BaseModel):
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
     )
 
-    # For multi-bid tracking
-    bid_number = models.PositiveIntegerField()  # Sequential per item
 
     class Meta:
         indexes = [
@@ -289,7 +288,6 @@ class Bid(BaseModel):
             models.Index(fields=["bidder", "item"]),
             models.Index(fields=["item", "-created"]),
         ]
-        unique_together = [["item", "bid_number"]]
         ordering = ["-created"]
 
     def __str__(self):

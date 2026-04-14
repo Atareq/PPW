@@ -16,6 +16,7 @@ from datetime import timedelta
 from rest_framework.exceptions import ValidationError
 
 from apps.auctions.services import BidBusinessValidator
+from apps.users.constants import ProfileType
 from tests.factories import (
     create_active_auction_with_item,
     UserAccountFactory,
@@ -31,10 +32,10 @@ class TestBidBusinessValidator:
     """Tests for BidBusinessValidator."""
 
     def test_valid_bid_passes_validation(self):
-        """Test that valid bid passes all validations."""
+        """Test that valid bid passes all validations.(Happy scenario)"""
         auction, item, seller = create_active_auction_with_item()
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        bidder = customer.active_profile
 
         validator = BidBusinessValidator(
             item=item,
@@ -49,7 +50,7 @@ class TestBidBusinessValidator:
         """Test that auction owner can't bid on own items."""
         auction, item, seller = create_active_auction_with_item()
         seller_profile = seller.active_profile
-
+        print(seller_profile)
         validator = BidBusinessValidator(
             item=item,
             bidder=seller_profile,
@@ -58,7 +59,7 @@ class TestBidBusinessValidator:
 
         with pytest.raises(ValidationError) as exc:
             validator.validate()
-        assert "seller" in str(exc.value).lower()
+        assert 'only customers' in str(exc.value).lower()
 
     def test_bid_amount_must_exceed_current_price(self):
         """Test that bid must exceed current highest bid."""
@@ -66,8 +67,8 @@ class TestBidBusinessValidator:
         item.current_highest_bid = Decimal("200.00")
         item.save()
 
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.SELLER)
+        bidder = customer.active_profile
 
         # Bid less than current highest
         validator = BidBusinessValidator(
@@ -88,8 +89,8 @@ class TestBidBusinessValidator:
         auction.min_bid_increment = Decimal("10.00")
         auction.save()
 
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.SELLER)
+        bidder = customer.active_profile
 
         # Bid only 105 (increment is only 5, needs 10)
         validator = BidBusinessValidator(
@@ -103,7 +104,7 @@ class TestBidBusinessValidator:
 
     def test_auction_must_be_active(self):
         """Test that auction must be active."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         seller_user = seller_profile.user
         bird = BirdFactory(owner=seller_profile)
 
@@ -115,8 +116,8 @@ class TestBidBusinessValidator:
         )
         item = AuctionItemFactory(auction=auction, bird=bird, status="active")
 
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.SELLER)
+        bidder = customer.active_profile
 
         validator = BidBusinessValidator(
             item=item,
@@ -134,8 +135,8 @@ class TestBidBusinessValidator:
         item.status = "sold"
         item.save()
 
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.SELLER)
+        bidder = customer.active_profile
 
         validator = BidBusinessValidator(
             item=item,
@@ -148,7 +149,7 @@ class TestBidBusinessValidator:
 
     def test_auction_must_not_be_expired(self):
         """Test that auction cannot be expired."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
         # Create expired auction
@@ -159,8 +160,8 @@ class TestBidBusinessValidator:
         )
         item = AuctionItemFactory(auction=auction, bird=bird, status="active")
 
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.SELLER)
+        bidder = customer.active_profile
 
         validator = BidBusinessValidator(
             item=item,
@@ -175,8 +176,8 @@ class TestBidBusinessValidator:
         """Test that bid amount must be positive."""
         auction, item, seller = create_active_auction_with_item()
 
-        buyer = UserAccountFactory(with_profile="seller")
-        bidder = buyer.active_profile
+        customer = UserAccountFactory(with_profile=ProfileType.SELLER)
+        bidder = customer.active_profile
 
         validator = BidBusinessValidator(
             item=item,
@@ -187,17 +188,14 @@ class TestBidBusinessValidator:
         with pytest.raises(ValidationError):
             validator.validate()
 
-    def test_multiple_sequential_bids_valid(self):
+    def test_multiple_sequential_bids_valid(self, customer_user, customer_user_2):
         """Test that increasing bids are valid."""
         auction, item, seller = create_active_auction_with_item()
-
-        buyer1 = UserAccountFactory(with_profile="seller")
-        buyer2 = UserAccountFactory(with_profile="seller")
 
         # First bid
         validator1 = BidBusinessValidator(
             item=item,
-            bidder=buyer1.active_profile,
+            bidder=customer_user.active_profile,
             amount=Decimal("150.00"),
         )
         validator1.validate()
@@ -209,7 +207,7 @@ class TestBidBusinessValidator:
         # Second bid (higher)
         validator2 = BidBusinessValidator(
             item=item,
-            bidder=buyer2.active_profile,
+            bidder=customer_user_2.active_profile,
             amount=Decimal("160.00"),
         )
         validator2.validate()

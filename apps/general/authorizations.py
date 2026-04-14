@@ -2,7 +2,7 @@ from typing import Optional
 
 from rest_framework.permissions import BasePermission
 
-from apps.general.constants import CUSTOMERPERMISSIONS, SELLERPERMISSIONS
+from apps.general.constants import CUSTOMER_PERMISSIONS, SELLER_PERMISSIONS
 
 
 class AuthorizationService:
@@ -24,8 +24,8 @@ class AuthorizationService:
         action = action or "list"
 
         role_permissions_map = {
-            "Customer": CUSTOMERPERMISSIONS,
-            "Seller": SELLERPERMISSIONS,
+            "Customer": CUSTOMER_PERMISSIONS,
+            "Seller": SELLER_PERMISSIONS,
         }
         if user.role in role_permissions_map:
             permissions_dict = role_permissions_map[user.role]

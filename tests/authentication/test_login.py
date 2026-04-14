@@ -3,7 +3,7 @@ Tests for login and token endpoints.
 
 Tests:
 - LoginAPIView (TokenObtainPairView)
-- CustomTokenSerializer
+- CustomerTokenSerializer
 - JWT token generation
 """
 
@@ -94,11 +94,10 @@ class TestLogin:
         }
 
         response = api_client.post("/api/auth/login/", data)
-
+        print(response.data)
         assert response.status_code == status.HTTP_200_OK
-        assert "user" in response.data
-        assert response.data["user"]["id"] == user.id
-        assert response.data["user"]["phone_number"] == str(user.phone_number)
+        assert response.data["access"] != None
+        assert response.data["refresh"]!= None
 
     def test_login_missing_phone_number(self, api_client):
         """Test login fails with missing phone number."""

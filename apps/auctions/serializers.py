@@ -41,13 +41,11 @@ class BidSerializer(serializers.ModelSerializer):
             "amount",
             "bidder",
             "bidder_username",
-            "bid_number",
             "created",
             "is_winning_bid",
         ]
         read_only_fields = [
             "id",
-            "bid_number",
             "created",
             "is_winning_bid",
         ]

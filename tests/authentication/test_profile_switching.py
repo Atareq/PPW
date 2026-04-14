@@ -9,22 +9,23 @@ Tests:
 
 import pytest
 from rest_framework import status
+from apps.users.constants import ProfileType
+from tests.factories import CustomerProfileFactory, SellerProfileFactory
+from tests.factories import SellerProfileFactory
 
 
 @pytest.mark.django_db
 class TestProfileSwitching:
     """Tests for profile switching functionality."""
 
-    def test_switch_to_valid_profile(self, authenticated_client, user):
+    def test_switch_to_valid_profile(self, authenticated_customer_client, customer_user):
         """Test switching to a valid profile the user owns."""
-        from tests.factories import SellerProfileFactory
 
         # Create a second profile for the user
-        second_profile = SellerProfileFactory(user=user, type="seller")
+        seller_profile = SellerProfileFactory(user=customer_user)
 
-        data = {"new_profile": second_profile.id}
-
-        response = authenticated_client.post("/api/auth/switch-profile/", data)
+        data = {"new_profile": ProfileType.SELLER}
+        response = authenticated_customer_client.post("/api/auth/switch-profile/", data)
 
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
@@ -42,34 +43,31 @@ class TestProfileSwitching:
         """Test user cannot switch to another user's profile."""
         from tests.factories import UserAccountFactory, SellerProfileFactory
 
-        other_user = UserAccountFactory(with_profile="seller")
+        other_user = UserAccountFactory(with_profile=ProfileType.SELLER)
         other_profile = other_user.active_profile
-
         data = {"new_profile": other_profile.id}
 
         response = authenticated_client.post("/api/auth/switch-profile/", data)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_switch_profile_updates_active_profile(self, authenticated_client, user):
+    def test_switch_profile_updates_active_profile(self, authenticated_customer_client, customer_user):
         """Test that switching profile updates the active_profile."""
-        from tests.factories import SellerProfileFactory
 
-        second_profile = SellerProfileFactory(user=user, type="seller")
-
-        # Verify original profile is active
-        user.refresh_from_db()
-        assert user.active_profile.id != second_profile.id
-
+        first_profile = customer_user  # User with customer active profile
+        second_profile = SellerProfileFactory(user=first_profile)
+        first_profile.refresh_from_db()
+        assert first_profile.active_profile != second_profile.type
+        print(first_profile.active_profile)
         # Switch to second profile
-        data = {"new_profile": second_profile.id}
-        response = authenticated_client.post("/api/auth/switch-profile/", data)
-
+        data = {"new_profile": ProfileType.SELLER}
+        response = authenticated_customer_client.post("/api/auth/switch-profile/", data)
+        print(response.data)
         assert response.status_code == status.HTTP_200_OK
 
         # Verify second profile is now active
-        user.refresh_from_db()
-        assert user.active_profile.id == second_profile.id
+        first_profile.refresh_from_db()
+        assert first_profile.active_profile.id == second_profile.id
 
     def test_switch_profile_requires_authentication(self, api_client, user):
         """Test that profile switching requires authentication."""

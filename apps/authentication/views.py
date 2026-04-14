@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.authentication.serializers import (
     CustomerRegisterSerializer,
-    CustomTokenSerializer,
+    CustomerTokenSerializer,
     ManagerRegisterSerializer,
 )
 from apps.authentication.services import (
@@ -58,7 +58,7 @@ class ManagerRegisterAPIView(APIView):
 
 class LoginAPIView(TokenObtainPairView):
     permission_classes = []
-    serializer_class = CustomTokenSerializer
+    serializer_class = CustomerTokenSerializer
 
 
 class SwitchProfileAPIView(APIView):

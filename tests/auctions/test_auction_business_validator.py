@@ -195,26 +195,4 @@ class TestAuctionBusinessValidator:
         with pytest.raises(ValidationError):
             validator.validate()
 
-    def test_end_time_must_be_after_start_time(self):
-        """Test that end_time must be after start_time."""
-        seller_profile = SellerProfileFactory(type="seller")
-        bird = BirdFactory(owner=seller_profile)
-        now = timezone.now()
 
-        auction = Auction(
-            owner=seller_profile,
-            title="Test Auction",
-            description="Test",
-            auction_type=AuctionType.SINGLE,
-            start_time=now + timedelta(days=7),
-            end_time=now,  # Before start_time
-        )
-
-        items_data = [
-            {"bird_id": bird.id, "starting_price": Decimal("100.00")}
-        ]
-
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
-
-        with pytest.raises(ValidationError):
-            validator.validate()

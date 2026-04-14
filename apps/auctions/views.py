@@ -196,7 +196,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         """Get all active auctions"""
         queryset = Auction.objects.filter(
             is_visible=True,
-            # start_time__lte=timezone.now(),
+            start_time__lte=timezone.now(),
             end_time__gt=timezone.now(),
         ).order_by("end_time")
 

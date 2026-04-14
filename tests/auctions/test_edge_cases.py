@@ -14,6 +14,7 @@ from decimal import Decimal
 from django.utils import timezone
 from datetime import timedelta
 
+from apps.users.constants import ProfileType
 from tests.factories import (
     create_active_auction_with_item,
     UserAccountFactory,
@@ -22,22 +23,24 @@ from tests.factories import (
     BirdFactory,
     SellerProfileFactory,
 )
+from apps.auctions.models import Bid
+
+from apps.auctions.services import AuctionBusinessValidator
+from apps.auctions.models import Auction
 
 
 @pytest.mark.django_db
 class TestDecimalPrecision:
     """Tests for decimal precision in amounts."""
 
-    def test_bid_amount_two_decimal_places(self):
+    def test_bid_amount_two_decimal_places(self,customer_user):
         """Test that bid amounts work with 2 decimal places."""
-        from apps.auctions.models import Bid
 
         auction, item, seller = create_active_auction_with_item()
-        bidder = UserAccountFactory(with_profile="seller")
 
         bid = Bid(
             item=item,
-            bidder=bidder.active_profile,
+            bidder=customer_user.active_profile,
             amount=Decimal("123.45"),
         )
         bid.save()
@@ -47,10 +50,9 @@ class TestDecimalPrecision:
 
     def test_bid_amount_rounding(self):
         """Test that bid amounts aren't incorrectly rounded."""
-        from apps.auctions.models import Bid
 
         auction, item, seller = create_active_auction_with_item()
-        bidder = UserAccountFactory(with_profile="seller")
+        bidder = UserAccountFactory(with_profile=ProfileType.SELLER)
 
         # Store exact decimal
         bid = Bid(
@@ -83,7 +85,7 @@ class TestTimezoneHandling:
 
     def test_auction_end_time_is_timezone_aware(self):
         """Test that auction end times are timezone aware."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType)
 
         auction = AuctionFactory(
             owner=seller_profile,
@@ -93,16 +95,14 @@ class TestTimezoneHandling:
         assert auction.end_time.tzinfo is not None
         assert timezone.is_aware(auction.end_time)
 
-    def test_bid_created_timestamp_is_timezone_aware(self):
+    def test_bid_created_timestamp_is_timezone_aware(self,customer_user):
         """Test that bid creation timestamp is timezone aware."""
-        from apps.auctions.models import Bid
 
         auction, item, seller = create_active_auction_with_item()
-        bidder = UserAccountFactory(with_profile="seller")
 
         bid = Bid(
             item=item,
-            bidder=bidder.active_profile,
+            bidder=customer_user.active_profile,
             amount=Decimal("150.00"),
             created=timezone.now(),
         )
@@ -116,7 +116,7 @@ class TestTimezoneHandling:
         now = timezone.now()
         future = now + timedelta(days=7)
 
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType)
         auction = AuctionFactory(
             owner=seller_profile,
             end_time=future,
@@ -131,7 +131,7 @@ class TestAutoExtend:
 
     def test_auto_extend_enabled_with_valid_minutes(self):
         """Test that auto_extend works with valid minutes."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType)
 
         auction = AuctionFactory(
             owner=seller_profile,
@@ -144,7 +144,7 @@ class TestAutoExtend:
 
     def test_auto_extend_disabled_by_default(self):
         """Test that auto_extend is disabled by default."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType)
 
         auction = AuctionFactory(owner=seller_profile)
 
@@ -152,11 +152,9 @@ class TestAutoExtend:
 
     def test_auto_extend_requires_positive_minutes(self):
         """Test that auto_extend_minutes must be positive."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
-        from apps.auctions.services import AuctionBusinessValidator
-        from apps.auctions.models import Auction
 
         auction = Auction(
             owner=seller_profile,
@@ -181,25 +179,21 @@ class TestAutoExtend:
 class TestConcurrentBids:
     """Tests for handling concurrent bids."""
 
-    def test_multiple_bids_on_same_item(self):
+    def test_multiple_bids_on_same_item(self, customer_user, customer_user_2):
         """Test that multiple bids can be placed on same item."""
-        from apps.auctions.models import Bid
 
         auction, item, seller = create_active_auction_with_item()
 
-        bidder1 = UserAccountFactory(with_profile="seller")
-        bidder2 = UserAccountFactory(with_profile="seller")
-
         bid1 = Bid(
             item=item,
-            bidder=bidder1.active_profile,
+            bidder=customer_user.active_profile,
             amount=Decimal("150.00"),
         )
         bid1.save()
 
         bid2 = Bid(
             item=item,
-            bidder=bidder2.active_profile,
+            bidder=customer_user_2.active_profile,
             amount=Decimal("160.00"),
         )
         bid2.save()
@@ -208,11 +202,10 @@ class TestConcurrentBids:
 
     def test_bid_order_by_amount(self):
         """Test that bids can be ordered by amount."""
-        from apps.auctions.models import Bid
 
         auction, item, seller = create_active_auction_with_item()
 
-        bidders = [UserAccountFactory(with_profile="seller") for _ in range(3)]
+        bidders = [UserAccountFactory(with_profile=ProfileType.CUSTOMER) for _ in range(3)]
         amounts = [Decimal("150.00"), Decimal("160.00"), Decimal("155.00")]
 
         for bidder, amount in zip(bidders, amounts):
