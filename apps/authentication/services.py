@@ -3,12 +3,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.models import Profile
+from apps.users.constants import ProfileType
 
 
 def switch_user_profile(user, new_profile_type: str) -> bool:
     with transaction.atomic():
 
-        if user.role != new_profile_type and user.role != "MANAGER":
+        if user.role != new_profile_type and user.role != ProfileType.MANAGER:
             Profile.objects.filter(user=user, is_active=True).update(
                 is_active=False
             )

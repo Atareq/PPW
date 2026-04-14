@@ -43,13 +43,11 @@ class AuctionViewSet(viewsets.ModelViewSet):
     Auction ViewSet
 
     Actions:
-    - list: Get all published auctions (with filters)
-    - create: Create new auction (draft)
+    - list: Get all ACTIVE auctions (with filters)
+    - create: Create new auction (ACTIVE)
     - retrieve: Get auction details
-    - update/partial_update: Update auction (draft only)
-    - destroy: Delete auction (draft only)
-    - publish: Move draft → active
-    - cancel: Cancel active/draft auction
+    - destroy: Delete auction (ACTIVE only)
+    - cancel: Cancel active auction
     - my_auctions: Get my created auctions
     - close: Admin action to close auction
     """
@@ -174,7 +172,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         Get all auctions created by authenticated user
 
         Query params:
-        - status: draft, active, ended, cancelled
+        - status: active, ended, cancelled
         """
         queryset = self.get_queryset()
 

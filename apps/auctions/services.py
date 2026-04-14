@@ -13,7 +13,7 @@ Layer 2: Business Validation (AuctionBusinessValidator)
 
 Layer 3: Object Creation (Factory)
   - Creates domain objects only (no validation)
-  - Guarantees: status=DRAFT, is_visible=False
+  - Guarantees: status=ACTIVE, is_visible=True
 
 Layer 4: Orchestration (Service)
   - Orchestrates complete flow
@@ -227,7 +227,6 @@ class AuctionFactory:
 
     Guarantees:
     - status always set via model default
-    - is_visible always False (draft)
     - Objects NOT saved (caller responsible)
     """
 
@@ -254,7 +253,7 @@ class AuctionFactory:
         All validation already done by AuctionBusinessValidator.
 
         Returns:
-            Auction: Unsaved instance with status=DRAFT, is_visible=False
+            Auction: Unsaved instance with status=ACTIVE, is_visible=False
         """
         return Auction(
             owner=owner,
@@ -314,11 +313,10 @@ class AuctionFactory:
 
 class AuctionService:
     """
-    Orchestrates auction lifecycle: creation, publishing, cancellation.
+    Orchestrates auction lifecycle: creation, cancellation.
 
     Responsibilities:
     - Create and save auctions + items (uses factory)
-    - Publish auctions (DRAFT → ACTIVE)
     - Cancel auctions
     - Settle auctions (resolve winners)
     - Log events (audit trail)
@@ -391,16 +389,16 @@ class AuctionService:
         Cancel auction and refund all bids.
 
         Prerequisites:
-        - Auction must be in DRAFT or ACTIVE status
+        - Auction must be in ACTIVE status
         - Cannot cancel ENDED auctions
 
         Returns:
             Updated Auction
         """
-        if auction.status == "cancelled":
+        if auction.status == AuctionStatus.CANCELLED:
             raise ValidationError("Auction is already cancelled")
 
-        if auction.status == "ended":
+        if auction.status == AuctionStatus.ENDED:
             raise ValidationError(
                 "Cannot cancel ended auction. Use settlement for dispute resolution."
             )

@@ -161,8 +161,8 @@ class AuctionEventSerializer(serializers.ModelSerializer):
 class AuctionDetailSerializer(serializers.ModelSerializer):
     """Detailed auction view with all info"""
 
-    seller_username = serializers.CharField(
-        source="owner.username", read_only=True
+    seller_nickname = serializers.CharField(
+        source="owner.sellerprofile.nickname", read_only=True
     )
     items = AuctionItemDetailSerializer(many=True, read_only=True)
     events = AuctionEventSerializer(many=True, read_only=True)
@@ -183,7 +183,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "description",
             "auction_type",
             "auction_type_display",
-            "seller_username",
+            "seller_nickname",
             "owner",
             "start_time",
             "end_time",
@@ -232,8 +232,8 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
 class AuctionListSerializer(serializers.ModelSerializer):
     """Minimal auction info for listing"""
 
-    seller_username = serializers.CharField(
-        source="owner.username", read_only=True
+    seller_nickname = serializers.CharField(
+        source="owner.sellerprofile.nickname", read_only=True
     )
     item_count = serializers.SerializerMethodField()
     status_display = serializers.CharField(
@@ -252,7 +252,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "auction_type",
             "auction_type_display",
             "status_display",
-            "seller_username",
+            "seller_nickname",
             "start_time",
             "end_time",
             "item_count",
