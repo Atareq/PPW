@@ -5,21 +5,19 @@ conftest.py is automatically discovered by pytest.
 Put all shared fixtures here.
 """
 
-import pytest
 from django.contrib.auth import get_user_model
+import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.constants import ProfileType
 from tests.factories import (
-    SellerProfileFactory,
-    UserAccountFactory,
-    BirdFactory,
     AuctionFactory,
     AuctionItemFactory,
     BidFactory,
-    create_seller_with_bird,
-    create_customer,
+    BirdFactory,
+    SellerProfileFactory,
+    UserAccountFactory,
     create_active_auction_with_item,
 )
 
@@ -29,14 +27,13 @@ User = get_user_model()
 # PYTEST MARKERS
 # ============================================================================
 
+
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line(
         "markers", "django_db: mark test as requiring database access"
     )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
+    config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line(
         "markers", "integration: mark test as integration test"
     )
@@ -71,7 +68,6 @@ def authenticated_customer_client(customer_user):
     return client
 
 
-
 @pytest.fixture
 def authenticated_seller_client(seller_user):
     """Return authenticated API client with user token."""
@@ -90,7 +86,6 @@ def authenticated_seller_client_2(seller_user_2):
     return client
 
 
-
 # ============================================================================
 # USER & PROFILE FIXTURES
 # ============================================================================
@@ -105,12 +100,17 @@ def user():
 @pytest.fixture
 def seller_user():
     """Create a seller user."""
-    return UserAccountFactory(with_profile=ProfileType.SELLER,)
+    return UserAccountFactory(
+        with_profile=ProfileType.SELLER,
+    )
+
 
 @pytest.fixture
 def seller_user_2():
     """Create a seller user."""
-    return UserAccountFactory(with_profile=ProfileType.SELLER,)
+    return UserAccountFactory(
+        with_profile=ProfileType.SELLER,
+    )
 
 
 @pytest.fixture
@@ -122,7 +122,6 @@ def customer_user():
 @pytest.fixture
 def customer_user_2():
     return UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-
 
 
 @pytest.fixture
@@ -200,9 +199,7 @@ def bid(seller_profile, customer_user, auction_with_item):
     """Create a bid on item."""
     auction, item = auction_with_item
     return BidFactory(
-        item=item,
-        bidder=customer_user.active_profile,
-        amount="150.00"
+        item=item, bidder=customer_user.active_profile, amount="150.00"
     )
 
 

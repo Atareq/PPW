@@ -8,19 +8,21 @@ Tests:
 - Status transitions
 """
 from datetime import timedelta
-
-import pytest
 from decimal import Decimal
-from rest_framework import status
+
 from django.utils import timezone
+import pytest
+from rest_framework import status
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.auctions.models import AuctionStatus
 from apps.users.constants import ProfileType
 from tests.factories import (
-    create_seller_with_bird,
-    create_active_auction_with_item,
+    AuctionItemFactory,
+    BirdFactory,
     UserAccountFactory,
-    AuctionItemFactory
+    create_active_auction_with_item,
 )
 
 
@@ -28,9 +30,12 @@ from tests.factories import (
 class TestAuctionCreation:
     """Tests for auction creation endpoint."""
 
-    def test_create_single_auction(self, authenticated_seller_client, seller_user):
+    def test_create_single_auction(
+        self, authenticated_seller_client, seller_user
+    ):
         """Test creating a SINGLE auction with one item."""
         from tests.factories import BirdFactory
+
         bird = BirdFactory(owner=seller_user.active_profile)
 
         data = {
@@ -46,16 +51,21 @@ class TestAuctionCreation:
                 }
             ],
         }
-        response = authenticated_seller_client.post("/api/auctions/", data, format="json")
+        response = authenticated_seller_client.post(
+            "/api/auctions/", data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["title"] == "Beautiful Pigeon"
         assert response.data["auction_type"] == "single"
 
-    def test_create_multi_auction(self, authenticated_seller_client, seller_user):
+    def test_create_multi_auction(
+        self, authenticated_seller_client, seller_user
+    ):
         """Test creating a MULTI auction with multiple items."""
-        from tests.factories import BirdFactory
 
-        birds = [BirdFactory(owner=seller_user.active_profile) for _ in range(3)]
+        birds = [
+            BirdFactory(owner=seller_user.active_profile) for _ in range(3)
+        ]
 
         data = {
             "title": "Multiple Birds",
@@ -69,8 +79,9 @@ class TestAuctionCreation:
             ],
         }
 
-        response = authenticated_seller_client.post("/api/auctions/", data, format="json")
-        print(response)
+        response = authenticated_seller_client.post(
+            "/api/auctions/", data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
         assert len(response.data["items"]) == 3
 
@@ -86,9 +97,10 @@ class TestAuctionCreation:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_create_auction_invalid_type_fails(self, authenticated_seller_client, seller_user):
+    def test_create_auction_invalid_type_fails(
+        self, authenticated_seller_client, seller_user
+    ):
         """Test that invalid auction type fails."""
-        from tests.factories import BirdFactory
 
         bird = BirdFactory(owner=seller_user.active_profile)
 
@@ -98,7 +110,9 @@ class TestAuctionCreation:
             "items": [{"bird_id": bird.id, "starting_price": "100.00"}],
         }
 
-        response = authenticated_seller_client.post("/api/auctions/", data, format="json")
+        response = authenticated_seller_client.post(
+            "/api/auctions/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -110,14 +124,11 @@ class TestBidPlacement:
     def test_place_valid_bid(self, authenticated_customer_client):
         """Test placing a valid bid on an item."""
         auction, item, seller = create_active_auction_with_item()
-        
+
         # Create a different user for bidding
-        bidder = UserAccountFactory(with_profile=ProfileType.SELLER)
         data = {"amount": "150.00"}
         response = authenticated_customer_client.post(
-            f"/api/auctions/items/{item.id}/place_bid/",
-            data,
-            format="json"
+            f"/api/auctions/items/{item.id}/place_bid/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_201_CREATED
@@ -130,14 +141,14 @@ class TestBidPlacement:
         data = {"amount": "150.00"}
 
         response = api_client.post(
-            f"/api/auctions/items/{item.id}/place_bid/",
-            data,
-            format="json"
+            f"/api/auctions/items/{item.id}/place_bid/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_seller_cannot_bid_on_own_item(self, authenticated_seller_client_2, seller_user):
+    def test_seller_cannot_bid_on_own_item(
+        self, authenticated_seller_client_2, seller_user
+    ):
         """Test that seller cannot bid on an item."""
 
         item = AuctionItemFactory(status=AuctionStatus.ACTIVE)
@@ -145,9 +156,7 @@ class TestBidPlacement:
         data = {"amount": "150.00"}
 
         response = authenticated_seller_client_2.post(
-            f"/api/auctions/items/{item.id}/place_bid/",
-            data,
-            format="json"
+            f"/api/auctions/items/{item.id}/place_bid/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -156,34 +165,31 @@ class TestBidPlacement:
         """Test bid amount format validation."""
         auction, item, seller = create_active_auction_with_item()
 
-        from rest_framework_simplejwt.tokens import RefreshToken
-        from rest_framework.test import APIClient
-        
         bidder = UserAccountFactory(with_profile=ProfileType.SELLER)
         bidder_client = APIClient()
         refresh = RefreshToken.for_user(bidder)
-        bidder_client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+        bidder_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
+        )
 
         # Invalid amount format
         data = {"amount": "not_a_number"}
 
         response = bidder_client.post(
-            f"/api/auctions/items/{item.id}/place_bid/",
-            data,
-            format="json"
+            f"/api/auctions/items/{item.id}/place_bid/", data, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_bid_below_starting_price_fails(self, authenticated_customer_client):
+    def test_bid_below_starting_price_fails(
+        self, authenticated_customer_client
+    ):
         """Test that bid below starting price fails."""
         auction, item, seller = create_active_auction_with_item()
         # Item starting price is 100.00
         data = {"amount": "50.00"}  # Below starting price
 
         response = authenticated_customer_client.post(
-            f"/api/auctions/items/{item.id}/place_bid/",
-            data,
-            format="json"
+            f"/api/auctions/items/{item.id}/place_bid/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -196,7 +202,9 @@ class TestAuctionFiltering:
     def test_get_active_auctions(self, api_client):
         """Test getting active auctions."""
         create_active_auction_with_item()
-        user = UserAccountFactory(username='sec_uesername', with_profile=ProfileType.CUSTOMER)
+        user = UserAccountFactory(
+            username="sec_uesername", with_profile=ProfileType.CUSTOMER
+        )
         api_client.force_authenticate(user=user)
         response = api_client.get("/api/auctions/active/")
         assert response.status_code == status.HTTP_200_OK
@@ -204,18 +212,18 @@ class TestAuctionFiltering:
 
     def test_get_my_auctions(self, authenticated_seller_client, seller_user):
         """Test getting user's own auctions."""
-        from tests.factories import AuctionFactory
 
-        auction = AuctionFactory(owner=seller_user.active_profile)
-
-        response = authenticated_seller_client.get("/api/auctions/my_auctions/")
-        print(response.data)
+        response = authenticated_seller_client.get(
+            "/api/auctions/my_auctions/"
+        )
         assert response.status_code == status.HTTP_200_OK
 
     def test_get_ending_soon(self, authenticated_seller_client):
         """Test getting auctions ending soon."""
         create_active_auction_with_item()
 
-        response = authenticated_seller_client.get("/api/auctions/ending_soon/?minutes=100")
+        response = authenticated_seller_client.get(
+            "/api/auctions/ending_soon/?minutes=100"
+        )
 
         assert response.status_code == status.HTTP_200_OK

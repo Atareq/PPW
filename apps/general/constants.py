@@ -35,6 +35,5 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
         "active",
-
     ],
 }

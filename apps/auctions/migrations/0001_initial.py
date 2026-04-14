@@ -30,7 +30,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -84,7 +86,9 @@ class Migration(migrations.Migration):
                     models.PositiveIntegerField(
                         default=5,
                         help_text="Minutes to extend auction if bid placed in final window",
-                        validators=[django.core.validators.MinValueValidator(1)],
+                        validators=[
+                            django.core.validators.MinValueValidator(1)
+                        ],
                     ),
                 ),
                 ("deposit_required", models.BooleanField(default=False)),
@@ -95,7 +99,9 @@ class Migration(migrations.Migration):
                         decimal_places=2,
                         max_digits=10,
                         null=True,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 (
@@ -113,7 +119,9 @@ class Migration(migrations.Migration):
                         default=1.0,
                         help_text="Minimum amount next bid must exceed current",
                         max_digits=10,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 ("buy_now_enabled", models.BooleanField(default=False)),
@@ -125,7 +133,9 @@ class Migration(migrations.Migration):
                         help_text="Instant buy price for this item",
                         max_digits=10,
                         null=True,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 (
@@ -163,7 +173,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -201,7 +213,9 @@ class Migration(migrations.Migration):
                         decimal_places=2,
                         help_text="Minimum starting price for bids",
                         max_digits=10,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 (
@@ -210,7 +224,9 @@ class Migration(migrations.Migration):
                         decimal_places=2,
                         default=0,
                         max_digits=10,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 (
@@ -265,7 +281,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -288,7 +306,9 @@ class Migration(migrations.Migration):
                     models.DecimalField(
                         decimal_places=2,
                         max_digits=10,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 ("bid_number", models.PositiveIntegerField()),
@@ -337,7 +357,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -419,19 +441,22 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="bid",
             index=models.Index(
-                fields=["item", "-amount"], name="auctions_bi_item_id_c0cbb5_idx"
+                fields=["item", "-amount"],
+                name="auctions_bi_item_id_c0cbb5_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="bid",
             index=models.Index(
-                fields=["bidder", "item"], name="auctions_bi_bidder__3c2b29_idx"
+                fields=["bidder", "item"],
+                name="auctions_bi_bidder__3c2b29_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="bid",
             index=models.Index(
-                fields=["item", "-created"], name="auctions_bi_item_id_d03f43_idx"
+                fields=["item", "-created"],
+                name="auctions_bi_item_id_d03f43_idx",
             ),
         ),
         migrations.AlterUniqueTogether(
@@ -447,25 +472,29 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="auctionitem",
             index=models.Index(
-                fields=["status", "winner"], name="auctions_au_status_172066_idx"
+                fields=["status", "winner"],
+                name="auctions_au_status_172066_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="auctionitem",
             index=models.Index(
-                fields=["auction", "status"], name="auctions_au_auction_016cba_idx"
+                fields=["auction", "status"],
+                name="auctions_au_auction_016cba_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="auctionevent",
             index=models.Index(
-                fields=["auction", "-created"], name="auctions_au_auction_cb406e_idx"
+                fields=["auction", "-created"],
+                name="auctions_au_auction_cb406e_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="auctionevent",
             index=models.Index(
-                fields=["event_type", "-created"], name="auctions_au_event_t_3d43fc_idx"
+                fields=["event_type", "-created"],
+                name="auctions_au_event_t_3d43fc_idx",
             ),
         ),
         migrations.AddIndex(
@@ -476,7 +505,9 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="auction",
-            index=models.Index(fields=["owner"], name="auctions_au_owner_i_d3ca43_idx"),
+            index=models.Index(
+                fields=["owner"], name="auctions_au_owner_i_d3ca43_idx"
+            ),
         ),
         migrations.AddIndex(
             model_name="auction",

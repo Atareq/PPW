@@ -142,7 +142,7 @@ class AuctionEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuctionEvent
-        fields = '__all__'
+        fields = "__all__"
         read_only_fields = [
             "id",
             "event_type",
@@ -257,7 +257,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "is_visible",
             "time_remaining",
             "created",
-            "status"
+            "status",
         ]
         read_only_fields = [
             "id",

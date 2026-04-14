@@ -28,7 +28,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -156,7 +158,9 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="asset",
-            index=models.Index(fields=["status"], name="assets_asse_status_347ce9_idx"),
+            index=models.Index(
+                fields=["status"], name="assets_asse_status_347ce9_idx"
+            ),
         ),
         migrations.AddIndex(
             model_name="asset",
@@ -167,7 +171,8 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="asset",
             index=models.Index(
-                fields=["owner", "status"], name="assets_asse_owner_i_6f51c8_idx"
+                fields=["owner", "status"],
+                name="assets_asse_owner_i_6f51c8_idx",
             ),
         ),
         migrations.AddIndex(

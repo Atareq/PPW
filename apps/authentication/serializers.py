@@ -1,3 +1,4 @@
+from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -10,7 +11,6 @@ from apps.users.serializers import (
     CustomerProfileMobileSerializer,
     ManagerProfileadminSerializer,
 )
-from django.contrib.auth.password_validation import validate_password
 
 
 class CustomerTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
@@ -97,7 +97,9 @@ class ManagerRegisterSerializer(
         profile_data = validated_data.pop("manager_profile")
 
         with transaction.atomic():
-            user = UserAccount.objects.create_user(**validated_data, is_staff=True)
+            user = UserAccount.objects.create_user(
+                **validated_data, is_staff=True
+            )
             ManagerProfile.objects.create(
                 user=user,
                 is_active=True,  # Already made by admins

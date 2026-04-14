@@ -659,7 +659,7 @@ class SettlementService:
 
     @staticmethod
     @transaction.atomic
-    def settle_auction(auction: Auction,user: UserAccount) -> Auction:
+    def settle_auction(auction: Auction, user: UserAccount) -> Auction:
         """
         Settle auction: determine winners, mark items, close auction.
 

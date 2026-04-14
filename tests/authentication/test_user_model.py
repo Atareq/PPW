@@ -6,13 +6,12 @@ Tests:
 - Permission management
 - Profile activation
 """
-from tests.factories import CustomerProfileFactory, UserAccountFactory, SellerProfileFactory
-import pytest
-from apps.authentication.models import UserAccount
-from apps.authentication.constants import AppPermissions
-from apps.users.constants import ProfileType
-from tests.factories import UserAccountFactory
 from django.db import IntegrityError
+import pytest
+
+from apps.users.constants import ProfileType
+from tests.factories import CustomerProfileFactory, UserAccountFactory
+
 
 @pytest.mark.django_db
 class TestUserModel:
@@ -27,16 +26,16 @@ class TestUserModel:
     def test_user_phone_number_unique(self):
         """Test that phone numbers are unique."""
 
-
         user1 = UserAccountFactory(with_profile=ProfileType.SELLER)
         phone = user1.phone_number
 
         with pytest.raises(IntegrityError):
-            UserAccountFactory(phone_number=phone, with_profile=ProfileType.SELLER)
+            UserAccountFactory(
+                phone_number=phone, with_profile=ProfileType.SELLER
+            )
 
     def test_active_profile_property(self, user):
         """Test active_profile property returns correct profile."""
-        from tests.factories import SellerProfileFactory
 
         profile = user.active_profile
         assert profile is not None

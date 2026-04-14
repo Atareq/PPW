@@ -3,6 +3,7 @@
 import pytest
 from rest_framework import status
 
+from apps.authentication.models import UserAccount
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile
 
@@ -23,7 +24,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["message"] == "User created successfully"
@@ -40,22 +43,27 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
-        from apps.authentication.models import UserAccount
         user = UserAccount.objects.get(phone_number="+201001234567")
         assert user.active_profile is not None
         assert user.active_profile.type == ProfileType.CUSTOMER
         assert user.active_profile.is_active is True
 
-        profile = CustomerProfile.objects.get(user__phone_number="+201001234567")
+        profile = CustomerProfile.objects.get(
+            user__phone_number="+201001234567"
+        )
         assert profile.type == ProfileType.CUSTOMER
         assert profile.country == "EG"
         assert profile.currency == "EGP"
         assert profile.balance == 0.0
 
-    def test_register_customer_duplicate_phone_number(self, api_client, customer_user):
+    def test_register_customer_duplicate_phone_number(
+        self, api_client, customer_user
+    ):
         """Test registration fails with duplicate phone number."""
         data = {
             "username": "another_customer",
@@ -67,7 +75,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "phone_number" in response.data
@@ -84,7 +94,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "password" in response.data
@@ -100,7 +112,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -115,7 +129,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -130,7 +146,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -142,7 +160,9 @@ class TestCustomerRegistration:
             "password": "SecurePass123!@",
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "customer_profile" in response.data
@@ -159,7 +179,9 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -176,10 +198,14 @@ class TestCustomerRegistration:
             },
         }
 
-        response = api_client.post("/api/auth/register/customer/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/customer/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_201_CREATED
-        profile = CustomerProfile.objects.get(user__phone_number="+201001234567")
+        profile = CustomerProfile.objects.get(
+            user__phone_number="+201001234567"
+        )
         assert profile.balance == 0.0
 
 
@@ -196,7 +222,9 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["message"] == "User created successfully"
@@ -210,10 +238,11 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
-        from apps.authentication.models import UserAccount
         user = UserAccount.objects.get(phone_number="+201001234567")
         assert user.active_profile is not None
         assert user.active_profile.type == ProfileType.MANAGER
@@ -221,7 +250,9 @@ class TestManagerRegistration:
         assert user.active_profile.activated is True
         assert user.is_staff is True
 
-        profile = ManagerProfile.objects.get(user__phone_number="+201001234567")
+        profile = ManagerProfile.objects.get(
+            user__phone_number="+201001234567"
+        )
         assert profile.type == ProfileType.MANAGER
         assert profile.activated is True
 
@@ -234,7 +265,9 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "phone_number" in response.data
@@ -248,7 +281,9 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "password" in response.data
@@ -261,7 +296,9 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -273,7 +310,9 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -285,7 +324,9 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -298,6 +339,8 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post("/api/auth/register/manager/", data, format="json")
+        response = api_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST

@@ -6,12 +6,9 @@ Tests:
 - CustomerTokenSerializer
 - JWT token generation
 """
-
 import pytest
 from rest_framework import status
-from freezegun import freeze_time
-from datetime import timedelta
-from django.utils import timezone
+from rest_framework_simplejwt.tokens import AccessToken
 
 
 @pytest.mark.django_db
@@ -62,9 +59,6 @@ class TestLogin:
 
     def test_login_token_contains_user_info(self, api_client, user):
         """Test that login token contains user and profile info."""
-        from rest_framework_simplejwt.tokens import AccessToken
-        import json
-        import base64
 
         user.set_password("TestPass123!")
         user.save()
@@ -94,10 +88,9 @@ class TestLogin:
         }
 
         response = api_client.post("/api/auth/login/", data)
-        print(response.data)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["access"] != None
-        assert response.data["refresh"]!= None
+        assert not response.data["access"] == None  # noqa
+        assert not response.data["refresh"] == None  # noqa
 
     def test_login_missing_phone_number(self, api_client):
         """Test login fails with missing phone number."""

@@ -9,21 +9,22 @@ Tests:
 - Duplicate bid prevention
 """
 
-import pytest
-from decimal import Decimal
-from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
+
+from django.utils import timezone
+import pytest
 from rest_framework.exceptions import ValidationError
 
 from apps.auctions.services import BidBusinessValidator
 from apps.users.constants import ProfileType
 from tests.factories import (
-    create_active_auction_with_item,
-    UserAccountFactory,
-    SellerProfileFactory,
     AuctionFactory,
     AuctionItemFactory,
     BirdFactory,
+    SellerProfileFactory,
+    UserAccountFactory,
+    create_active_auction_with_item,
 )
 
 
@@ -50,7 +51,6 @@ class TestBidBusinessValidator:
         """Test that auction owner can't bid on own items."""
         auction, item, seller = create_active_auction_with_item()
         seller_profile = seller.active_profile
-        print(seller_profile)
         validator = BidBusinessValidator(
             item=item,
             bidder=seller_profile,
@@ -59,7 +59,7 @@ class TestBidBusinessValidator:
 
         with pytest.raises(ValidationError) as exc:
             validator.validate()
-        assert 'only customers' in str(exc.value).lower()
+        assert "only customers" in str(exc.value).lower()
 
     def test_bid_amount_must_exceed_current_price(self):
         """Test that bid must exceed current highest bid."""
@@ -105,7 +105,6 @@ class TestBidBusinessValidator:
     def test_auction_must_be_active(self):
         """Test that auction must be active."""
         seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
-        seller_user = seller_profile.user
         bird = BirdFactory(owner=seller_profile)
 
         # Create ended auction
@@ -127,7 +126,10 @@ class TestBidBusinessValidator:
 
         with pytest.raises(ValidationError) as exc:
             validator.validate()
-        assert "ended" in str(exc.value).lower() or "active" in str(exc.value).lower()
+        assert (
+            "ended" in str(exc.value).lower()
+            or "active" in str(exc.value).lower()
+        )
 
     def test_item_must_be_active(self):
         """Test that item must be in active status."""
@@ -188,7 +190,9 @@ class TestBidBusinessValidator:
         with pytest.raises(ValidationError):
             validator.validate()
 
-    def test_multiple_sequential_bids_valid(self, customer_user, customer_user_2):
+    def test_multiple_sequential_bids_valid(
+        self, customer_user, customer_user_2
+    ):
         """Test that increasing bids are valid."""
         auction, item, seller = create_active_auction_with_item()
 

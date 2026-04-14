@@ -9,31 +9,29 @@ Tests:
 - Buy now functionality
 """
 
-import pytest
-from decimal import Decimal
-from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 
+from django.utils import timezone
+import pytest
+
+from apps.auctions.models import Auction, Bid
+from apps.auctions.services import AuctionBusinessValidator
 from apps.users.constants import ProfileType
 from tests.factories import (
-    create_active_auction_with_item,
-    UserAccountFactory,
     AuctionFactory,
-    AuctionItemFactory,
     BirdFactory,
     SellerProfileFactory,
+    UserAccountFactory,
+    create_active_auction_with_item,
 )
-from apps.auctions.models import Bid
-
-from apps.auctions.services import AuctionBusinessValidator
-from apps.auctions.models import Auction
 
 
 @pytest.mark.django_db
 class TestDecimalPrecision:
     """Tests for decimal precision in amounts."""
 
-    def test_bid_amount_two_decimal_places(self,customer_user):
+    def test_bid_amount_two_decimal_places(self, customer_user):
         """Test that bid amounts work with 2 decimal places."""
 
         auction, item, seller = create_active_auction_with_item()
@@ -76,7 +74,9 @@ class TestDecimalPrecision:
         item.save()
 
         # Required minimum is 100.50
-        assert item.current_highest_bid + auction.min_bid_increment == Decimal("100.50")
+        assert item.current_highest_bid + auction.min_bid_increment == Decimal(
+            "100.50"
+        )
 
 
 @pytest.mark.django_db
@@ -95,7 +95,7 @@ class TestTimezoneHandling:
         assert auction.end_time.tzinfo is not None
         assert timezone.is_aware(auction.end_time)
 
-    def test_bid_created_timestamp_is_timezone_aware(self,customer_user):
+    def test_bid_created_timestamp_is_timezone_aware(self, customer_user):
         """Test that bid creation timestamp is timezone aware."""
 
         auction, item, seller = create_active_auction_with_item()
@@ -155,7 +155,6 @@ class TestAutoExtend:
         seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
-
         auction = Auction(
             owner=seller_profile,
             title="Test",
@@ -169,7 +168,9 @@ class TestAutoExtend:
 
         items_data = [{"bird_id": bird.id, "starting_price": "100.00"}]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
 
         with pytest.raises(Exception):
             validator.validate()
@@ -205,7 +206,10 @@ class TestConcurrentBids:
 
         auction, item, seller = create_active_auction_with_item()
 
-        bidders = [UserAccountFactory(with_profile=ProfileType.CUSTOMER) for _ in range(3)]
+        bidders = [
+            UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+            for _ in range(3)
+        ]
         amounts = [Decimal("150.00"), Decimal("160.00"), Decimal("155.00")]
 
         for bidder, amount in zip(bidders, amounts):
@@ -229,15 +233,12 @@ class TestBuyNow:
     def test_buy_now_enabled_auction(self):
         """Test auction with buy now enabled."""
         seller_profile = SellerProfileFactory(type="seller")
-        bird = BirdFactory(owner=seller_profile)
 
         auction = AuctionFactory(
             owner=seller_profile,
             buy_now_enabled=True,
             buy_now_price=Decimal("500.00"),
         )
-
-        item = AuctionItemFactory(auction=auction, bird=bird)
 
         assert auction.buy_now_enabled is True
         assert auction.buy_now_price == Decimal("500.00")

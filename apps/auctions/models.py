@@ -35,8 +35,8 @@ class AuctionStatus(models.TextChoices):
 
     ACTIVE = "active", "Active"
     ENDED = "ended", "Ended"
-    CANCELLED = "cancelled", "Cancelled" # By owner
-    CLOSED = "closed" , "Closed" # By admin
+    CANCELLED = "cancelled", "Cancelled"  # By owner
+    CLOSED = "closed", "Closed"  # By admin
 
 
 class Auction(OwnerBaseModel):
@@ -55,7 +55,8 @@ class Auction(OwnerBaseModel):
     description = models.TextField()
 
     status = models.CharField(
-        choices=AuctionStatus.choices, default=AuctionStatus.ACTIVE,
+        choices=AuctionStatus.choices,
+        default=AuctionStatus.ACTIVE,
         max_length=20,
     )
     # Auction type determines behavior
@@ -280,7 +281,6 @@ class Bid(BaseModel):
     amount = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
     )
-
 
     class Meta:
         indexes = [

@@ -1,8 +1,8 @@
 from datetime import timedelta
 from decimal import Decimal
 
-import factory
 from django.utils import timezone
+import factory
 from faker import Faker
 from phonenumber_field.phonenumber import PhoneNumber
 
@@ -45,7 +45,9 @@ class UserAccountFactory(factory.django.DjangoModelFactory):
         if not create or extracted is False:
             return
 
-        profile_type = ProfileType.CUSTOMER if extracted in (None, True) else extracted
+        profile_type = (
+            ProfileType.CUSTOMER if extracted in (None, True) else extracted
+        )
 
         if profile_type == ProfileType.CUSTOMER:
             CustomerProfileFactory(user=obj, is_active=True)
@@ -77,7 +79,6 @@ class CustomerProfileFactory(BaseProfileFactory):
 
 
 class SellerProfileFactory(BaseProfileFactory):
-
     class Meta:
         model = SellerProfile
 
@@ -125,7 +126,9 @@ class AuctionFactory(factory.django.DjangoModelFactory):
     title = factory.Faker("sentence", nb_words=5)
     description = factory.Faker("text", max_nb_chars=200)
     auction_type = AuctionType.SINGLE
-    start_time = factory.LazyFunction(lambda: timezone.now() - timedelta(hours=1))
+    start_time = factory.LazyFunction(
+        lambda: timezone.now() - timedelta(hours=1)
+    )
     end_time = factory.LazyFunction(lambda: timezone.now() + timedelta(days=7))
     status = AuctionStatus.ACTIVE
     is_visible = True
@@ -228,7 +231,7 @@ def create_active_auction_with_item():
 def customer_registration_payload(phone_number="+201001234567", region="EG"):
     """
     Build a valid customer registration payload.
-    
+
     Use to create new customers via the registration endpoint.
     """
     return {
@@ -239,14 +242,14 @@ def customer_registration_payload(phone_number="+201001234567", region="EG"):
         "customer_profile": {
             "country": CountryOptions.EGYPT,
             "currency": CurrencyOptions.EGP,
-        }
+        },
     }
 
 
 def manager_registration_payload(phone_number="+201001234567", region="EG"):
     """
     Build a valid manager registration payload.
-    
+
     Use to create new managers via the registration endpoint.
     """
     return {
@@ -254,5 +257,5 @@ def manager_registration_payload(phone_number="+201001234567", region="EG"):
         "region": region,
         "password": "SecurePassword123!@",
         "password_confirm": "SecurePassword123!@",
-        "manager_profile": {}
+        "manager_profile": {},
     }

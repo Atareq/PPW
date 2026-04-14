@@ -279,10 +279,10 @@ def test_endpoint(authenticated_client, user):
 @pytest.mark.django_db
 def test_validator():
     validator = BidBusinessValidator(item=item, bidder=bidder, amount=amount)
-    
+
     # Should pass
     validator.validate()
-    
+
     # Should fail
     with pytest.raises(ValidationError):
         validator.validate()

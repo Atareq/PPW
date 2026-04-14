@@ -9,23 +9,27 @@ Tests:
 
 import pytest
 from rest_framework import status
+
 from apps.users.constants import ProfileType
-from tests.factories import CustomerProfileFactory, SellerProfileFactory
-from tests.factories import SellerProfileFactory
+from tests.factories import SellerProfileFactory, UserAccountFactory
 
 
 @pytest.mark.django_db
 class TestProfileSwitching:
     """Tests for profile switching functionality."""
 
-    def test_switch_to_valid_profile(self, authenticated_customer_client, customer_user):
+    def test_switch_to_valid_profile(
+        self, authenticated_customer_client, customer_user
+    ):
         """Test switching to a valid profile the user owns."""
 
         # Create a second profile for the user
-        seller_profile = SellerProfileFactory(user=customer_user)
+        SellerProfileFactory(user=customer_user)
 
         data = {"new_profile": ProfileType.SELLER}
-        response = authenticated_customer_client.post("/api/auth/switch-profile/", data)
+        response = authenticated_customer_client.post(
+            "/api/auth/switch-profile/", data
+        )
 
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
@@ -41,7 +45,6 @@ class TestProfileSwitching:
 
     def test_switch_to_other_user_profile(self, authenticated_client, user):
         """Test user cannot switch to another user's profile."""
-        from tests.factories import UserAccountFactory, SellerProfileFactory
 
         other_user = UserAccountFactory(with_profile=ProfileType.SELLER)
         other_profile = other_user.active_profile
@@ -51,18 +54,20 @@ class TestProfileSwitching:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_switch_profile_updates_active_profile(self, authenticated_customer_client, customer_user):
+    def test_switch_profile_updates_active_profile(
+        self, authenticated_customer_client, customer_user
+    ):
         """Test that switching profile updates the active_profile."""
 
         first_profile = customer_user  # User with customer active profile
         second_profile = SellerProfileFactory(user=first_profile)
         first_profile.refresh_from_db()
         assert first_profile.active_profile != second_profile.type
-        print(first_profile.active_profile)
         # Switch to second profile
         data = {"new_profile": ProfileType.SELLER}
-        response = authenticated_customer_client.post("/api/auth/switch-profile/", data)
-        print(response.data)
+        response = authenticated_customer_client.post(
+            "/api/auth/switch-profile/", data
+        )
         assert response.status_code == status.HTTP_200_OK
 
         # Verify second profile is now active
@@ -77,7 +82,9 @@ class TestProfileSwitching:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_switch_profile_missing_new_profile_param(self, authenticated_client):
+    def test_switch_profile_missing_new_profile_param(
+        self, authenticated_client
+    ):
         """Test switching fails with missing new_profile parameter."""
         data = {}
 

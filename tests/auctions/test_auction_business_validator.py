@@ -10,18 +10,16 @@ Tests:
 - Deposit configuration
 """
 
-import pytest
-from decimal import Decimal
-from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
+
+from django.utils import timezone
+import pytest
 from rest_framework.exceptions import ValidationError
 
-from apps.auctions.models import AuctionType, Auction
+from apps.auctions.models import Auction, AuctionType
 from apps.auctions.services import AuctionBusinessValidator
-from tests.factories import (
-    SellerProfileFactory,
-    BirdFactory,
-)
+from tests.factories import BirdFactory, SellerProfileFactory
 
 
 @pytest.mark.django_db
@@ -46,7 +44,9 @@ class TestAuctionBusinessValidator:
             {"bird_id": bird.id, "starting_price": Decimal("100.00")}
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
         # Should not raise
         validator.validate()
 
@@ -70,7 +70,9 @@ class TestAuctionBusinessValidator:
             {"bird_id": bird2.id, "starting_price": Decimal("100.00")},
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
 
         with pytest.raises(ValidationError):
             validator.validate()
@@ -94,7 +96,9 @@ class TestAuctionBusinessValidator:
             for bird in birds
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
         # Should not raise
         validator.validate()
 
@@ -116,7 +120,9 @@ class TestAuctionBusinessValidator:
             {"bird_id": bird.id, "starting_price": Decimal("100.00")}
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
 
         with pytest.raises(ValidationError):
             validator.validate()
@@ -140,7 +146,9 @@ class TestAuctionBusinessValidator:
             for bird in birds
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
 
         with pytest.raises(ValidationError):
             validator.validate()
@@ -165,7 +173,9 @@ class TestAuctionBusinessValidator:
             {"bird_id": bird.id, "starting_price": Decimal("100.00")}
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
 
         with pytest.raises(ValidationError):
             validator.validate()
@@ -190,9 +200,9 @@ class TestAuctionBusinessValidator:
             {"bird_id": bird.id, "starting_price": Decimal("100.00")}
         ]
 
-        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
+        validator = AuctionBusinessValidator(
+            auction=auction, items_data=items_data
+        )
 
         with pytest.raises(ValidationError):
             validator.validate()
-
-
