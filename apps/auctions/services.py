@@ -24,6 +24,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -124,7 +125,16 @@ class AuctionBusinessValidator:
 
         if not len(self.bird_map) == bird_counter:
             raise ValidationError(
-                "A bird or more is not found or already placed on auction"
+                "A bird or more is not found."
+            )
+
+        if AuctionItem.objects.filter(
+            Q(bird_id__in=bird_ids) | Q(paired_bird_id__in=bird_ids),
+            auction__status=AuctionStatus.ACTIVE,
+            auction__end_time__gt=timezone.now(),
+        ).exists():
+            raise ValidationError(
+                "A bird or more is already placed in an active auction."
             )
 
     def _validate_item_count_for_type(self) -> None:
@@ -192,13 +202,20 @@ class AuctionBusinessValidator:
 
     def _validate_pair_gender(self, bird1: Bird, bird2: Bird) -> None:
         """Validate pair has exactly one male and one female"""
-        genders = {bird1.gender, bird2.gender}
+        genders = {
+            self._normalize_gender(bird1.gender),
+            self._normalize_gender(bird2.gender),
+        }
 
-        if genders != {"M", "F"}:
+        if genders != {"male", "female"}:
             raise ValidationError(
                 f"Wrong genders for {self.auction.auction_type.upper()} "
                 f"Got: {bird1.name} ({bird1.gender}), {bird2.name} ({bird2.gender})"
             )
+
+    @staticmethod
+    def _normalize_gender(gender: str) -> str:
+        return str(gender).strip().lower()
 
     def _validate_auto_extend_config(self) -> None:
         """Validate auto-extend configuration consistency"""
@@ -371,7 +388,7 @@ class AuctionService:
         # 4. Log event
         AuctionService._log_event(
             auction=auction,
-            event_type="CREATED",
+            event_type="created", # we need to substitute this with a couces fields instead of strings
             performer=owner,
             item=None,
             bid=None,
@@ -399,10 +416,16 @@ class AuctionService:
         if auction.status == AuctionStatus.CANCELLED:
             raise ValidationError("Auction is already cancelled")
 
-        if auction.status == AuctionStatus.ENDED:
+        if auction.status == AuctionStatus.CLOSED:
+            raise ValidationError("Auction is already closed")
+
+        if auction.end_time <= timezone.now():
             raise ValidationError(
                 "Cannot cancel ended auction. Use settlement for dispute resolution."
             )
+
+        # if auction.items.filter(bids__isnull=False).exists():
+        #     raise ValidationError("Cannot cancel an auction that already has bids.")
 
         auction.status = AuctionStatus.CANCELLED
         auction.save()
@@ -444,12 +467,97 @@ class AuctionService:
 
         AuctionService._log_event(
             auction=auction,
-            event_type="AUTO_EXTENDED",
-            user=None,
+            event_type="auto_extended",
+            performer=None,
             item=None,
             bid=None,
             metadata={"new_end_time": new_end_time.isoformat()},
         )
+
+    @staticmethod
+    def close_expired_auctions(now=None) -> int:
+        """Close all expired active auctions via the service layer."""
+        now = now or timezone.now()
+        auction_ids = list(
+            Auction.objects.filter(
+                status=AuctionStatus.ACTIVE,
+                end_time__lte=now,
+            ).values_list("id", flat=True)
+        )
+
+        closed_count = 0
+        for auction_id in auction_ids:
+            auction = Auction.objects.get(id=auction_id)
+            AuctionService.close_auction(auction, now=now)
+            closed_count += 1
+
+        return closed_count
+
+    @staticmethod
+    @transaction.atomic
+    def close_auction(auction: Auction, performer=None, now=None) -> Auction:
+        """
+        Close a single auction once its end time has been reached.
+
+        The auction transitions to CLOSED while each item is settled to its
+        final status using the existing sold/unsold item outcomes.
+        """
+        now = now or timezone.now()
+        locked_auction = Auction.objects.select_for_update().get(id=auction.id)
+
+        if locked_auction.status == AuctionStatus.CLOSED:
+            return locked_auction
+
+        if locked_auction.status == AuctionStatus.CANCELLED:
+            raise ValidationError("Auction is already cancelled")
+
+        # if locked_auction.end_time > now:
+        #     raise ValidationError("Auction cannot be closed before end time.")
+
+        for item in locked_auction.items.select_for_update().all():
+            SettlementService._settle_item(item)
+
+        locked_auction.status = AuctionStatus.CLOSED
+        locked_auction.save()
+
+        AuctionService._log_event(
+            auction=locked_auction,
+            event_type="auction_ended",
+            performer=performer,
+            item=None,
+            bid=None,
+            metadata={"closed_at": now.isoformat()},
+        )
+
+        return locked_auction
+
+    @staticmethod
+    @transaction.atomic
+    def update_auction(auction: Auction, validated_data: dict) -> Auction:
+        """Update auction fields only while the auction is still editable."""
+        locked_auction = Auction.objects.select_for_update().get(id=auction.id)
+        AuctionService._validate_auction_editable(locked_auction)
+
+        for field in ("title", "description", "tags"):
+            if field in validated_data:
+                setattr(locked_auction, field, validated_data[field])
+
+        locked_auction.save()
+        return locked_auction
+
+    @staticmethod
+    def _validate_auction_editable(auction: Auction) -> None:
+        """Block edits after the auction starts or receives bids."""
+        if auction.status != AuctionStatus.ACTIVE:
+            raise ValidationError("Only active auctions can be updated.")
+
+        if auction.start_time <= timezone.now():
+            raise ValidationError("Auction cannot be updated after it starts.")
+
+        if auction.items.filter(bids__isnull=False).exists():
+            raise ValidationError(
+                "Auction cannot be updated after it receives bids."
+            )
 
     @staticmethod
     def _log_event(
@@ -543,14 +651,16 @@ class BidBusinessValidator:
                 f"(starting price)"
             )
 
-        min_required = (
-            self.item.current_highest_bid_amount() or self.item.starting_price
-        )
+        current_highest = self.item.current_highest_bid_amount()
+        min_required = self.item.starting_price
+        if current_highest is not None:
+            min_required = current_highest + self.auction.min_bid_increment
+
         if self.amount < min_required:
             raise ValidationError(
-                f"Bid must be at least {min_required+self.auction.min_bid_increment} "
+                f"Bid must be at least {min_required} "
                 f"(current {self.item.current_price} "
-                "+ increment {self.auction.min_bid_increment})"
+                f"+ increment {self.auction.min_bid_increment})"
             )
 
 
@@ -599,8 +709,17 @@ class BiddingService:
             Created Bid
         """
         # Lock item to prevent race conditions during creation
-        item = AuctionItem.objects.select_for_update().get(id=item.id)
+        item = AuctionItem.objects.select_for_update().select_related(
+            "auction"
+        ).get(id=item.id)
         auction = item.auction
+
+        validator = BidBusinessValidator(
+            item=item,
+            bidder=bidder,
+            amount=amount,
+        )
+        validator.validate()
 
         bid = Bid.objects.create(
             item=item,
@@ -617,7 +736,7 @@ class BiddingService:
         # Log event
         AuctionService._log_event(
             auction=auction,
-            event_type="BID_PLACED",
+            event_type="bid_placed",
             performer=bidder,
             item=item,
             bid=bid,
@@ -667,30 +786,10 @@ class SettlementService:
         Returns:
             Updated Auction with status=ENDED
         """
-        if auction.status == AuctionStatus.CANCELLED:
-            raise ValidationError("Auction is already cancelled")
-
-        if auction.status == AuctionStatus.CLOSED:
-            raise ValidationError("Auction is already cancelled")
-
-        # Determine winners for each item
-        for item in auction.items.all():
-            SettlementService._settle_item(item)
-
-        # Mark auction as ended
-        auction.status = AuctionStatus.CLOSED
-        auction.save()
-
-        AuctionService._log_event(
+        return AuctionService.close_auction(
             auction=auction,
-            event_type=AuctionStatus.CLOSED,
-            performer=user.active_profile,
-            item=None,
-            bid=None,
-            metadata={"settled_at": timezone.now().isoformat()},
+            performer=getattr(user, "active_profile", None),
         )
-
-        return auction
 
     @staticmethod
     def _settle_item(item: AuctionItem) -> None:
@@ -762,7 +861,7 @@ class SettlementService:
             # Log event
             AuctionService._log_event(
                 auction=auction,
-                event_type="BUY_NOW_TRIGGERED",
+                event_type="buy_now_triggered",
                 performer=buyer,
                 item=item,
                 bid=bid,
