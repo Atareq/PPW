@@ -9,6 +9,13 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 ALLOWED_HOSTS = [
@@ -126,6 +133,28 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 
 USE_TZ = True
+
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL",
+    "redis://localhost:6379/0",
+)
+CELERY_RESULT_BACKEND = os.getenv(
+    "CELERY_RESULT_BACKEND",
+    CELERY_BROKER_URL,
+)
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = USE_TZ
+CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", False)
+CELERY_TASK_EAGER_PROPAGATES = env_bool(
+    "CELERY_TASK_EAGER_PROPAGATES",
+    CELERY_TASK_ALWAYS_EAGER,
+)
+CELERY_BEAT_SCHEDULE = {
+    "close-expired-auctions-every-minute": {
+        "task": "auctions.tasks.close_expired_auctions",
+        "schedule": timedelta(minutes=1),
+    }
+}
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"

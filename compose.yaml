@@ -1,0 +1,38 @@
+services:
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ROLE: web
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ROLE: celery_worker
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ROLE: celery_beat
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
