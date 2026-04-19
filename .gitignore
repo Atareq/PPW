@@ -9,9 +9,11 @@ venv/
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # Local database
 *.sqlite3
+*.rdb
 
 # Media and static
 media/
@@ -26,3 +28,9 @@ staticfiles/
 
 # Tasks
 Tasks.txt
+
+# AI helpers
+.codex
+
+# Celery beat
+celerybeat-schedule

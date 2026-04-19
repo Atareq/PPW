@@ -64,7 +64,17 @@ pip install -r requirements/dev.txt
 
 ### 4. Setup environment variables
 
-Create `.env` file according to the `.env.example` file:
+Use `.env.example` as the template for every environment:
+
+```bash
+cp .env.example .env
+```
+
+For production, create `.env.prod` from the same template and switch:
+
+- `DJANGO_SETTINGS_MODULE=ppw.settings.production`
+- `DEBUG=False`
+- database and host values to the production ones
 
 
 ### 5. Setup PostgreSQL
@@ -78,6 +88,38 @@ Create database and user:
 ---
 
 ### 7. Run server
+
+This project uses one shared Compose base file plus environment-specific
+overrides.
+
+Local:
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml up --build
+```
+
+Production:
+
+```bash
+docker compose -f compose.yaml -f compose.prod.yaml up -d --build
+```
+
+The shared services are:
+
+- `app` for Django/Gunicorn
+- `celery_worker` for task execution
+- `celery_beat` for scheduled jobs
+- `redis` as the broker/backend
+
+Local also adds:
+
+- `db` for PostgreSQL
+
+Production also adds:
+
+- `nginx` in front of the Django app
+
+The periodic auction closing job runs once per minute through Celery Beat.
 
 ### 8. Craete super_user
 

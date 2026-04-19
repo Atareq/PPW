@@ -423,14 +423,8 @@ class AuctionUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def update(self, instance, validated_data):
-        """Update only allowed fields"""
-        instance.title = validated_data.get("title", instance.title)
-        instance.description = validated_data.get(
-            "description", instance.description
-        )
-        instance.tags = validated_data.get("tags", instance.tags)
-        instance.save()
-        return instance
+        """Update only allowed fields through the service layer."""
+        return AuctionService.update_auction(instance, validated_data)
 
 
 class PlaceBidSerializer(serializers.Serializer):

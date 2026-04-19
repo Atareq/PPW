@@ -28,7 +28,6 @@ from apps.auctions.services import (
     AuctionService,
     BidBusinessValidator,
     BiddingService,
-    SettlementService,
 )
 from apps.general.authorizations import HasAppAccess
 from apps.users.constants import ProfileType
@@ -79,7 +78,12 @@ class AuctionViewSet(viewsets.ModelViewSet):
         if self.request.user.role == ProfileType.MANAGER:
             return Auction.objects.all()
         else:
-            if self.action in ["my_auctions", "cancel"]:
+            if self.action in [
+                "my_auctions",
+                "cancel",
+                "partial_update",
+                "destroy",
+            ]:
                 return Auction.objects.filter(
                     owner=self.request.user.active_profile
                 ).order_by("-created")
@@ -91,6 +95,8 @@ class AuctionViewSet(viewsets.ModelViewSet):
                 )
             if self.action == "retrieve":
                 return Auction.objects.all()
+
+        return Auction.objects.all()
 
     def get_serializer_context(self):
         """Add request to context for serializers"""
@@ -158,7 +164,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         try:
-            serializer.save()
+            auction = serializer.save()
             return Response(
                 AuctionDetailSerializer(auction).data,
                 status=status.HTTP_200_OK,
@@ -263,7 +269,10 @@ class AuctionViewSet(viewsets.ModelViewSet):
         auction = self.get_object()
 
         try:
-            SettlementService.settle_auction(auction, self.request.user)
+            auction = AuctionService.close_auction(
+                auction,
+                performer=getattr(self.request.user, "active_profile", None),
+            )
 
             return Response(
                 AuctionDetailSerializer(auction).data,
