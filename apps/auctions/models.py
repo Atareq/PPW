@@ -128,7 +128,7 @@ class Auction(OwnerBaseModel):
         ordering = ["-created"]
 
     def __str__(self):
-        return f"{self.title} ({self.get_auction_type_display()})"
+        return f"  #{self.pk} Auction ({self.get_auction_type_display()})"
 
     def is_active(self):
         """Check if auction is currently active"""
@@ -229,7 +229,7 @@ class AuctionItem(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.bird.name} (Auction: {self.auction.title})"
+        return f" #{self.pk} AuctionItem (Auction: {self.auction.pk})"
 
     def is_active(self):
         """Check if item is actively accepting bids"""
@@ -292,7 +292,7 @@ class Bid(BaseModel):
 
     def __str__(self):
         return (
-            f"Bid: {self.amount} on {self.item} by {self.bidder.user.username}"
+            f" #{self.pk} Bid: {self.amount} on {self.item} by {self.bidder.user.username}"
         )
 
     def is_winning_bid(self):
@@ -368,4 +368,4 @@ class AuctionEvent(BaseModel):
         ordering = ["-created"]
 
     def __str__(self):
-        return f"{self.get_event_type_display()} - {self.auction.title}"
+        return f" #{self.pk} AuctionEvent {self.get_event_type_display()} - {self.auction.title}"

@@ -46,7 +46,7 @@ class Profile(BaseModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.user.username} - {self.type}"
+        return f" #{self.pk} - {self.type} - {self.user.username}"
 
 
 class SellerProfile(Profile):

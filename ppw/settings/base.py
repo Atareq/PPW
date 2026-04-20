@@ -43,6 +43,7 @@ THIRD_PARTY_APPS = [
 
 APPS = [
     "apps.assets",
+    "apps.orders",
     "apps.users",
     "apps.general",
     "apps.authentication",
@@ -152,7 +153,7 @@ CELERY_TASK_EAGER_PROPAGATES = env_bool(
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {
         "task": "auctions.tasks.close_expired_auctions",
-        "schedule": timedelta(minutes=1),
+        "schedule": timedelta(minutes=3),
     }
 }
 

@@ -17,7 +17,7 @@ class UserAccount(AbstractUser, BaseModel):
     permissions = models.JSONField(default=list, blank=True)
 
     def __str__(self):
-        return str(self.phone_number)
+        return f' #{self.pk} userAccount{str(self.phone_number)} '
 
     @property
     def active_profile(self):
