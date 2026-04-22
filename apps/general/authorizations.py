@@ -1,6 +1,6 @@
 from typing import Optional
 
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from apps.general.constants import CUSTOMER_PERMISSIONS, SELLER_PERMISSIONS
 from apps.users.constants import ProfileType
@@ -66,6 +66,22 @@ class HasAppAccess(BasePermission):
         user = request.user
         action = getattr(view, "action", None)
         resource = getattr(view, "permission_resource", None)
+
+        can_do_action = AuthorizationService.can_access_app(
+            user=user,
+            app_label=obj._meta.app_label,
+            action=action,
+            resource=resource,
+        )
+        if not can_do_action:
+            return False
+
+        if (
+            getattr(view, "allow_scoped_read_access", False)
+            and request.method in SAFE_METHODS
+        ):
+            return True
+
         return AuthorizationService.can_access_app(
             user=user,
             app_label=obj._meta.app_label,

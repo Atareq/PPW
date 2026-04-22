@@ -14,9 +14,9 @@ from django.utils import timezone
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.auctions.models import AuctionStatus
+from apps.authentication.services import build_token_for_user
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionItemFactory,
@@ -167,7 +167,7 @@ class TestBidPlacement:
 
         bidder = UserAccountFactory(with_profile=ProfileType.SELLER)
         bidder_client = APIClient()
-        refresh = RefreshToken.for_user(bidder)
+        refresh = build_token_for_user(bidder)
         bidder_client.credentials(
             HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
         )

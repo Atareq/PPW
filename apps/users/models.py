@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models import Q, UniqueConstraint
 
+from apps.authentication.models import UserAccount
 from apps.general.models import BaseModel
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 
@@ -11,7 +12,7 @@ from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 
 class Profile(BaseModel):
     user = models.ForeignKey(
-        "authentication.UserAccount",
+        UserAccount,
         on_delete=models.CASCADE,
         db_index=True,
         related_name="profiles",
@@ -19,11 +20,15 @@ class Profile(BaseModel):
 
     type = models.CharField(max_length=20, choices=ProfileType.choices)
     activated = models.BooleanField(
-        default=False
+        default=True
     )  # Only updated to True by admin once the profile created
     is_active = models.BooleanField(
         default=False
     )  # Indecate which profile is the main now
+    is_valid = models.BooleanField(
+        default=True,
+        help_text='will be "False" if profile is under punishment',
+    )
 
     class Meta:
         unique_together = ("user", "type")

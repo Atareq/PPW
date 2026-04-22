@@ -8,8 +8,8 @@ Put all shared fixtures here.
 from django.contrib.auth import get_user_model
 import pytest
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.authentication.services import build_token_for_user
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionFactory,
@@ -54,7 +54,7 @@ def api_client():
 def authenticated_client(user):
     """Return authenticated API client with user token."""
     client = APIClient()
-    refresh = RefreshToken.for_user(user)
+    refresh = build_token_for_user(user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return client
 
@@ -63,7 +63,7 @@ def authenticated_client(user):
 def authenticated_customer_client(customer_user):
     """Return authenticated API client with user token."""
     client = APIClient()
-    refresh = RefreshToken.for_user(customer_user)
+    refresh = build_token_for_user(customer_user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return client
 
@@ -72,7 +72,7 @@ def authenticated_customer_client(customer_user):
 def authenticated_seller_client(seller_user):
     """Return authenticated API client with user token."""
     client = APIClient()
-    refresh = RefreshToken.for_user(seller_user)
+    refresh = build_token_for_user(seller_user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return client
 
@@ -81,7 +81,7 @@ def authenticated_seller_client(seller_user):
 def authenticated_seller_client_2(seller_user_2):
     """Return authenticated API client with user token."""
     client = APIClient()
-    refresh = RefreshToken.for_user(seller_user_2)
+    refresh = build_token_for_user(seller_user_2)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return client
 
@@ -211,7 +211,7 @@ def bid(seller_profile, customer_user, auction_with_item):
 @pytest.fixture
 def user_token(user):
     """Get JWT token for user."""
-    refresh = RefreshToken.for_user(user)
+    refresh = build_token_for_user(user)
     return str(refresh.access_token)
 
 

@@ -19,6 +19,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.auctions.models import Auction, AuctionType
 from apps.auctions.services import AuctionBusinessValidator
+from apps.users.models import ProfileType
 from tests.factories import BirdFactory, SellerProfileFactory
 
 
@@ -28,7 +29,7 @@ class TestAuctionBusinessValidator:
 
     def test_single_auction_with_one_item_valid(self):
         """Test SINGLE auction with exactly 1 item passes validation."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
         auction = Auction(
@@ -52,7 +53,7 @@ class TestAuctionBusinessValidator:
 
     def test_single_auction_with_multiple_items_fails(self):
         """Test SINGLE auction with >1 item fails."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird1 = BirdFactory(owner=seller_profile)
         bird2 = BirdFactory(owner=seller_profile)
 
@@ -79,7 +80,7 @@ class TestAuctionBusinessValidator:
 
     def test_multi_auction_with_valid_item_count(self):
         """Test MULTI auction with 2-10 items passes."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         birds = [BirdFactory(owner=seller_profile) for _ in range(5)]
 
         auction = Auction(
@@ -104,7 +105,7 @@ class TestAuctionBusinessValidator:
 
     def test_multi_auction_with_too_few_items_fails(self):
         """Test MULTI auction with <2 items fails."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
         auction = Auction(
@@ -129,7 +130,7 @@ class TestAuctionBusinessValidator:
 
     def test_multi_auction_with_too_many_items_fails(self):
         """Test MULTI auction with >10 items fails."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         birds = [BirdFactory(owner=seller_profile) for _ in range(15)]
 
         auction = Auction(
@@ -155,7 +156,7 @@ class TestAuctionBusinessValidator:
 
     def test_auto_extend_requires_minutes_value(self):
         """Test that auto_extend_enabled requires auto_extend_minutes."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
         auction = Auction(
@@ -182,7 +183,7 @@ class TestAuctionBusinessValidator:
 
     def test_deposit_requires_payment_deadline(self):
         """Test that deposit_required needs payment_deadline_days."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
         auction = Auction(

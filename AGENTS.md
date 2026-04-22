@@ -508,6 +508,7 @@ At minimum, important actions should produce traceable events or fields. A more 
 - ask before changing business rules, permission semantics, or public API contracts
 - keep changes simple, correct, and maintainable first
 - prefer extending an existing service / validator / factory pattern over inventing a new one
+- move constants longer than 15 lines into the app's `constants.py` instead of keeping them inline
 - add or update focused tests in the touched area
 - expand to broader regression coverage only when a change crosses app boundaries
 - avoid signals and hidden side effects
