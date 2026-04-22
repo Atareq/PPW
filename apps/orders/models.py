@@ -1,13 +1,13 @@
 from django.core.validators import MinValueValidator
 from django.db import models
 
+from apps.assets.models import Asset
 from apps.general.models import BaseModel
 from apps.users.models import CustomerProfile, SellerProfile
-from apps.assets.models import Asset
 
 
 class OrderStatus(models.TextChoices):
-    OPEN = "open", "Open" # Wehenever moved from Cart model to Order
+    OPEN = "open", "Open"  # Wehenever moved from Cart model to Order
     PARTIALLY_SETTLED = "partially_settled", "Partially Settled"
     SETTLED = "settled", "Settled"
     CANCELLED = "cancelled", "Cancelled"
@@ -100,7 +100,9 @@ class OrderItem(BaseModel):
 
         update_fields = kwargs.get("update_fields")
         if update_fields is not None:
-            kwargs["update_fields"] = list(set(update_fields) | {"total_price"})
+            kwargs["update_fields"] = list(
+                set(update_fields) | {"total_price"}
+            )
 
         super().save(*args, **kwargs)
 

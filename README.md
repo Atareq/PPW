@@ -161,6 +161,7 @@ Includes:
 * black (formatter)
 * isort (imports)
 * flake8 (linting)
+* pytest (test suite)
 
 ---
 

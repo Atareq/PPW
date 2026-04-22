@@ -292,7 +292,8 @@ class Bid(BaseModel):
 
     def __str__(self):
         return (
-            f" #{self.pk} Bid: {self.amount} on {self.item} by {self.bidder.user.username}"
+            f" #{self.pk} Bid: {self.amount} on {self.item} by "
+            "{self.bidder.user.username}"
         )
 
     def is_winning_bid(self):
@@ -368,4 +369,5 @@ class AuctionEvent(BaseModel):
         ordering = ["-created"]
 
     def __str__(self):
-        return f" #{self.pk} AuctionEvent {self.get_event_type_display()} - {self.auction.title}"
+        return f" #{self.pk} AuctionEvent {self.get_event_type_display()}"
+        " - {self.auction.title}"

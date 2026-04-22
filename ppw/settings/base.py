@@ -16,6 +16,7 @@ def env_bool(name: str, default: bool = False) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 ALLOWED_HOSTS = [

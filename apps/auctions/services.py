@@ -124,18 +124,16 @@ class AuctionBusinessValidator:
         }
 
         if not len(self.bird_map) == bird_counter:
-            raise ValidationError(
-                "A bird or more is not found."
-            )
+            raise ValidationError("A bird or more is not found.")
 
-        # if AuctionItem.objects.filter(
-        #     Q(bird_id__in=bird_ids) | Q(paired_bird_id__in=bird_ids),
-        #     auction__status=AuctionStatus.ACTIVE,
-        #     auction__end_time__gt=timezone.now(),
-        # ).exists():
-        #     raise ValidationError(
-        #         "A bird or more is already placed in an active auction."
-        #     )
+        if AuctionItem.objects.filter(
+            Q(bird_id__in=bird_ids) | Q(paired_bird_id__in=bird_ids),
+            auction__status=AuctionStatus.ACTIVE,
+            auction__end_time__gt=timezone.now(),
+        ).exists():
+            raise ValidationError(
+                "A bird or more is already placed in an active auction."
+            )
 
     def _validate_item_count_for_type(self) -> None:
         """Validate item count matches auction type requirements"""
@@ -388,7 +386,8 @@ class AuctionService:
         # 4. Log event
         AuctionService._log_event(
             auction=auction,
-            event_type="created", # we need to substitute this with a couces fields instead of strings
+            event_type="created",
+            # we need to substitute this with a couces fields instead of strings
             performer=owner,
             item=None,
             bid=None,
@@ -706,9 +705,11 @@ class BiddingService:
             Created Bid
         """
         # Lock item to prevent race conditions during creation
-        item = AuctionItem.objects.select_for_update().select_related(
-            "auction"
-        ).get(id=item.id)
+        item = (
+            AuctionItem.objects.select_for_update()
+            .select_related("auction")
+            .get(id=item.id)
+        )
         auction = item.auction
 
         validator = BidBusinessValidator(
