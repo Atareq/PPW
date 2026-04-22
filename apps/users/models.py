@@ -20,11 +20,12 @@ class Profile(BaseModel):
 
     type = models.CharField(max_length=20, choices=ProfileType.choices)
     activated = models.BooleanField(
-        default=True
-    )  # Only updated to True by admin once the profile created
+        default=True,  # For development reasons
+        help_text="Only updated to True by admin once the profile created",
+    )
     is_active = models.BooleanField(
-        default=False
-    )  # Indecate which profile is the main now
+        default=False, help_text="Indecate which profile is the main now"
+    )
     is_valid = models.BooleanField(
         default=True,
         help_text='will be "False" if profile is under punishment',

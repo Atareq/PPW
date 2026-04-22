@@ -30,7 +30,7 @@ repos:
         stages: [pre-commit, pre-push]
 
       - id: name-tests-test
-        exclude: ^src/helpers/tests/
+        exclude: ^(src/helpers/tests/|tests/(conftest\.py|factories\.py|__init__\.py|README\.md|utils/.*))$
         stages: [pre-commit, pre-push]
         args: [--django]
 

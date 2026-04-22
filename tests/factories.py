@@ -6,7 +6,7 @@ import factory
 from faker import Faker
 from phonenumber_field.phonenumber import PhoneNumber
 
-from apps.assets.models import Bird
+from apps.assets.models import AssetStatus, Bird, Supply
 from apps.auctions.models import (
     Auction,
     AuctionItem,
@@ -16,6 +16,7 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
+from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
 
@@ -63,7 +64,7 @@ class BaseProfileFactory(factory.django.DjangoModelFactory):
     class Meta:
         abstract = True
 
-    user = factory.SubFactory(UserAccountFactory)
+    user = factory.SubFactory(UserAccountFactory, with_profile=False)
     activated = True
     is_active = False
 
@@ -106,11 +107,69 @@ class BirdFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Bird
 
+    title = factory.Sequence(lambda n: f"Bird Asset {n}")
+    description = ""
+    status = AssetStatus.AVAILABLE
+    price = Decimal("100.00")
+    is_market_listed = True
+    is_for_auction = False
     name = factory.Faker("first_name")
+    ring_number = factory.Sequence(lambda n: f"RING-{n:05d}")  # noqa
+    gender = "male"
     colour = factory.Faker("color_name")
     owner = factory.SubFactory(SellerProfileFactory)
     count = 1
+    achievements = ""
+    stamina_ability = "good"
     created = factory.LazyFunction(timezone.now)
+
+
+class SupplyFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Supply
+
+    title = factory.Sequence(lambda n: f"Supply Asset {n}")
+    description = ""
+    owner = factory.SubFactory(SellerProfileFactory)
+    status = AssetStatus.AVAILABLE
+    count = 10
+    price = Decimal("25.00")
+    is_market_listed = True
+    is_for_auction = False
+    created = factory.LazyFunction(timezone.now)
+
+
+# ============================================================================
+# ORDER FACTORIES
+# ============================================================================
+
+
+class OrderFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Order
+
+    owner = factory.SubFactory(CustomerProfileFactory)
+    status = OrderStatus.OPEN
+
+
+class OrderItemFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = OrderItem
+
+    order = factory.SubFactory(OrderFactory)
+    asset = factory.SubFactory(SupplyFactory)
+
+    @factory.lazy_attribute
+    def seller(self):
+        return SellerProfile.objects.get(pk=self.asset.owner_id)
+
+    quantity = 1
+    unit_price_snapshot = Decimal("25.00")
+    status = OrderItemStatus.PENDING_SELLER_APPROVAL
+
+    @factory.lazy_attribute
+    def total_price(self):
+        return self.quantity * self.unit_price_snapshot
 
 
 # ============================================================================

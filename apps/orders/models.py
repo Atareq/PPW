@@ -2,7 +2,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from apps.assets.models import Asset
-from apps.general.models import BaseModel
+from apps.general.models import BaseModel, OwnerBaseModel
 from apps.users.models import CustomerProfile, SellerProfile
 
 
@@ -18,15 +18,17 @@ class OrderItemStatus(models.TextChoices):
         "pending_seller_approval",
         "Pending Seller Approval",
     )
+    SELLER_APPROVED = "seller_approved", "Seller Approved"
     REJECTED = "rejected", "Rejected"
     SETTLED = "settled", "Settled"
     CANCELLED = "cancelled", "Cancelled"
 
 
-class Order(BaseModel):
-    customer = models.ForeignKey(
+class Order(OwnerBaseModel):
+    owner = models.ForeignKey(
         CustomerProfile,
         on_delete=models.CASCADE,
+        related_name="orders",
     )
     status = models.CharField(
         max_length=30,
@@ -47,10 +49,12 @@ class OrderItem(BaseModel):
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
+        related_name="items",
     )
     asset = models.ForeignKey(
         Asset,
         on_delete=models.CASCADE,
+        related_name="order_items",
     )
     seller = models.ForeignKey(
         SellerProfile,

@@ -30,7 +30,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -85,7 +87,9 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "deleted",
-                    models.DateTimeField(db_index=True, editable=False, null=True),
+                    models.DateTimeField(
+                        db_index=True, editable=False, null=True
+                    ),
                 ),
                 (
                     "deleted_by_cascade",
@@ -106,7 +110,9 @@ class Migration(migrations.Migration):
                 (
                     "quantity",
                     models.PositiveIntegerField(
-                        validators=[django.core.validators.MinValueValidator(1)]
+                        validators=[
+                            django.core.validators.MinValueValidator(1)
+                        ]
                     ),
                 ),
                 (
@@ -114,7 +120,9 @@ class Migration(migrations.Migration):
                     models.DecimalField(
                         decimal_places=2,
                         max_digits=10,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 (
@@ -122,14 +130,19 @@ class Migration(migrations.Migration):
                     models.DecimalField(
                         decimal_places=2,
                         max_digits=10,
-                        validators=[django.core.validators.MinValueValidator(0)],
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ],
                     ),
                 ),
                 (
                     "status",
                     models.CharField(
                         choices=[
-                            ("pending_seller_approval", "Pending Seller Approval"),
+                            (
+                                "pending_seller_approval",
+                                "Pending Seller Approval",
+                            ),
                             ("rejected", "Rejected"),
                             ("settled", "Settled"),
                             ("cancelled", "Cancelled"),
@@ -194,6 +207,8 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="order",
-            index=models.Index(fields=["status"], name="orders_orde_status_c6dd84_idx"),
+            index=models.Index(
+                fields=["status"], name="orders_orde_status_c6dd84_idx"
+            ),
         ),
     ]

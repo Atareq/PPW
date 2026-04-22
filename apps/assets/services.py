@@ -1,7 +1,8 @@
 from django.utils import timezone
-from apps.users.models import Profile
-from apps.users.constants import ProfileType
 from rest_framework import serializers
+
+from apps.users.constants import ProfileType
+from apps.users.models import Profile
 
 
 class BirdValidator:
@@ -25,9 +26,7 @@ class BirdValidator:
         cls._validate_owner_profile(errors, owner)
         cls._validate_birthday(errors, birthday)
         cls._validate_flying_speed(errors, flying_speed)
-        cls._validate_parents(
-            errors, instance, father, mother, birthday
-        )
+        cls._validate_parents(errors, instance, father, mother, birthday)
 
         if errors:
             raise serializers.ValidationError(errors)
@@ -54,9 +53,7 @@ class BirdValidator:
             errors["flying_speed"] = "Flying speed cannot be negative."
 
     @classmethod
-    def _validate_parents(
-        cls, errors, instance, father, mother, birthday
-    ):
+    def _validate_parents(cls, errors, instance, father, mother, birthday):
         cls._validate_father(errors, instance, father, birthday)
         cls._validate_mother(errors, instance, mother, birthday)
 

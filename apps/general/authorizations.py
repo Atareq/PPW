@@ -14,6 +14,7 @@ class AuthorizationService:
         action: Optional[str] = None,
         resource: Optional[str] = None,
         obj: Optional[object] = None,
+        owner_field: str = "owner_id",
     ) -> bool:
 
         if user.role == ProfileType.MANAGER:
@@ -38,7 +39,9 @@ class AuthorizationService:
 
             if obj:
                 # Because resources are tied with the profiles not with the users.
-                return getattr(obj, "owner_id", None) == user.active_profile.id
+                return (
+                    getattr(obj, owner_field, None) == user.active_profile.id
+                )
 
             return True
 
@@ -88,4 +91,5 @@ class HasAppAccess(BasePermission):
             action=action,
             resource=resource,
             obj=obj,
+            owner_field=getattr(view, "permission_owner_field", "owner_id"),
         )

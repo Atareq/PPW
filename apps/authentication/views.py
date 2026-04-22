@@ -67,7 +67,7 @@ class SwitchProfileAPIView(APIView):
     def post(self, request):
         new_profile = request.data.get("new_profile")
 
-        switched = switch_user_profile(request.user, new_profile)
+        switched, profile_type = switch_user_profile(request.user, new_profile)
 
         if not switched:
             return Response(
@@ -79,6 +79,7 @@ class SwitchProfileAPIView(APIView):
 
         return Response(
             {
+                "profile": profile_type,
                 "access": str(token.access_token),
                 "refresh": str(token),
             }

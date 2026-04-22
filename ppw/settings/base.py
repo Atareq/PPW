@@ -95,7 +95,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=400),
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
@@ -155,7 +155,7 @@ CELERY_TASK_EAGER_PROPAGATES = env_bool(
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {
         "task": "auctions.tasks.close_expired_auctions",
-        "schedule": timedelta(minutes=3),
+        "schedule": timedelta(minutes=1),
     }
 }
 

@@ -37,3 +37,5 @@ TODO.txt
 # Celery beat
 celerybeat-schedule
 
+.coverage
+htmlcov/

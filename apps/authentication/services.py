@@ -2,11 +2,11 @@ from django.db import transaction
 from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.users.models import Profile
 from apps.users.constants import ProfileType
+from apps.users.models import Profile
 
 
-def switch_user_profile(user, new_profile_type: str) -> bool:
+def switch_user_profile(user, new_profile_type: str) -> tuple[bool, str]:
     with transaction.atomic():
 
         if user.role != new_profile_type and user.role != ProfileType.MANAGER:
@@ -19,12 +19,12 @@ def switch_user_profile(user, new_profile_type: str) -> bool:
             if profile:
                 profile.is_active = True
                 profile.save(update_fields=["is_active"])
-                return True
+                return True, profile.type
             else:
                 transaction.set_rollback(True)
-                return False
+                return False, None
         else:
-            return False
+            return False, None
 
 
 def build_token_for_user(user):

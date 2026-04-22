@@ -29,6 +29,11 @@ SELLER_PERMISSIONS = {
         "ending_soon",
         "cancel",
     ],
+    "ORDER_ITEM": [
+        "list",
+        "approve",
+        "reject",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -47,5 +52,10 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
         "active",
+    ],
+    "ORDER": [
+        "list",
+        "retrieve",
+        "create",
     ],
 }
