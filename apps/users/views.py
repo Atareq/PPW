@@ -42,12 +42,12 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
                 {"message": "Profile already exists"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        data=request.data.copy()
-        data['nickname']=user.username
+        data = request.data.copy()
+        data["nickname"] = user.username
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
-        serializer.save(user=user, is_active=False, type="Seller")
+        serializer.save(user=user, is_active=False, type=ProfileType.SELLER)
 
         return Response(
             {"message": "Seller profile created successfully"},

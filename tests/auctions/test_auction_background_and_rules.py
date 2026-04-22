@@ -6,9 +6,13 @@ import pytest
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.auctions.models import Auction, AuctionEvent, AuctionStatus, AuctionType
+from apps.auctions.models import (
+    Auction,
+    AuctionEvent,
+    AuctionStatus,
+    AuctionType,
+)
 from apps.auctions.services import (
     AuctionBusinessValidator,
     AuctionService,
@@ -16,6 +20,7 @@ from apps.auctions.services import (
     BiddingService,
 )
 from apps.auctions.tasks import close_expired_auctions
+from apps.authentication.services import build_token_for_user
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionFactory,
@@ -235,10 +240,8 @@ class TestAuctionOwnershipPermissions:
     @staticmethod
     def _auth_client(user):
         client = APIClient()
-        refresh = RefreshToken.for_user(user)
-        client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
-        )
+        refresh = build_token_for_user(user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
         return client
 
     def test_owner_can_update_own_auction(
@@ -295,7 +298,9 @@ class TestAuctionOwnershipPermissions:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_customer_cannot_update_auction(self, authenticated_customer_client):
+    def test_customer_cannot_update_auction(
+        self, authenticated_customer_client
+    ):
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         auction = AuctionFactory(
             owner=seller.active_profile,
@@ -358,7 +363,9 @@ class TestAuctionOwnershipPermissions:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_customer_cannot_destroy_auction(self, authenticated_customer_client):
+    def test_customer_cannot_destroy_auction(
+        self, authenticated_customer_client
+    ):
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         auction = AuctionFactory(
             owner=seller.active_profile,

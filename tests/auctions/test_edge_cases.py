@@ -232,7 +232,7 @@ class TestBuyNow:
 
     def test_buy_now_enabled_auction(self):
         """Test auction with buy now enabled."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
 
         auction = AuctionFactory(
             owner=seller_profile,
@@ -257,7 +257,7 @@ class TestDepositAndPayment:
 
     def test_deposit_auction_requires_payment_deadline(self):
         """Test that deposit auctions require payment deadline."""
-        seller_profile = SellerProfileFactory(type="seller")
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
 
         auction = AuctionFactory(
             owner=seller_profile,

@@ -28,6 +28,7 @@ staticfiles/
 
 # Tasks
 Tasks.txt
+TODO.txt
 
 # AI helpers
 .codex
@@ -35,3 +36,4 @@ Tasks.txt
 
 # Celery beat
 celerybeat-schedule
+

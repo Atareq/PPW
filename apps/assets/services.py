@@ -1,4 +1,6 @@
 from django.utils import timezone
+from apps.users.models import Profile
+from apps.users.constants import ProfileType
 from rest_framework import serializers
 
 
@@ -9,7 +11,8 @@ class BirdValidator:
     """
 
     @classmethod
-    def validate(cls, attrs, instance=None, owner=None):
+    def validate(cls, attrs, owner: Profile, instance=None):
+        # Get the data from `attr` if create and `instance` in case of update
         father = attrs.get("father", getattr(instance, "father", None))
         mother = attrs.get("mother", getattr(instance, "mother", None))
         birthday = attrs.get("birthday", getattr(instance, "birthday", None))
@@ -19,16 +22,26 @@ class BirdValidator:
 
         errors = {}
 
+        cls._validate_owner_profile(errors, owner)
         cls._validate_birthday(errors, birthday)
         cls._validate_flying_speed(errors, flying_speed)
         cls._validate_parents(
-            errors, instance, father, mother, birthday, owner
+            errors, instance, father, mother, birthday
         )
 
         if errors:
             raise serializers.ValidationError(errors)
 
         return attrs
+
+    @staticmethod
+    def _validate_owner_profile(errors, owner):
+        if not owner:
+            errors["owner"] = "Owner profile is required."
+            return
+
+        if owner.type != ProfileType.SELLER:
+            errors["owner"] = "Only SELLER profiles can own birds."
 
     @staticmethod
     def _validate_birthday(errors, birthday):
@@ -42,16 +55,16 @@ class BirdValidator:
 
     @classmethod
     def _validate_parents(
-        cls, errors, instance, father, mother, birthday, owner
+        cls, errors, instance, father, mother, birthday
     ):
-        cls._validate_father(errors, instance, father, birthday, owner)
-        cls._validate_mother(errors, instance, mother, birthday, owner)
+        cls._validate_father(errors, instance, father, birthday)
+        cls._validate_mother(errors, instance, mother, birthday)
 
         if father and mother and father.id == mother.id:
             errors["mother"] = "Father and mother cannot be the same bird."
 
     @staticmethod
-    def _validate_father(errors, instance, father, birthday, owner):
+    def _validate_father(errors, instance, father, birthday):
         if not father:
             return
 
@@ -69,7 +82,7 @@ class BirdValidator:
             errors["father"] = "Father must be older than the bird."
 
     @staticmethod
-    def _validate_mother(errors, instance, mother, birthday, owner):
+    def _validate_mother(errors, instance, mother, birthday):
         if not mother:
             return
 

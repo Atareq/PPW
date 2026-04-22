@@ -17,12 +17,12 @@ class UserAccount(AbstractUser, BaseModel):
     permissions = models.JSONField(default=list, blank=True)
 
     def __str__(self):
-        return str(self.phone_number)
+        return f" #{self.pk} userAccount{str(self.phone_number)} "
 
     @property
     def active_profile(self):
         """Return the currently active profile for this user."""
-        return self.profiles.filter(is_active=True).first()
+        return self.profiles.filter(is_active=True, activated=True).first()
 
     @property
     def role(self):

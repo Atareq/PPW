@@ -7,6 +7,14 @@ SELLER_PERMISSIONS = {
         "partial_update",
         "destroy",
     ],
+    "PRODUCT_ASSET": [
+        "list",
+        "retrieve",
+        "create",
+        "update",
+        "partial_update",
+        "destroy",
+    ],
     "AUCTION": [
         "list",
         "retrieve",
@@ -30,6 +38,10 @@ CUSTOMER_PERMISSIONS = {
         "update",
         "partial_update",
         "destroy",
+    ],
+    "PRODUCT_ASSET": [
+        "list",
+        "retrieve",
     ],
     "AUCTION": [
         "list",

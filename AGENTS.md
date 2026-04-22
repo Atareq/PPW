@@ -41,6 +41,12 @@ The project must remain a modular monolith. Simplicity and correctness are prefe
 - Django
 - Django REST Framework
 - PostgreSQL
+- Docker
+- Docker Compose
+- Redis
+- Celery
+- Gunicorn
+- Nginx in production
 - JWT authentication via SimpleJWT
 - safedelete
 - phonenumber_field
@@ -62,8 +68,35 @@ Current major apps:
 - `apps.authentication`
 - `apps.users`
 - `apps.assets`
+- `apps.orders`
 - `apps.auctions`
 - `apps.general`
+
+### Container Runtime / Deployment Shape
+
+Current Docker setup:
+
+- `Dockerfile` is a multi-stage build with a shared runtime image for web and worker roles
+- `compose.yaml` is the shared base Compose file
+- `compose.local.yaml` is the local development override
+- `compose.prod.yaml` is the production override
+
+Current service roles:
+
+- `app`: Django web app served by Gunicorn
+- `celery_worker`: background task execution
+- `celery_beat`: scheduled task runner
+- `redis`: Celery broker and result backend
+- `db`: local PostgreSQL service in local Docker only
+- `nginx`: production reverse proxy in production Docker only
+
+Current container behavior:
+
+- `docker/entrypoint.sh` waits for PostgreSQL before starting
+- web role runs migrations and `collectstatic` before Gunicorn starts
+- worker and beat roles reuse the same image and switch behavior through `APP_ROLE`
+- local Docker uses `.env` and bind mounts the repo into `/app`
+- production Docker uses `.env.prod` and serves static files through Nginx
 
 ### `apps.authentication`
 
@@ -98,18 +131,53 @@ Must not own:
 Current responsibilities:
 
 - asset domain
+- shared asset commerce fields
 - birds as first-class domain objects
+- minimal non-bird product subclasses
 - bird validation
 
 Future home:
 
 - bird-related domain extensions
-- additional `Asset` subclasses such as seeds, accessories, and market goods
 - media/file reference entities that store file keys uploaded by the frontend to S3 or similar
 
 Important note:
 
 This app currently models domain assets, not a full media pipeline.
+
+Current model shape:
+
+- `Asset` remains the concrete shared base model
+- asset classification now uses `category`, not `asset_type`
+- current asset categories are:
+  - `bird`
+  - `supply`
+  - `accessory`
+  - `feed`
+  - `supplement`
+- shared commerce fields now live on `Asset`, including:
+  - `price`
+  - `is_market_listed`
+  - `is_for_auction`
+- current asset statuses are:
+  - `available`
+  - `sold`
+  - `inactive`
+- `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
+
+### `apps.orders`
+
+Current responsibilities:
+
+- order aggregate models
+- order item models
+- per-item seller linkage for multi-seller orders
+- order and order-item status persistence
+- price snapshot storage for future settlement flows
+
+Important note:
+
+This app currently provides model foundation only. It does not yet implement checkout, approval, stock handling, settlement workflow, or ownership transfer workflow.
 
 ### `apps.auctions`
 
@@ -168,6 +236,48 @@ Current design choice:
 - current owner is stored now
 - full ownership history is intentionally not implemented yet
 - near-term planned simplification is to store previous owner only
+- `Bird` remains a subclass of `Asset`
+- `Bird.category` is always `bird`
+- bird listing flags are shared through `Asset`, not duplicated on `Bird`
+
+#### Asset
+
+Asset is the shared concrete base model for commerce-capable domain items.
+
+Current design choice:
+
+- subtype classification is stored in `category`
+- `Asset` carries shared listing and pricing fields
+- non-bird product types currently exist as minimal subclasses for future extension
+- current code does not yet implement market workflow rules on top of these fields
+
+#### Order
+
+Order is the top-level purchase container for market flows.
+
+Current design choice:
+
+- an order belongs to a customer profile
+- an order may contain items from multiple sellers
+- `Order.status` is an aggregate summary field, not the primary business decision unit
+- there is no seller field on `Order`
+
+#### OrderItem
+
+OrderItem is the real market business unit.
+
+Each item has:
+
+- direct `Asset` reference
+- explicit seller reference
+- quantity
+- unit price snapshot
+- total price
+- independent status
+
+Important rule:
+
+Future settlement and approval logic should operate at the order-item level, not only at the order level.
 
 #### Auction
 
@@ -273,6 +383,13 @@ Current short-term approach:
 ### Assets / Media
 
 Current assets app is domain modeling, not file/media handling.
+
+Current e-commerce foundation:
+
+- assets can now carry shared price and listing fields
+- orders and order items now exist as persistent models
+- this does not mean market workflows are complete yet
+- stock decrement, seller approval, and order completion logic are still not implemented
 
 Planned direction:
 
@@ -391,6 +508,7 @@ At minimum, important actions should produce traceable events or fields. A more 
 - ask before changing business rules, permission semantics, or public API contracts
 - keep changes simple, correct, and maintainable first
 - prefer extending an existing service / validator / factory pattern over inventing a new one
+- move constants longer than 15 lines into the app's `constants.py` instead of keeping them inline
 - add or update focused tests in the touched area
 - expand to broader regression coverage only when a change crosses app boundaries
 - avoid signals and hidden side effects
@@ -400,14 +518,20 @@ At minimum, important actions should produce traceable events or fields. A more 
 The codebase currently provides:
 
 - auth and profile switching
+- asset base model with shared market/listing fields
 - bird entity and validation
+- minimal product subclasses under `Asset`
+- order and order-item model foundation for market flows
 - auctions, auction items, bids, and events
 - service / validator pattern in auctions
+- Dockerized local and production runtime configuration
+- Redis + Celery worker/beat infrastructure for background jobs
+- automatic scheduled auction closing through Celery Beat
 
 The codebase does not yet fully implement:
 
 - media/file subsystem
-- market / e-commerce flow
+- market / e-commerce workflow layer
 - payment review workflow
 - handoff flow
 - ownership transfer workflow as a formal process
@@ -455,6 +579,10 @@ Biggest current missing layer:
 - post-auction completion workflow
 
 Without this, auctions can end technically but not complete business-wise.
+
+Important related gap:
+
+- market models now exist, but market services and completion workflow do not
 
 ### Media Gap
 
@@ -516,13 +644,15 @@ The assets app should remain a domain app, not a heavy media-processing pipeline
 
 Goal:
 
-Add fixed-price market flow.
+Complete fixed-price market flow on top of the current model foundation.
 
 Includes:
 
-- products and listings
+- listing and market activation workflow
 - direct order or request flow
 - manual completion workflow similar to auctions
+- seller approval flow
+- stock and quantity handling
 - no cart complexity unless clearly needed
 
 ### Phase D - Trust Layer
@@ -623,7 +753,14 @@ The platform records business confirmation states; it does not manage real shipp
 
 ### Celery Usage
 
-Celery is the intended mechanism for background and scheduled tasks, but current repo support is still incomplete and should be treated as planned direction until fully implemented.
+Celery is now part of the current repo implementation.
+
+Current implementation:
+
+- `ppw/celery.py` initializes the Celery app
+- `ppw/settings/base.py` configures broker, result backend, eager-mode test flags, and beat schedule
+- Docker Compose runs `redis`, `celery_worker`, and `celery_beat`
+- the shared container image switches behavior through `APP_ROLE`
 
 Rules:
 
@@ -652,9 +789,9 @@ Auctions must automatically transition to `CLOSED` when `end_time` is reached.
 
 This is not optional and must not rely on manual triggers.
 
-Intended implementation approach:
+Current implementation approach:
 
-- use Celery Beat or equivalent scheduler to periodically check auctions
+- Celery Beat runs `auctions.tasks.close_expired_auctions` every minute
 - identify auctions where:
   - status is active/live
   - `end_time <= now`
