@@ -48,6 +48,8 @@ The project must remain a modular monolith. Simplicity and correctness are prefe
 - Gunicorn
 - Nginx in production
 - JWT authentication via SimpleJWT
+- JWT profile synchronization via custom SimpleJWT authentication
+- django-filter
 - safedelete
 - phonenumber_field
 
@@ -106,6 +108,19 @@ Current responsibilities:
 - login / registration
 - JWT token creation
 - active profile switching
+- JWT profile-claim synchronization through `ProfileSyncJWTAuthentication`
+
+Current auth behavior:
+
+- `ppw/settings/base.py` uses `apps.authentication.authentication.ProfileSyncJWTAuthentication`
+- JWTs must include a `profile` claim
+- `build_token_for_user_role()` writes:
+  - `profile`
+  - `user_id`
+  - `is_activated`
+- a token without `profile` is rejected with authentication failure
+- if token `profile` differs from `request.user.role`, authentication attempts `switch_user_profile(user, new_profile_type=token_profile)`
+- if profile switching fails, authentication continues with the current active profile
 
 Must not own:
 
@@ -134,6 +149,8 @@ Current responsibilities:
 - shared asset commerce fields
 - birds as first-class domain objects
 - minimal non-bird product subclasses
+- product asset CRUD for supply, accessory, feed, and supplement subtypes
+- product asset filtering, search, and ordering via django-filter
 - bird validation
 
 Future home:
@@ -164,6 +181,46 @@ Current model shape:
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
+
+Current product asset API:
+
+- `/api/assets/supplies/`
+- `/api/assets/accessories/`
+- `/api/assets/feeds/`
+- `/api/assets/supplements/`
+
+Current product asset API behavior:
+
+- product CRUD uses shared `ProductAssetSerializer`
+- `owner` and `category` are read-only in API input
+- create sets `owner` from `request.user.active_profile`
+- subtype `save()` remains responsible for enforcing `category`
+- product serializer field constants live in `apps/assets/constants.py`
+- product filters live in `apps/assets/filters.py`
+- product routes use `DjangoFilterBackend` and DRF `OrderingFilter`
+
+Current product asset query support:
+
+- exact filters:
+  - `status`
+  - `owner`
+  - `is_market_listed`
+  - `is_for_auction`
+- range filters:
+  - `min_price`
+  - `max_price`
+  - `min_count`
+  - `max_count`
+- text filters:
+  - `search`
+  - `q`
+- ordering fields:
+  - `price`
+  - `count`
+  - `created`
+  - `modified`
+  - `title`
+  - `status`
 
 ### `apps.orders`
 
@@ -206,6 +263,7 @@ Current responsibilities:
 - `apps.general.models.BaseModel`: timestamped + soft-delete base model
 - `apps.general.models.OwnerBaseModel`: common owner relation to `users.Profile`
 - `apps.general.authorizations.HasAppAccess`: repo-specific permission gate used by app viewsets
+- `HasAppAccess.allow_scoped_read_access`: opt-in read behavior for resources whose `get_queryset()` already scopes readable objects
 
 ### Main Domain Concepts
 
@@ -309,6 +367,10 @@ The expected backend flow in this repo is:
 
 `urls` -> DRF `APIView` / `ViewSet` -> serializer input validation / shape validation -> validator / service / factory layer -> models -> response serializer
 
+For filtered list endpoints, apply visibility scoping before user-selected filters:
+
+`ViewSet.get_queryset()` -> `DjangoFilterBackend` / ordering -> response serializer
+
 For auction workflows, `apps/auctions/services.py` already documents the clearest current 4-layer flow:
 
 1. Input validation in serializers
@@ -320,10 +382,15 @@ For auction workflows, `apps/auctions/services.py` already documents the cleares
 
 From `ppw/settings/base.py`:
 
-- authentication defaults to JWT via `rest_framework_simplejwt.authentication.JWTAuthentication`
+- authentication defaults to JWT via `apps.authentication.authentication.ProfileSyncJWTAuthentication`
 - default DRF permission is `IsAuthenticated`
 - `AUTH_USER_MODEL` is `authentication.UserAccount`
 - `APPEND_SLASH = False`
+
+Important JWT rule:
+
+- access tokens must contain a `profile` claim
+- test helpers should use `build_token_for_user()` unless a test intentionally needs a raw token without the profile claim
 
 Mounted API roots:
 
@@ -340,6 +407,9 @@ Mounted API roots:
 - business actions are performed through `active_profile`
 - manager is an administrative and business profile, not just a Django staff concept
 - seller and customer capabilities should remain profile-based
+- token `profile` and database `active_profile` are synchronized during JWT authentication when possible
+- missing token `profile` is an authentication error
+- failed token-driven profile switching is currently a no-op, not a request failure
 
 ### Auctions
 
@@ -387,9 +457,18 @@ Current assets app is domain modeling, not file/media handling.
 Current e-commerce foundation:
 
 - assets can now carry shared price and listing fields
+- product assets now have CRUD endpoints for supplies, accessories, feeds, and supplements
+- product asset list endpoints support filtering, search, and ordering
 - orders and order items now exist as persistent models
 - this does not mean market workflows are complete yet
 - stock decrement, seller approval, and order completion logic are still not implemented
+
+Current product asset visibility:
+
+- managers can list, retrieve, create, update, and delete all product assets
+- sellers can create, update, and delete only their own product assets
+- sellers can read their own product assets plus market-listed product assets
+- customers can read only market-listed product assets
 
 Planned direction:
 
@@ -492,9 +571,30 @@ Permissions must be checked at:
 
 Do not assume authenticated user is enough. Profile type and ownership matter.
 
+Current permission resources:
+
+- `BIRD`
+- `PRODUCT_ASSET`
+- `AUCTION`
+
+Current product asset permission pattern:
+
+- use `HasAppAccess`
+- set `permission_resource = "PRODUCT_ASSET"`
+- set `allow_scoped_read_access = True`
+- scope readable objects in `get_queryset()` before filters run
+
+Important scoped-read rule:
+
+- `allow_scoped_read_access=True` only bypasses owner-only object checks for `SAFE_METHODS`
+- use it only when `get_queryset()` correctly limits readable objects for the current user
+- do not set it on write-heavy or owner-only resources unless the read scope is explicitly reviewed
+
 ### Query Discipline
 
 Avoid N+1 patterns on list/detail endpoints. Use `select_related` and `prefetch_related` when necessary.
+
+Use `django-filter` for structured list filtering when adding new filtered DRF endpoints. Prefer `FilterSet` classes over custom filter parsing unless the query behavior cannot be expressed cleanly with django-filter.
 
 ### Auditability
 
@@ -517,10 +617,11 @@ At minimum, important actions should produce traceable events or fields. A more 
 
 The codebase currently provides:
 
-- auth and profile switching
+- auth, profile switching, and JWT profile-claim synchronization
 - asset base model with shared market/listing fields
 - bird entity and validation
-- minimal product subclasses under `Asset`
+- product asset CRUD for supplies, accessories, feeds, and supplements
+- product asset filtering, search, and ordering
 - order and order-item model foundation for market flows
 - auctions, auction items, bids, and events
 - service / validator pattern in auctions
@@ -561,8 +662,11 @@ These risks are important and should be respected during future work.
 
 - manager registration must not remain publicly open
 - profile switching must respect activation and business constraints
+- token `profile` claim and active profile behavior must stay aligned
+- test JWTs must include `profile` unless testing missing-claim behavior
 - permission constants and object-level rules need tightening
 - current authorization behavior for managers, superusers, and JSON permissions is not yet fully intuitive
+- `allow_scoped_read_access` can expose data if used without correct `get_queryset()` scoping
 
 ### Auction Risks
 
@@ -596,6 +700,8 @@ Current assets app is domain modeling, not file/media handling.
   - `ManagerProfileadminSerializer` casing is inconsistent
   - several files contain TODOs or mixed comment quality
 - ownership and soft-delete behavior are sometimes implicit in views and models; preserve existing semantics unless the task explicitly requires standardization
+- product asset routes are currently plural under `/api/assets/`
+- product asset tests should use project token builders, not raw SimpleJWT tokens
 
 ## Planned Direction
 
@@ -847,7 +953,10 @@ If adding new modules:
 
 ## Testing Baseline
 
-- current documented baseline: `pytest -q` passes with `82 passed`
+- current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
+- current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
+- current full-suite baseline: `pytest -q` reports `112 passed, 6 failed`
+- current known full-suite failures are auction-side baseline failures involving duplicate empty `BirdFactory.ring_number` values and duplicate active auction listing validation
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
 

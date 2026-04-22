@@ -94,3 +94,13 @@ repos:
     - id: remove-print-statements
       stages: [pre-push]
       args: [-v, --dry-run]
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

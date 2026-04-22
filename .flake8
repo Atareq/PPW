@@ -4,7 +4,7 @@ exclude =
     venv/,
     .git,
     static,
-    migrations/
+    */migrations/*
 statistics = True
 per-file-ignores =
     ppw/settings/local.py:F403,F405

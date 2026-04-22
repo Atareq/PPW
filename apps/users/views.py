@@ -1,5 +1,3 @@
-from datetime import timezone
-
 from django.db import transaction
 from django.http import Http404
 from rest_framework import permissions, status, viewsets
@@ -68,8 +66,14 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
 
         if instance.is_active:
-            instance.deleted = timezone.now()
-            instance.save(update_fields=["deleted"])
+            other_profile = instance.user.profiles.exclude(
+                id=instance.id
+            ).first()
+            if other_profile:
+                switch_user_profile(instance.user, other_profile.type)
+            instance.is_active = False
+            instance.is_valid = False
+        instance.delete()
 
 
 class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
@@ -88,5 +92,6 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
             ).first()
             if other_profile:
                 switch_user_profile(instance.user, other_profile.type)
-        instance.deleted = True
-        instance.save(update_fields=["deleted"])
+            instance.is_active = False
+            instance.is_valid = False
+        instance.delete()

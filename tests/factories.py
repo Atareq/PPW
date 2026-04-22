@@ -33,7 +33,7 @@ class UserAccountFactory(factory.django.DjangoModelFactory):
 
     username = factory.Sequence(lambda n: f"user{n}")
     phone_number = factory.Sequence(
-        lambda n: PhoneNumber.from_string(f"+201000000{n:03d}")
+        lambda n: PhoneNumber.from_string(f"+201000000{n:03d}")  # noqa
     )
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
