@@ -121,6 +121,7 @@ Current auth behavior:
 - a token without `profile` is rejected with authentication failure
 - if token `profile` differs from `request.user.role`, authentication attempts `switch_user_profile(user, new_profile_type=token_profile)`
 - if profile switching fails, authentication continues with the current active profile
+- `switch_user_profile()` returns a `(success, profile_type)` style result
 
 Must not own:
 
@@ -134,7 +135,14 @@ Current responsibilities:
 - profile types
 - seller / customer / manager profiles
 - current active profile
+- profile validity and activation state
 - profile-level business identity
+
+Current profile behavior:
+
+- `active_profile` requires `is_active=True`, `is_valid=True`, and `activated=True`
+- `Profile.is_valid` is the current punishment / disabled-profile flag
+- exactly one active profile per user is enforced through the active-profile uniqueness constraint
 
 Must not own:
 
@@ -231,10 +239,38 @@ Current responsibilities:
 - per-item seller linkage for multi-seller orders
 - order and order-item status persistence
 - price snapshot storage for future settlement flows
+- order creation API / serializer / validator / service flow
+- seller approval and rejection of individual order items
+- stock decrement foundation for seller-approved market order items
 
 Important note:
 
-This app currently provides model foundation only. It does not yet implement checkout, approval, stock handling, settlement workflow, or ownership transfer workflow.
+This app currently provides the first market order workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, or ownership transfer workflow.
+
+Current order API:
+
+- `/api/orders/`
+  - `GET`: customer lists own orders; manager lists all orders
+  - `POST`: customer creates an order from market-listed seller assets
+- `/api/orders/<id>/`
+  - `GET`: customer retrieves own order; manager retrieves any order
+- `/api/orders/items/`
+  - `GET`: seller lists own sold order items; manager lists all order items
+- `/api/orders/items/<id>/approve/`
+  - `POST`: seller approves their own pending order item
+- `/api/orders/items/<id>/reject/`
+  - `POST`: seller rejects their own pending order item
+
+Current order behavior:
+
+- customers create orders from available, market-listed assets owned by valid seller profiles
+- duplicate `asset_id` entries in one order payload are rejected
+- customers cannot order assets owned by another profile on the same user account
+- order creation stores `unit_price_snapshot` and `total_price` on each item
+- seller approval decrements asset stock once and is idempotent for already-approved items
+- seller rejection does not decrement stock and is idempotent for already-rejected items
+- if all order items are rejected or cancelled, the aggregate order status becomes `cancelled`
+- bird approval marks the root asset sold and unlisted, but ownership transfer is not implemented yet
 
 ### `apps.auctions`
 
@@ -264,6 +300,7 @@ Current responsibilities:
 - `apps.general.models.OwnerBaseModel`: common owner relation to `users.Profile`
 - `apps.general.authorizations.HasAppAccess`: repo-specific permission gate used by app viewsets
 - `HasAppAccess.allow_scoped_read_access`: opt-in read behavior for resources whose `get_queryset()` already scopes readable objects
+- `HasAppAccess.permission_owner_field`: optional view attribute for object checks that use a non-`owner_id` ownership field, such as `OrderItem.seller_id`
 
 ### Main Domain Concepts
 
@@ -315,7 +352,8 @@ Order is the top-level purchase container for market flows.
 
 Current design choice:
 
-- an order belongs to a customer profile
+- `Order` inherits `OwnerBaseModel`
+- `Order.owner` is a `CustomerProfile`, not a generic `Profile`
 - an order may contain items from multiple sellers
 - `Order.status` is an aggregate summary field, not the primary business decision unit
 - there is no seller field on `Order`
@@ -327,7 +365,7 @@ OrderItem is the real market business unit.
 Each item has:
 
 - direct `Asset` reference
-- explicit seller reference
+- explicit `SellerProfile` reference
 - quantity
 - unit price snapshot
 - total price
@@ -459,9 +497,12 @@ Current e-commerce foundation:
 - assets can now carry shared price and listing fields
 - product assets now have CRUD endpoints for supplies, accessories, feeds, and supplements
 - product asset list endpoints support filtering, search, and ordering
-- orders and order items now exist as persistent models
+- orders and order items now have an API / serializer / validator / service layer
+- customers can create market orders from listed seller assets
+- sellers can approve or reject their own order items
+- seller approval decrements stock and can mark sold-out assets unavailable
 - this does not mean market workflows are complete yet
-- stock decrement, seller approval, and order completion logic are still not implemented
+- payment review, handoff, settlement, and ownership transfer are still not implemented
 
 Current product asset visibility:
 
@@ -576,6 +617,8 @@ Current permission resources:
 - `BIRD`
 - `PRODUCT_ASSET`
 - `AUCTION`
+- `ORDER`
+- `ORDER_ITEM`
 
 Current product asset permission pattern:
 
@@ -583,6 +626,16 @@ Current product asset permission pattern:
 - set `permission_resource = "PRODUCT_ASSET"`
 - set `allow_scoped_read_access = True`
 - scope readable objects in `get_queryset()` before filters run
+
+Current order permission pattern:
+
+- `OrderViewSet` uses `HasAppAccess` with `permission_resource = "ORDER"`
+- customers can list, retrieve, and create only their own orders through `Order.owner`
+- sellers do not access `/api/orders/`; seller order work happens through order-item endpoints
+- `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
+- order-item object checks use `permission_owner_field = "seller_id"`
+- sellers can list, approve, and reject only their own sold order items
+- managers can access all order and order-item actions through existing manager behavior
 
 Important scoped-read rule:
 
@@ -622,7 +675,10 @@ The codebase currently provides:
 - bird entity and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
 - product asset filtering, search, and ordering
-- order and order-item model foundation for market flows
+- order and order-item API foundation for market flows
+- order validators and services for fixed-price order creation
+- seller item approval/rejection foundation
+- stock decrement foundation for approved order items
 - auctions, auction items, bids, and events
 - service / validator pattern in auctions
 - Dockerized local and production runtime configuration
@@ -632,7 +688,7 @@ The codebase currently provides:
 The codebase does not yet fully implement:
 
 - media/file subsystem
-- market / e-commerce workflow layer
+- payment-backed market completion workflow
 - payment review workflow
 - handoff flow
 - ownership transfer workflow as a formal process
@@ -686,7 +742,7 @@ Without this, auctions can end technically but not complete business-wise.
 
 Important related gap:
 
-- market models now exist, but market services and completion workflow do not
+- marketplace order creation and seller approval now exist, but payment review, handoff, settlement, and ownership transfer do not
 
 ### Media Gap
 
@@ -702,6 +758,8 @@ Current assets app is domain modeling, not file/media handling.
 - ownership and soft-delete behavior are sometimes implicit in views and models; preserve existing semantics unless the task explicitly requires standardization
 - product asset routes are currently plural under `/api/assets/`
 - product asset tests should use project token builders, not raw SimpleJWT tokens
+- `.coverage` is removed from tracking; `.coverage` and `htmlcov/` are ignored local test artifacts
+- pytest is part of the pre-commit workflow through the local `pytest -q` hook
 
 ## Planned Direction
 
@@ -754,11 +812,12 @@ Complete fixed-price market flow on top of the current model foundation.
 
 Includes:
 
-- listing and market activation workflow
-- direct order or request flow
+- listing and market activation workflow beyond the current listing flag
+- expansion of the current direct order flow
 - manual completion workflow similar to auctions
-- seller approval flow
-- stock and quantity handling
+- payment review and seller handoff flow
+- ownership transfer after manual confirmations
+- stronger stock and quantity handling around completion
 - no cart complexity unless clearly needed
 
 ### Phase D - Trust Layer
@@ -955,8 +1014,9 @@ If adding new modules:
 
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
-- current full-suite baseline: `pytest -q` reports `112 passed, 6 failed`
-- current known full-suite failures are auction-side baseline failures involving duplicate empty `BirdFactory.ring_number` values and duplicate active auction listing validation
+- current targeted order baseline: `pytest tests/orders -q` passes with `21 passed`
+- current full-suite baseline: `pytest -q` passes with `146 passed`
+- pre-commit pytest baseline: `pre-commit run pytest --all-files` passes
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
 
