@@ -100,10 +100,10 @@ class OrderListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_item_count(self, obj):
+    def get_item_count(self, obj) -> int:
         return obj.items.count()
 
-    def get_total_amount(self, obj):
+    def get_total_amount(self, obj) -> str:
         total = sum(
             (item.total_price for item in obj.items.all()), Decimal("0.00")
         )

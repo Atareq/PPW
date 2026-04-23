@@ -15,7 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.urls import include, path
+
+from ppw.schema import InternalSchemaAPIView, InternalSwaggerUIView
 
 urlpatterns = [
     path("api/auth/", include("apps.authentication.urls")),
@@ -23,4 +26,18 @@ urlpatterns = [
     path("api/assets/", include("apps.assets.urls")),
     path("api/auctions/", include("apps.auctions.urls")),
     path("api/orders/", include("apps.orders.urls")),
+    path(
+        "api/schema/",
+        InternalSchemaAPIView.as_view(),
+        name="api-schema",
+    ),
 ]
+
+if settings.DEBUG:
+    urlpatterns += [
+        path(
+            "api/docs/swagger/",
+            InternalSwaggerUIView.as_view(url_name="api-schema"),
+            name="swagger-ui",
+        ),
+    ]

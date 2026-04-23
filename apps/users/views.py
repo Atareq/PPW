@@ -30,6 +30,7 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
 
 class SellerProfileMobileViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileMobileSerializer
+    queryset = SellerProfile.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     @transaction.atomic
@@ -78,6 +79,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
 
 class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerProfileMobileSerializer
+    queryset = CustomerProfile.objects.all()
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):

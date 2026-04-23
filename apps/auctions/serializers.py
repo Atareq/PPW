@@ -30,6 +30,7 @@ class BirdBasicSerializer(serializers.ModelSerializer):
 class BidSerializer(serializers.ModelSerializer):
     """Bid display serializer"""
 
+    # is_winning_bid = serializers.BooleanField(read_only=True)
     bidder_username = serializers.CharField(
         source="bidder.username", read_only=True
     )
@@ -96,7 +97,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
             "modified",
         ]
 
-    def get_is_active(self, obj):
+    def get_is_active(self, obj) -> bool:
         return obj.is_active()
 
 
@@ -105,9 +106,7 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
 
     bird_name = serializers.CharField(source="bird.name", read_only=True)
     bird_gender = serializers.CharField(source="bird.gender", read_only=True)
-    current_highest_bidder = serializers.CharField(
-        source="current_highest_bidder", read_only=True
-    )
+    current_highest_bidder = serializers.CharField(read_only=True)
     is_active = serializers.SerializerMethodField()
 
     class Meta:
@@ -128,6 +127,9 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
             "current_price",
             "is_active",
         ]
+
+    def get_is_active(self, obj) -> bool:
+        return obj.is_active()
 
 
 class AuctionEventSerializer(serializers.ModelSerializer):
@@ -214,16 +216,16 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "status ",
         ]
 
-    def get_time_remaining(self, obj):
+    def get_time_remaining(self, obj) -> int | None:
         remaining = obj.time_remaining()
         if remaining:
             return int(remaining.total_seconds())
         return None
 
-    def get_is_active(self, obj):
+    def get_is_active(self, obj) -> bool:
         return obj.is_active()
 
-    def get_is_ended(self, obj):
+    def get_is_ended(self, obj) -> bool:
         return obj.is_ended()
 
 
@@ -265,10 +267,10 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "created",
         ]
 
-    def get_item_count(self, obj):
+    def get_item_count(self, obj) -> int:
         return obj.items.count()
 
-    def get_time_remaining(self, obj):
+    def get_time_remaining(self, obj) -> int | None:
         remaining = obj.time_remaining()
         if remaining:
             return int(remaining.total_seconds())
