@@ -2,6 +2,11 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.utils import timezone
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -37,6 +42,50 @@ from apps.users.constants import ProfileType
 # ============================================================================
 
 
+@extend_schema_view(
+    create=extend_schema(
+        tags=["Auctions"],
+        request=AuctionCreateSerializer,
+        responses={201: AuctionDetailSerializer},
+    ),
+    partial_update=extend_schema(
+        tags=["Auctions"],
+        request=AuctionUpdateSerializer,
+        responses={200: AuctionDetailSerializer},
+    ),
+    my_auctions=extend_schema(
+        tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter auctions by status.",
+            )
+        ],
+        responses={200: AuctionListSerializer(many=True)},
+    ),
+    active=extend_schema(
+        tags=["Auctions"],
+        responses={200: AuctionListSerializer(many=True)},
+    ),
+    ending_soon=extend_schema(
+        tags=["Auctions"],
+        parameters=[EndingSoonQuerySerializer],
+        responses={200: AuctionDetailSerializer(many=True)},
+    ),
+    cancel=extend_schema(
+        tags=["Auctions"],
+        request=CancelAuctionSerializer,
+        responses={200: AuctionDetailSerializer},
+    ),
+    close=extend_schema(
+        tags=["Auctions"],
+        request=None,
+        responses={200: AuctionDetailSerializer},
+    ),
+)
 class AuctionViewSet(viewsets.ModelViewSet):
     """
     Auction ViewSet
@@ -282,6 +331,31 @@ class AuctionViewSet(viewsets.ModelViewSet):
             )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="auction_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Limit items to a specific auction.",
+            )
+        ],
+        responses={200: AuctionItemListSerializer(many=True)},
+    ),
+    place_bid=extend_schema(
+        tags=["Auctions"],
+        request=PlaceBidSerializer,
+        responses={201: BidSerializer},
+    ),
+    buy_now=extend_schema(
+        tags=["Auctions"],
+        request=None,
+        responses={201: BidSerializer},
+    ),
+)
 class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Auction Item ViewSet (Read-Only for public)
@@ -380,6 +454,41 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="item_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Limit bids to a specific auction item.",
+            )
+        ],
+        responses={200: BidSerializer(many=True)},
+    ),
+    my_bids=extend_schema(
+        tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter by auction item status.",
+            ),
+            OpenApiParameter(
+                name="auction_type",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter by auction type.",
+            ),
+        ],
+        responses={200: BidSerializer(many=True)},
+    ),
+)
 class BidViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Bid ViewSet (Read-Only)
@@ -441,6 +550,21 @@ class BidViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="auction_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Limit events to a specific auction.",
+            )
+        ],
+        responses={200: AuctionEventSerializer(many=True)},
+    )
+)
 class AuctionEventViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Auction Event ViewSet (Audit Trail)

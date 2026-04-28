@@ -38,6 +38,7 @@ THIRD_PARTY_APPS = [
     "django_extensions",
     "safedelete",
     "rest_framework",
+    "drf_spectacular",
     "rest_framework_simplejwt",
     "django_filters",
     "phonenumber_field",
@@ -89,9 +90,21 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "apps.authentication.authentication.ProfileSyncJWTAuthentication",
     ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "PPW API",
+    "DESCRIPTION": "Internal development API schema for the PPW backend.",
+    "VERSION": "1.0.0",
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SERVE_INCLUDE_SCHEMA": False,
+    "PREPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.preprocess_exclude_path_format",
+    ],
 }
 
 SIMPLE_JWT = {

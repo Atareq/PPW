@@ -1,4 +1,5 @@
 from django.db.models import Prefetch
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -24,6 +25,13 @@ def order_item_queryset():
     ).order_by("-created")
 
 
+@extend_schema_view(
+    create=extend_schema(
+        tags=["Orders"],
+        request=OrderCreateSerializer,
+        responses={201: OrderDetailSerializer},
+    )
+)
 class OrderViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
@@ -98,6 +106,11 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
         return queryset.none()
 
+    @extend_schema(
+        tags=["Orders"],
+        request=None,
+        responses={200: OrderItemSerializer},
+    )
     def approve(self, request, pk=None):
         item = self.get_object()
         seller = self._get_active_seller_profile()
@@ -107,6 +120,11 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        tags=["Orders"],
+        request=None,
+        responses={200: OrderItemSerializer},
+    )
     def reject(self, request, pk=None):
         item = self.get_object()
         seller = self._get_active_seller_profile()

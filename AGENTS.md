@@ -40,6 +40,7 @@ The project must remain a modular monolith. Simplicity and correctness are prefe
 - Python
 - Django
 - Django REST Framework
+- drf-spectacular
 - PostgreSQL
 - Docker
 - Docker Compose
@@ -60,6 +61,12 @@ General approach:
 - explicit business flows
 - no hidden magic
 - avoid fat views and serializer-heavy business logic
+
+Current internal API documentation approach:
+
+- OpenAPI schema generation via drf-spectacular
+- Swagger UI for local development
+- targeted `@extend_schema` annotations only where automatic schema generation is weak
 
 ## Current Backend Architecture
 
@@ -421,6 +428,7 @@ For auction workflows, `apps/auctions/services.py` already documents the cleares
 From `ppw/settings/base.py`:
 
 - authentication defaults to JWT via `apps.authentication.authentication.ProfileSyncJWTAuthentication`
+- default schema generation uses `drf_spectacular.openapi.AutoSchema`
 - default DRF permission is `IsAuthenticated`
 - `AUTH_USER_MODEL` is `authentication.UserAccount`
 - `APPEND_SLASH = False`
@@ -436,6 +444,22 @@ Mounted API roots:
 - `/api/users/`
 - `/api/assets/`
 - `/api/auctions/`
+- `/api/orders/`
+
+Current internal API docs endpoints:
+
+- `/api/schema/`
+  - public when `DEBUG=True`
+  - requires any authenticated user when `DEBUG=False`
+- `/api/docs/swagger/`
+  - mounted only when `DEBUG=True`
+
+Current schema/auth documentation behavior:
+
+- drf-spectacular uses an explicit bearer auth schema for `ProfileSyncJWTAuthentication`
+- protected endpoints show Bearer/JWT auth in the generated OpenAPI schema
+- login remains unauthenticated in schema output
+- request and response components are split for clearer required/read-only field documentation
 
 ## Core Business Rules
 
@@ -671,6 +695,7 @@ At minimum, important actions should produce traceable events or fields. A more 
 The codebase currently provides:
 
 - auth, profile switching, and JWT profile-claim synchronization
+- internal OpenAPI schema generation and Swagger UI for development teams
 - asset base model with shared market/listing fields
 - bird entity and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
@@ -684,6 +709,12 @@ The codebase currently provides:
 - Dockerized local and production runtime configuration
 - Redis + Celery worker/beat infrastructure for background jobs
 - automatic scheduled auction closing through Celery Beat
+
+Current API documentation coverage:
+
+- mounted DRF routers, APIViews, and manual `GenericViewSet.as_view(...)` endpoints appear in the schema
+- custom actions in auctions, auth, and order-item approval/rejection have targeted schema annotations
+- schema tests cover auth policy for `/api/schema/`, Bearer security output, and representative custom/manual endpoints
 
 The codebase does not yet fully implement:
 
@@ -758,6 +789,8 @@ Current assets app is domain modeling, not file/media handling.
 - ownership and soft-delete behavior are sometimes implicit in views and models; preserve existing semantics unless the task explicitly requires standardization
 - product asset routes are currently plural under `/api/assets/`
 - product asset tests should use project token builders, not raw SimpleJWT tokens
+- API docs are schema metadata only; do not change business responses just to make docs prettier unless schema generation is otherwise incorrect
+- current schema validation still emits benign enum-naming collision warnings for repeated `status` choice sets
 - `.coverage` is removed from tracking; `.coverage` and `htmlcov/` are ignored local test artifacts
 - pytest is part of the pre-commit workflow through the local `pytest -q` hook
 
@@ -1014,8 +1047,9 @@ If adding new modules:
 
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
+- current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `4 passed`
 - current targeted order baseline: `pytest tests/orders -q` passes with `21 passed`
-- current full-suite baseline: `pytest -q` passes with `146 passed`
+- current full-suite baseline: `pytest -q` passes with `150 passed`
 - pre-commit pytest baseline: `pre-commit run pytest --all-files` passes
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
