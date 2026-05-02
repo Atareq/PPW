@@ -241,28 +241,41 @@ Current product asset query support:
 
 Current responsibilities:
 
+- persistent customer cart models and cart item models
 - order aggregate models
 - order item models
 - per-item seller linkage for multi-seller orders
 - order and order-item status persistence
 - price snapshot storage for future settlement flows
-- order creation API / serializer / validator / service flow
+- cart, checkout, and compatibility direct-order API / serializer / validator / service flow
 - seller approval and rejection of individual order items
-- stock decrement foundation for seller-approved market order items
+- checkout-time stock reservation for fixed-price market order items
+- lightweight order event records for future notification hooks
 
 Important note:
 
-This app currently provides the first market order workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, or ownership transfer workflow.
+This app currently provides the first cart and fixed-price checkout workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, stock restoration after seller rejection, or ownership transfer workflow.
 
 Current order API:
 
+- `/api/orders/cart/`
+  - `GET`: customer retrieves or lazily creates their active cart
+- `/api/orders/cart/items/`
+  - `POST`: customer adds an asset to the active cart; duplicate assets merge quantities
+- `/api/orders/cart/items/<id>/`
+  - `PATCH`: customer updates one active cart item quantity
+  - `DELETE`: customer removes one active cart item
+- `/api/orders/cart/clear/`
+  - `DELETE`: customer clears all active cart items
+- `/api/orders/checkout/`
+  - `POST`: customer converts the full active cart into an order and reserves stock
 - `/api/orders/`
   - `GET`: customer lists own orders; manager lists all orders
-  - `POST`: customer creates an order from market-listed seller assets
+  - `POST`: compatibility alias for direct order creation from market-listed seller assets; reserves stock immediately through the checkout service
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
-  - `GET`: seller lists own sold order items; manager lists all order items
+  - `GET`: seller lists own order items; manager lists all order items
 - `/api/orders/items/<id>/approve/`
   - `POST`: seller approves their own pending order item
 - `/api/orders/items/<id>/reject/`
@@ -270,14 +283,24 @@ Current order API:
 
 Current order behavior:
 
-- customers create orders from available, market-listed assets owned by valid seller profiles
+- each customer can have one active cart; active carts are created lazily
+- customers can add only available, market-listed assets with enough stock from valid seller profiles
+- adding the same asset to a cart increases the existing cart item quantity instead of creating a duplicate row
 - duplicate `asset_id` entries in one order payload are rejected
-- customers cannot order assets owned by another profile on the same user account
-- order creation stores `unit_price_snapshot` and `total_price` on each item
-- seller approval decrements asset stock once and is idempotent for already-approved items
-- seller rejection does not decrement stock and is idempotent for already-rejected items
+- customers cannot order or cart assets owned by another profile on the same user account
+- checkout runs in a DB transaction and locks the active cart plus all checked-out asset rows
+- checkout revalidates cart items under lock and uses latest `Asset.price`, not stale cart price snapshots
+- order creation stores `total_price` on `Order`, plus `unit_price_snapshot` and `total_price` on each item
+- checkout and direct `POST /api/orders/` decrement stock immediately to reserve inventory
+- when reserved stock reaches zero, the asset is marked `sold` and unlisted from the market
+- new order items start as `pending_seller`
+- seller approval changes `pending_seller` to `approved` only; it does not decrement stock again
+- seller rejection changes `pending_seller` to `rejected` only; it does not restore stock in the current sprint
+- aggregate order statuses are `pending`, `processing`, `completed`, `cancelled`, and `partial_rejected`
 - if all order items are rejected or cancelled, the aggregate order status becomes `cancelled`
-- bird approval marks the root asset sold and unlisted, but ownership transfer is not implemented yet
+- any rejected item plus any non-rejected item makes the aggregate order status `partial_rejected`
+- lightweight `OrderEvent` records are created for order creation, seller pending item notifications, and seller approval
+- ownership transfer is not implemented yet
 
 ### `apps.auctions`
 
@@ -351,7 +374,29 @@ Current design choice:
 - subtype classification is stored in `category`
 - `Asset` carries shared listing and pricing fields
 - non-bird product types currently exist as minimal subclasses for future extension
-- current code does not yet implement market workflow rules on top of these fields
+- cart and checkout services enforce fixed-price market purchase rules on top of these fields
+
+#### Cart
+
+Cart is the persistent server-side customer cart for fixed-price market flows.
+
+Current design choice:
+
+- `Cart.customer` is a `CustomerProfile`
+- one active cart per customer is enforced at the database level
+- cart statuses are `active`, `converted`, and `abandoned`
+- cart retrieval creates an active cart lazily when none exists
+
+#### CartItem
+
+CartItem is one asset row inside a customer cart.
+
+Current design choice:
+
+- each cart item references an `Asset` and a `SellerProfile`
+- one cart row per asset per cart is enforced at the database level
+- duplicate add-to-cart requests increase quantity on the existing row
+- `unit_price_snapshot` records the price at cart-add time, but checkout uses latest `Asset.price`
 
 #### Order
 
@@ -363,6 +408,7 @@ Current design choice:
 - `Order.owner` is a `CustomerProfile`, not a generic `Profile`
 - an order may contain items from multiple sellers
 - `Order.status` is an aggregate summary field, not the primary business decision unit
+- `Order.total_price` is a stored checkout-time decimal snapshot
 - there is no seller field on `Order`
 
 #### OrderItem
@@ -378,9 +424,29 @@ Each item has:
 - total price
 - independent status
 
+Current order-item statuses:
+
+- `pending_seller`
+- `approved`
+- `rejected`
+- `awaiting_payment_review`
+- `ready_handoff`
+- `completed`
+- `cancelled`
+
 Important rule:
 
 Future settlement and approval logic should operate at the order-item level, not only at the order level.
+
+#### OrderEvent
+
+OrderEvent is a lightweight record for order-related notification and traceability placeholders.
+
+Current design choice:
+
+- events are written synchronously by order services
+- current event types include order creation, seller pending item, and seller approval
+- there is no push delivery, async notification task, or external notification integration yet
 
 #### Auction
 
@@ -521,12 +587,16 @@ Current e-commerce foundation:
 - assets can now carry shared price and listing fields
 - product assets now have CRUD endpoints for supplies, accessories, feeds, and supplements
 - product asset list endpoints support filtering, search, and ordering
-- orders and order items now have an API / serializer / validator / service layer
-- customers can create market orders from listed seller assets
+- carts, checkout, orders, and order items now have an API / serializer / validator / service layer
+- customers can add listed seller assets to a persistent server-side cart
+- customers can checkout the full active cart into a reserved-stock market order
+- direct `POST /api/orders/` remains available as a compatibility alias with the same stock reservation semantics
 - sellers can approve or reject their own order items
-- seller approval decrements stock and can mark sold-out assets unavailable
+- checkout-time stock reservation decrements stock and can mark sold-out assets unavailable
+- seller approval and rejection update item/order statuses but do not change stock in the current sprint
+- lightweight order events exist as notification placeholders
 - this does not mean market workflows are complete yet
-- payment review, handoff, settlement, and ownership transfer are still not implemented
+- payment review, handoff, stock restoration after rejection, settlement, and ownership transfer are still not implemented
 
 Current product asset visibility:
 
@@ -565,6 +635,8 @@ Examples:
 
 - place bid
 - create auction
+- checkout cart
+- create reserved market order
 - cancel auction
 - approve payment
 - confirm handoff
@@ -587,6 +659,7 @@ Views and viewsets should orchestrate request and response only.
 Use `transaction.atomic()` for critical write flows:
 
 - bid placement
+- cart checkout and direct reserved market order creation
 - settlement
 - payment approval
 - ownership transfer
@@ -655,6 +728,9 @@ Current order permission pattern:
 
 - `OrderViewSet` uses `HasAppAccess` with `permission_resource = "ORDER"`
 - customers can list, retrieve, and create only their own orders through `Order.owner`
+- cart and checkout APIViews require authentication plus an active customer profile
+- sellers must switch to customer mode before using cart or checkout endpoints
+- managers do not get cart or checkout access in the current sprint
 - sellers do not access `/api/orders/`; seller order work happens through order-item endpoints
 - `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
 - order-item object checks use `permission_owner_field = "seller_id"`
@@ -700,10 +776,12 @@ The codebase currently provides:
 - bird entity and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
 - product asset filtering, search, and ordering
-- order and order-item API foundation for market flows
-- order validators and services for fixed-price order creation
+- persistent customer cart and cart item API foundation for market flows
+- checkout and compatibility direct-order APIs for fixed-price order creation
+- order validators and services for reserved-stock fixed-price order creation
 - seller item approval/rejection foundation
-- stock decrement foundation for approved order items
+- checkout-time stock reservation for market order items
+- lightweight order events for future notification hooks
 - auctions, auction items, bids, and events
 - service / validator pattern in auctions
 - Dockerized local and production runtime configuration
@@ -713,8 +791,8 @@ The codebase currently provides:
 Current API documentation coverage:
 
 - mounted DRF routers, APIViews, and manual `GenericViewSet.as_view(...)` endpoints appear in the schema
-- custom actions in auctions, auth, and order-item approval/rejection have targeted schema annotations
-- schema tests cover auth policy for `/api/schema/`, Bearer security output, and representative custom/manual endpoints
+- custom actions in auctions, auth, cart, checkout, and order-item approval/rejection have targeted schema annotations
+- schema tests cover auth policy for `/api/schema/`, Bearer security output, cart/checkout paths, and representative custom/manual endpoints
 
 The codebase does not yet fully implement:
 
@@ -732,7 +810,7 @@ The codebase does not yet fully implement:
 - points / cashback / badges
 - offers / promotions
 - chat
-- notifications
+- notification delivery beyond lightweight order event placeholders
 - seller package or quota enforcement as a finished business module
 
 Important framing:
@@ -773,7 +851,7 @@ Without this, auctions can end technically but not complete business-wise.
 
 Important related gap:
 
-- marketplace order creation and seller approval now exist, but payment review, handoff, settlement, and ownership transfer do not
+- marketplace cart, checkout, order creation, and seller approval now exist, but payment review, stock restoration after rejection, handoff, settlement, and ownership transfer do not
 
 ### Media Gap
 
@@ -790,7 +868,7 @@ Current assets app is domain modeling, not file/media handling.
 - product asset routes are currently plural under `/api/assets/`
 - product asset tests should use project token builders, not raw SimpleJWT tokens
 - API docs are schema metadata only; do not change business responses just to make docs prettier unless schema generation is otherwise incorrect
-- current schema validation still emits benign enum-naming collision warnings for repeated `status` choice sets
+- current schema validation still emits benign enum-naming warnings for repeated `status` choice sets and the repeated profile choice set
 - `.coverage` is removed from tracking; `.coverage` and `htmlcov/` are ignored local test artifacts
 - pytest is part of the pre-commit workflow through the local `pytest -q` hook
 
@@ -846,12 +924,12 @@ Complete fixed-price market flow on top of the current model foundation.
 Includes:
 
 - listing and market activation workflow beyond the current listing flag
-- expansion of the current direct order flow
+- expansion of the current cart, checkout, and direct-order compatibility flow
 - manual completion workflow similar to auctions
 - payment review and seller handoff flow
 - ownership transfer after manual confirmations
+- stock restoration or adjustment rules for rejected/resolved order items
 - stronger stock and quantity handling around completion
-- no cart complexity unless clearly needed
 
 ### Phase D - Trust Layer
 
@@ -1047,10 +1125,11 @@ If adding new modules:
 
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
-- current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `4 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `21 passed`
-- current full-suite baseline: `pytest -q` passes with `150 passed`
-- pre-commit pytest baseline: `pre-commit run pytest --all-files` passes
+- current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
+- current targeted order baseline: `pytest tests/orders -q` passes with `35 passed`
+- current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
+- current full-suite baseline: `pytest -q` passes with `165 passed`
+- pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
 

@@ -16,7 +16,17 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
-from apps.orders.models import Order, OrderItem, OrderItemStatus, OrderStatus
+from apps.orders.models import (
+    Cart,
+    CartItem,
+    CartStatus,
+    Order,
+    OrderEvent,
+    OrderEventType,
+    OrderItem,
+    OrderItemStatus,
+    OrderStatus,
+)
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
 
@@ -149,7 +159,8 @@ class OrderFactory(factory.django.DjangoModelFactory):
         model = Order
 
     owner = factory.SubFactory(CustomerProfileFactory)
-    status = OrderStatus.OPEN
+    status = OrderStatus.PENDING
+    total_price = Decimal("25.00")
 
 
 class OrderItemFactory(factory.django.DjangoModelFactory):
@@ -165,11 +176,50 @@ class OrderItemFactory(factory.django.DjangoModelFactory):
 
     quantity = 1
     unit_price_snapshot = Decimal("25.00")
-    status = OrderItemStatus.PENDING_SELLER_APPROVAL
+    status = OrderItemStatus.PENDING_SELLER
 
     @factory.lazy_attribute
     def total_price(self):
         return self.quantity * self.unit_price_snapshot
+
+
+class CartFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Cart
+
+    customer = factory.SubFactory(CustomerProfileFactory)
+    status = CartStatus.ACTIVE
+
+
+class CartItemFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = CartItem
+
+    cart = factory.SubFactory(CartFactory)
+    asset = factory.SubFactory(SupplyFactory)
+
+    @factory.lazy_attribute
+    def seller(self):
+        return SellerProfile.objects.get(pk=self.asset.owner_id)
+
+    quantity = 1
+    unit_price_snapshot = Decimal("25.00")
+
+
+class OrderEventFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = OrderEvent
+
+    order = factory.SubFactory(OrderFactory)
+    item = None
+
+    @factory.lazy_attribute
+    def recipient(self):
+        return self.order.owner
+
+    event_type = OrderEventType.ORDER_CREATED
+    message = "Order created."
+    metadata = factory.LazyFunction(dict)
 
 
 # ============================================================================

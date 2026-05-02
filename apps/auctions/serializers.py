@@ -30,7 +30,7 @@ class BirdBasicSerializer(serializers.ModelSerializer):
 class BidSerializer(serializers.ModelSerializer):
     """Bid display serializer"""
 
-    # is_winning_bid = serializers.BooleanField(read_only=True)
+    is_winning_bid = serializers.BooleanField(read_only=True)
     bidder_username = serializers.CharField(
         source="bidder.username", read_only=True
     )

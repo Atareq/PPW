@@ -1,27 +1,120 @@
+from decimal import Decimal
+
 from django.core.validators import MinValueValidator
 from django.db import models
 
 from apps.assets.models import Asset
 from apps.general.models import BaseModel, OwnerBaseModel
-from apps.users.models import CustomerProfile, SellerProfile
+from apps.users.models import CustomerProfile, Profile, SellerProfile
+
+
+class CartStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    CONVERTED = "converted", "Converted"
+    ABANDONED = "abandoned", "Abandoned"
 
 
 class OrderStatus(models.TextChoices):
-    OPEN = "open", "Open"  # Wehenever moved from Cart model to Order
-    PARTIALLY_SETTLED = "partially_settled", "Partially Settled"
-    SETTLED = "settled", "Settled"
+    PENDING = "pending", "Pending"
+    PROCESSING = "processing", "Processing"
+    COMPLETED = "completed", "Completed"
     CANCELLED = "cancelled", "Cancelled"
+    PARTIAL_REJECTED = "partial_rejected", "Partial Rejected"
 
 
 class OrderItemStatus(models.TextChoices):
-    PENDING_SELLER_APPROVAL = (
-        "pending_seller_approval",
-        "Pending Seller Approval",
-    )
-    SELLER_APPROVED = "seller_approved", "Seller Approved"
+    PENDING_SELLER = "pending_seller", "Pending Seller"
+    APPROVED = "approved", "Approved"
     REJECTED = "rejected", "Rejected"
-    SETTLED = "settled", "Settled"
+    AWAITING_PAYMENT_REVIEW = (
+        "awaiting_payment_review",
+        "Awaiting Payment Review",
+    )
+    READY_HANDOFF = "ready_handoff", "Ready Handoff"
+    COMPLETED = "completed", "Completed"
     CANCELLED = "cancelled", "Cancelled"
+
+
+class OrderEventType(models.TextChoices):
+    ORDER_CREATED = "order_created", "Order Created"
+    SELLER_PENDING_ITEM = "seller_pending_item", "Seller Pending Item"
+    SELLER_APPROVED = "seller_approved", "Seller Approved"
+
+
+class Cart(BaseModel):
+    customer = models.ForeignKey(
+        CustomerProfile,
+        on_delete=models.CASCADE,
+        related_name="carts",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=CartStatus.choices,
+        default=CartStatus.ACTIVE,
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["customer", "status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer"],
+                condition=models.Q(
+                    status=CartStatus.ACTIVE,
+                    deleted__isnull=True,
+                ),
+                name="orders_one_active_cart_per_customer",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Cart #{self.pk} ({self.status})"
+
+
+class CartItem(BaseModel):
+    cart = models.ForeignKey(
+        Cart,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name="cart_items",
+    )
+    seller = models.ForeignKey(
+        SellerProfile,
+        on_delete=models.CASCADE,
+        related_name="cart_items",
+    )
+    quantity = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+    )
+    unit_price_snapshot = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["asset"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cart", "asset"],
+                condition=models.Q(deleted__isnull=True),
+                name="orders_unique_asset_per_cart",
+            ),
+            models.CheckConstraint(
+                check=models.Q(quantity__gte=1),
+                name="orders_cartitem_quantity_gte_1",
+            ),
+        ]
+
+    def __str__(self):
+        return f"CartItem #{self.pk} ({self.quantity})"
 
 
 class Order(OwnerBaseModel):
@@ -33,7 +126,13 @@ class Order(OwnerBaseModel):
     status = models.CharField(
         max_length=30,
         choices=OrderStatus.choices,
-        default=OrderStatus.OPEN,
+        default=OrderStatus.PENDING,
+    )
+    total_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
     )
 
     class Meta:
@@ -77,7 +176,7 @@ class OrderItem(BaseModel):
     status = models.CharField(
         max_length=30,
         choices=OrderItemStatus.choices,
-        default=OrderItemStatus.PENDING_SELLER_APPROVAL,
+        default=OrderItemStatus.PENDING_SELLER,
     )
 
     class Meta:
@@ -112,3 +211,38 @@ class OrderItem(BaseModel):
 
     def __str__(self):
         return f"OrderItem #{self.pk} ({self.status})"
+
+
+class OrderEvent(BaseModel):
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    item = models.ForeignKey(
+        OrderItem,
+        on_delete=models.CASCADE,
+        related_name="events",
+        null=True,
+        blank=True,
+    )
+    recipient = models.ForeignKey(
+        Profile,
+        on_delete=models.CASCADE,
+        related_name="order_events",
+    )
+    event_type = models.CharField(
+        max_length=40,
+        choices=OrderEventType.choices,
+    )
+    message = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["order", "event_type"]),
+            models.Index(fields=["recipient", "-created"]),
+        ]
+
+    def __str__(self):
+        return f"OrderEvent #{self.pk} ({self.event_type})"

@@ -84,3 +84,21 @@ def test_place_bid_custom_action_is_documented(
     assert operation["requestBody"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/PlaceBidRequest"}
+
+
+def test_cart_and_checkout_paths_are_documented(
+    authenticated_client,
+    settings,
+):
+    settings.DEBUG = False
+
+    schema = load_schema(authenticated_client.get("/api/schema/"))
+
+    assert "/api/orders/cart/" in schema["paths"]
+    assert "/api/orders/cart/items/" in schema["paths"]
+    assert "/api/orders/cart/items/{id}/" in schema["paths"]
+    assert "/api/orders/cart/clear/" in schema["paths"]
+    assert "/api/orders/checkout/" in schema["paths"]
+    assert {"BearerAuth": []} in schema["paths"]["/api/orders/checkout/"][
+        "post"
+    ]["security"]

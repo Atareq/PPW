@@ -1,6 +1,14 @@
 from django.urls import path
 
-from apps.orders.views import OrderItemViewSet, OrderViewSet
+from apps.orders.views import (
+    CartAPIView,
+    CartClearAPIView,
+    CartItemCreateAPIView,
+    CartItemDetailAPIView,
+    CheckoutAPIView,
+    OrderItemViewSet,
+    OrderViewSet,
+)
 
 order_list = OrderViewSet.as_view(
     {
@@ -30,6 +38,19 @@ order_item_reject = OrderItemViewSet.as_view(
 )
 
 urlpatterns = [
+    path("cart/", CartAPIView.as_view(), name="cart-detail"),
+    path(
+        "cart/items/",
+        CartItemCreateAPIView.as_view(),
+        name="cart-item-create",
+    ),
+    path(
+        "cart/items/<int:pk>/",
+        CartItemDetailAPIView.as_view(),
+        name="cart-item-detail",
+    ),
+    path("cart/clear/", CartClearAPIView.as_view(), name="cart-clear"),
+    path("checkout/", CheckoutAPIView.as_view(), name="checkout"),
     path("", order_list, name="order-list"),
     path("items/", order_item_list, name="order-item-list"),
     path(
