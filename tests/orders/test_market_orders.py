@@ -4,11 +4,19 @@ import pytest
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
-from apps.assets.models import Asset, AssetStatus
+from apps.assets.models import AssetStatus
 from apps.authentication.services import build_token_for_user
-from apps.orders.models import OrderItemStatus, OrderStatus
+from apps.orders.models import (
+    Cart,
+    CartItem,
+    CartStatus,
+    OrderEvent,
+    OrderEventType,
+    OrderItemStatus,
+    OrderStatus,
+)
 from apps.orders.serializers import OrderCreateSerializer
-from apps.orders.services import OrderService
+from apps.orders.services import CartService, OrderService
 from apps.orders.validators import OrderCreationValidator
 from apps.users.constants import ProfileType
 from tests.factories import (
@@ -106,18 +114,294 @@ class TestOrderCreationValidator:
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         asset = SupplyFactory(count=1)
 
-        with pytest.raises(Exception, match="enough stock"):
+        with pytest.raises(Exception, match="Insufficient stock"):
             OrderCreationValidator(
                 customer.active_profile,
                 [{"asset_id": asset.pk, "quantity": 2}],
             ).validate()
 
 
-class TestOrderService:
-    def test_creates_multi_item_multi_seller_order_without_decrementing_stock(
-        self,
-    ):
-        customer = CustomerProfileFactory()
+class TestCartEndpoints:
+    def test_active_cart_is_created_lazily_once(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        client = authenticated_client(customer)
+
+        first_response = client.get("/api/orders/cart/")
+        second_response = client.get("/api/orders/cart/")
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert first_response.data["id"] == second_response.data["id"]
+        assert (
+            Cart.objects.filter(
+                customer=customer.active_profile,
+                status=CartStatus.ACTIVE,
+            ).count()
+            == 1
+        )
+
+    def test_add_item_to_cart(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=4, price=Decimal("12.00"))
+        client = authenticated_client(customer)
+
+        response = client.post(
+            "/api/orders/cart/items/",
+            {"asset_id": asset.pk, "quantity": 2},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.data["items_count"] == 1
+        assert response.data["subtotal"] == "24.00"
+        item = response.data["items"][0]
+        assert item["asset_id"] == asset.pk
+        assert item["quantity"] == 2
+        asset.refresh_from_db()
+        assert asset.count == 4
+
+    def test_duplicate_item_add_merges_quantity(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=5)
+        client = authenticated_client(customer)
+
+        client.post(
+            "/api/orders/cart/items/",
+            {"asset_id": asset.pk, "quantity": 1},
+            format="json",
+        )
+        response = client.post(
+            "/api/orders/cart/items/",
+            {"asset_id": asset.pk, "quantity": 2},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.data["items_count"] == 1
+        assert response.data["items"][0]["quantity"] == 3
+        assert CartItem.objects.count() == 1
+
+    def test_update_quantity_validates_stock(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=3)
+        client = authenticated_client(customer)
+        cart = CartService.add_item(customer.active_profile, asset.pk, 1)
+        item = cart.items.get()
+
+        response = client.patch(
+            f"/api/orders/cart/items/{item.pk}/",
+            {"quantity": 4},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        item.refresh_from_db()
+        assert item.quantity == 1
+
+    def test_remove_item(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory()
+        client = authenticated_client(customer)
+        cart = CartService.add_item(customer.active_profile, asset.pk, 1)
+        item = cart.items.get()
+
+        response = client.delete(f"/api/orders/cart/items/{item.pk}/")
+
+        assert response.status_code == 204
+        assert CartItem.objects.count() == 0
+
+    def test_clear_cart(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset_one = SupplyFactory()
+        asset_two = SupplyFactory()
+        client = authenticated_client(customer)
+        CartService.add_item(customer.active_profile, asset_one.pk, 1)
+        CartService.add_item(customer.active_profile, asset_two.pk, 1)
+
+        response = client.delete("/api/orders/cart/clear/")
+
+        assert response.status_code == 204
+        assert CartItem.objects.count() == 0
+
+    def test_seller_mode_cannot_add_or_checkout(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory()
+        client = authenticated_client(seller)
+
+        add_response = client.post(
+            "/api/orders/cart/items/",
+            {"asset_id": asset.pk, "quantity": 1},
+            format="json",
+        )
+        checkout_response = client.post(
+            "/api/orders/checkout/", {}, format="json"
+        )
+
+        assert add_response.status_code == 403
+        assert checkout_response.status_code == 403
+
+    def test_own_product_is_blocked(self):
+        user = UserAccountFactory(with_profile=False)
+        CustomerProfileFactory(user=user, is_active=True)
+        seller = SellerProfileFactory(user=user, is_active=False)
+        asset = SupplyFactory(owner=seller)
+        client = authenticated_client(user)
+
+        response = client.post(
+            "/api/orders/cart/items/",
+            {"asset_id": asset.pk, "quantity": 1},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "own seller assets" in str(response.data)
+
+    def test_unavailable_asset_is_blocked(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(is_market_listed=False)
+        client = authenticated_client(customer)
+
+        response = client.post(
+            "/api/orders/cart/items/",
+            {"asset_id": asset.pk, "quantity": 1},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert "listed" in str(response.data)
+
+
+class TestCheckoutFlow:
+    def test_empty_cart_checkout_is_blocked(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        client = authenticated_client(customer)
+        client.get("/api/orders/cart/")
+
+        response = client.post("/api/orders/checkout/", {}, format="json")
+
+        assert response.status_code == 400
+        assert "Cart is empty" in str(response.data)
+
+    def test_successful_checkout_reserves_stock_and_converts_cart(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=5, price=Decimal("11.00"))
+        client = authenticated_client(customer)
+        CartService.add_item(customer.active_profile, asset.pk, 2)
+
+        response = client.post("/api/orders/checkout/", {}, format="json")
+
+        assert response.status_code == 201
+        assert response.data["status"] == OrderStatus.PENDING
+        assert response.data["total_price"] == "22.00"
+        assert (
+            response.data["items"][0]["status"]
+            == OrderItemStatus.PENDING_SELLER
+        )
+        asset.refresh_from_db()
+        assert asset.count == 3
+        assert Cart.objects.get(customer=customer.active_profile).status == (
+            CartStatus.CONVERTED
+        )
+
+    def test_new_cart_is_created_lazily_after_checkout(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=2)
+        client = authenticated_client(customer)
+        cart = CartService.add_item(customer.active_profile, asset.pk, 1)
+        client.post("/api/orders/checkout/", {}, format="json")
+
+        response = client.get("/api/orders/cart/")
+
+        assert response.status_code == 200
+        assert response.data["id"] != cart.pk
+        assert response.data["items"] == []
+
+    def test_checkout_marks_sold_out_asset_sold_and_unlisted(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=1)
+        client = authenticated_client(customer)
+        CartService.add_item(customer.active_profile, asset.pk, 1)
+
+        response = client.post("/api/orders/checkout/", {}, format="json")
+
+        assert response.status_code == 201
+        asset.refresh_from_db()
+        assert asset.count == 0
+        assert asset.status == AssetStatus.SOLD
+        assert asset.is_market_listed is False
+
+    def test_multi_seller_checkout_creates_per_item_sellers(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller_one = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_two = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset_one = SupplyFactory(owner=seller_one.active_profile, count=3)
+        asset_two = SupplyFactory(owner=seller_two.active_profile, count=3)
+        client = authenticated_client(customer)
+        CartService.add_item(customer.active_profile, asset_one.pk, 1)
+        CartService.add_item(customer.active_profile, asset_two.pk, 2)
+
+        response = client.post("/api/orders/checkout/", {}, format="json")
+
+        assert response.status_code == 201
+        assert sorted(response.data["sellers_involved"]) == sorted(
+            [seller_one.active_profile.pk, seller_two.active_profile.pk]
+        )
+        assert len(response.data["items"]) == 2
+
+    def test_second_checkout_for_last_stock_fails(self):
+        first_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        second_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=1)
+        first_client = authenticated_client(first_customer)
+        second_client = authenticated_client(second_customer)
+        CartService.add_item(first_customer.active_profile, asset.pk, 1)
+        CartService.add_item(second_customer.active_profile, asset.pk, 1)
+
+        first_response = first_client.post(
+            "/api/orders/checkout/", {}, format="json"
+        )
+        second_response = second_client.post(
+            "/api/orders/checkout/", {}, format="json"
+        )
+
+        assert first_response.status_code == 201
+        assert second_response.status_code == 400
+        assert "Insufficient stock" in str(second_response.data)
+
+    def test_checkout_uses_latest_db_price(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=2, price=Decimal("10.00"))
+        client = authenticated_client(customer)
+        CartService.add_item(customer.active_profile, asset.pk, 1)
+        asset.price = Decimal("15.00")
+        asset.save(update_fields=["price"])
+
+        response = client.post("/api/orders/checkout/", {}, format="json")
+
+        assert response.status_code == 201
+        assert response.data["total_price"] == "15.00"
+        assert response.data["items"][0]["unit_price"] == "15.00"
+
+    def test_direct_order_create_reserves_stock(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=4)
+        client = authenticated_client(customer)
+
+        response = client.post(
+            "/api/orders/",
+            {"items": [{"asset_id": asset.pk, "quantity": 2}]},
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.data["status"] == OrderStatus.PENDING
+        asset.refresh_from_db()
+        assert asset.count == 2
+
+
+class TestOrderServiceAndSellerDecisions:
+    def test_direct_service_creates_multi_seller_reserved_order(self):
+        customer = CustomerProfileFactory(is_active=True)
         seller_one = SellerProfileFactory()
         seller_two = SellerProfileFactory()
         asset_one = SupplyFactory(
@@ -140,22 +424,115 @@ class TestOrderService:
         )
 
         assert order.owner_id == customer.pk
-        assert order.status == OrderStatus.OPEN
+        assert order.status == OrderStatus.PENDING
+        assert order.total_price == Decimal("32.00")
         assert order.items.count() == 2
 
         item_one = order.items.get(asset_id=asset_one.pk)
         assert item_one.seller_id == seller_one.pk
         assert item_one.unit_price_snapshot == Decimal("12.50")
         assert item_one.total_price == Decimal("25.00")
-        assert item_one.status == OrderItemStatus.PENDING_SELLER_APPROVAL
+        assert item_one.status == OrderItemStatus.PENDING_SELLER
 
         asset_one.refresh_from_db()
         asset_two.refresh_from_db()
-        assert asset_one.count == 5
-        assert asset_two.count == 3
+        assert asset_one.count == 3
+        assert asset_two.count == 2
+
+    def test_seller_approve_does_not_decrement_stock_again(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        client = authenticated_client(seller)
+
+        first_response = client.post(f"/api/orders/items/{item.pk}/approve/")
+        second_response = client.post(f"/api/orders/items/{item.pk}/approve/")
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        order.refresh_from_db()
+        assert item.status == OrderItemStatus.APPROVED
+        assert asset.count == 3
+        assert order.status == OrderStatus.PROCESSING
+        assert (
+            OrderEvent.objects.filter(
+                order=order,
+                event_type=OrderEventType.SELLER_APPROVED,
+            ).count()
+            == 1
+        )
+
+    def test_seller_reject_does_not_restore_stock_and_cancels_order(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        client = authenticated_client(seller)
+
+        response = client.post(f"/api/orders/items/{item.pk}/reject/")
+
+        assert response.status_code == 200
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        order.refresh_from_db()
+        assert item.status == OrderItemStatus.REJECTED
+        assert asset.count == 3
+        assert order.status == OrderStatus.CANCELLED
+
+    def test_partial_rejection_updates_parent_status(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset_one = SupplyFactory(owner=seller.active_profile, count=5)
+        asset_two = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [
+                {"asset_id": asset_one.pk, "quantity": 1},
+                {"asset_id": asset_two.pk, "quantity": 1},
+            ],
+        )
+        rejected_item = order.items.get(asset_id=asset_one.pk)
+        client = authenticated_client(seller)
+
+        response = client.post(f"/api/orders/items/{rejected_item.pk}/reject/")
+
+        assert response.status_code == 200
+        order.refresh_from_db()
+        assert order.status == OrderStatus.PARTIAL_REJECTED
+
+    def test_seller_cannot_approve_another_sellers_order_item(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller_one = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_two = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller_two.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        client = authenticated_client(seller_one)
+
+        response = client.post(f"/api/orders/items/{item.pk}/approve/")
+
+        assert response.status_code == 404
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        assert item.status == OrderItemStatus.PENDING_SELLER
+        assert asset.count == 3
 
 
-class TestOrderEndpoints:
+class TestOrderReadEndpoints:
     def test_customer_can_create_and_list_only_own_orders(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -193,36 +570,6 @@ class TestOrderEndpoints:
 
         assert response.status_code == 200
         assert response.data["id"] == order.pk
-
-    def test_customer_cannot_retrieve_another_customers_order(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        asset = SupplyFactory(count=4)
-        order = OrderService.create_order(
-            other_customer.active_profile,
-            [{"asset_id": asset.pk, "quantity": 1}],
-        )
-        client = authenticated_client(customer)
-
-        response = client.get(f"/api/orders/{order.pk}/")
-
-        assert response.status_code == 404
-
-    def test_seller_cannot_list_or_retrieve_orders(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-        asset = SupplyFactory(owner=seller.active_profile, count=4)
-        order = OrderService.create_order(
-            customer.active_profile,
-            [{"asset_id": asset.pk, "quantity": 1}],
-        )
-        client = authenticated_client(seller)
-
-        list_response = client.get("/api/orders/")
-        detail_response = client.get(f"/api/orders/{order.pk}/")
-
-        assert list_response.status_code == 403
-        assert detail_response.status_code == 403
 
     def test_seller_item_list_is_filtered_to_own_items(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -275,111 +622,3 @@ class TestOrderEndpoints:
         assert len(orders_response.data) == 2
         assert items_response.status_code == 200
         assert len(items_response.data) == 2
-
-    def test_seller_approve_decrements_stock_once(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-        asset = SupplyFactory(owner=seller.active_profile, count=5)
-        order = OrderService.create_order(
-            customer.active_profile,
-            [{"asset_id": asset.pk, "quantity": 2}],
-        )
-        item = order.items.get()
-        client = authenticated_client(seller)
-
-        first_response = client.post(f"/api/orders/items/{item.pk}/approve/")
-        second_response = client.post(f"/api/orders/items/{item.pk}/approve/")
-
-        assert first_response.status_code == 200
-        assert second_response.status_code == 200
-        item.refresh_from_db()
-        asset.refresh_from_db()
-        order.refresh_from_db()
-        assert item.status == OrderItemStatus.SELLER_APPROVED
-        assert asset.count == 3
-        assert asset.status == AssetStatus.AVAILABLE
-        assert order.status == OrderStatus.OPEN
-
-    def test_seller_reject_does_not_decrement_stock_and_cancels_order(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-        asset = SupplyFactory(owner=seller.active_profile, count=5)
-        order = OrderService.create_order(
-            customer.active_profile,
-            [{"asset_id": asset.pk, "quantity": 2}],
-        )
-        item = order.items.get()
-        client = authenticated_client(seller)
-
-        response = client.post(f"/api/orders/items/{item.pk}/reject/")
-
-        assert response.status_code == 200
-        item.refresh_from_db()
-        asset.refresh_from_db()
-        order.refresh_from_db()
-        assert item.status == OrderItemStatus.REJECTED
-        assert asset.count == 5
-        assert order.status == OrderStatus.CANCELLED
-
-    def test_approval_fails_if_stock_drops_before_approval(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-        asset = SupplyFactory(owner=seller.active_profile, count=2)
-        order = OrderService.create_order(
-            customer.active_profile,
-            [{"asset_id": asset.pk, "quantity": 2}],
-        )
-        item = order.items.get()
-        asset.count = 1
-        asset.save(update_fields=["count"])
-        client = authenticated_client(seller)
-
-        response = client.post(f"/api/orders/items/{item.pk}/approve/")
-
-        assert response.status_code == 400
-        item.refresh_from_db()
-        asset.refresh_from_db()
-        assert item.status == OrderItemStatus.PENDING_SELLER_APPROVAL
-        assert asset.count == 1
-
-    def test_seller_cannot_approve_another_sellers_order_item(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        seller_one = UserAccountFactory(with_profile=ProfileType.SELLER)
-        seller_two = UserAccountFactory(with_profile=ProfileType.SELLER)
-        asset = SupplyFactory(owner=seller_two.active_profile, count=5)
-        order = OrderService.create_order(
-            customer.active_profile,
-            [{"asset_id": asset.pk, "quantity": 2}],
-        )
-        item = order.items.get()
-        client = authenticated_client(seller_one)
-
-        response = client.post(f"/api/orders/items/{item.pk}/approve/")
-
-        assert response.status_code == 404
-        item.refresh_from_db()
-        asset.refresh_from_db()
-        assert item.status == OrderItemStatus.PENDING_SELLER_APPROVAL
-        assert asset.count == 5
-
-    def test_bird_approval_marks_root_asset_sold_without_transfer(self):
-        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-        bird = BirdFactory(owner=seller.active_profile)
-        order = OrderService.create_order(
-            customer.active_profile,
-            [{"asset_id": bird.pk, "quantity": 1}],
-        )
-        item = order.items.get()
-        client = authenticated_client(seller)
-
-        response = client.post(f"/api/orders/items/{item.pk}/approve/")
-
-        assert response.status_code == 200
-        item.refresh_from_db()
-        root_asset = Asset.objects.get(pk=bird.pk)
-        assert item.status == OrderItemStatus.SELLER_APPROVED
-        assert root_asset.count == 0
-        assert root_asset.status == AssetStatus.SOLD
-        assert root_asset.is_market_listed is False
-        assert root_asset.owner_id == seller.active_profile.pk

@@ -1,35 +1,50 @@
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.general.authorizations import HasAppAccess
 from apps.orders.models import Order, OrderItem
 from apps.orders.serializers import (
+    CartItemCreateSerializer,
+    CartItemUpdateSerializer,
+    CartSerializer,
+    CheckoutSerializer,
     OrderCreateSerializer,
     OrderDetailSerializer,
     OrderItemSerializer,
     OrderListSerializer,
+    OrderSummarySerializer,
 )
-from apps.orders.services import OrderItemService
+from apps.orders.services import (
+    CartService,
+    OrderCheckoutService,
+    OrderItemService,
+    order_item_queryset,
+)
 from apps.users.constants import ProfileType
 
 
-def order_item_queryset():
-    return OrderItem.objects.select_related(
-        "order",
-        "asset",
-        "seller",
-        "seller__user",
-    ).order_by("-created")
+class ActiveCustomerPermission(permissions.BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        active_profile = getattr(user, "active_profile", None)
+        return (
+            active_profile is not None
+            and active_profile.type == ProfileType.CUSTOMER
+        )
 
 
 @extend_schema_view(
     create=extend_schema(
         tags=["Orders"],
         request=OrderCreateSerializer,
-        responses={201: OrderDetailSerializer},
+        responses={201: OrderSummarySerializer},
     )
 )
 class OrderViewSet(
@@ -76,12 +91,113 @@ class OrderViewSet(
         serializer.is_valid(raise_exception=True)
         order = serializer.save()
 
-        response_serializer = OrderDetailSerializer(
+        response_serializer = OrderSummarySerializer(
             order,
             context=self.get_serializer_context(),
         )
         return Response(
             response_serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema_view(
+    get=extend_schema(tags=["Orders"], responses={200: CartSerializer}),
+)
+class CartAPIView(APIView):
+    permission_classes = [ActiveCustomerPermission]
+
+    def get(self, request):
+        cart = CartService.get_or_create_active_cart(
+            request.user.active_profile
+        )
+        return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Orders"],
+        request=CartItemCreateSerializer,
+        responses={201: CartSerializer},
+    ),
+)
+class CartItemCreateAPIView(APIView):
+    permission_classes = [ActiveCustomerPermission]
+
+    def post(self, request):
+        serializer = CartItemCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cart = CartService.add_item(
+            request.user.active_profile,
+            serializer.validated_data["asset_id"],
+            serializer.validated_data["quantity"],
+        )
+        return Response(
+            CartSerializer(cart).data, status=status.HTTP_201_CREATED
+        )
+
+
+@extend_schema_view(
+    patch=extend_schema(
+        tags=["Orders"],
+        request=CartItemUpdateSerializer,
+        responses={200: CartSerializer},
+    ),
+    delete=extend_schema(
+        tags=["Orders"],
+        request=None,
+        responses={204: None},
+    ),
+)
+class CartItemDetailAPIView(APIView):
+    permission_classes = [ActiveCustomerPermission]
+
+    def patch(self, request, pk):
+        serializer = CartItemUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cart = CartService.update_item(
+            request.user.active_profile,
+            pk,
+            serializer.validated_data["quantity"],
+        )
+        return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk):
+        CartService.remove_item(request.user.active_profile, pk)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema_view(
+    delete=extend_schema(
+        tags=["Orders"],
+        request=None,
+        responses={204: None},
+    ),
+)
+class CartClearAPIView(APIView):
+    permission_classes = [ActiveCustomerPermission]
+
+    def delete(self, request):
+        CartService.clear_cart(request.user.active_profile)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Orders"],
+        request=CheckoutSerializer,
+        responses={201: OrderSummarySerializer},
+    ),
+)
+class CheckoutAPIView(APIView):
+    permission_classes = [ActiveCustomerPermission]
+
+    def post(self, request):
+        serializer = CheckoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        order = OrderCheckoutService.checkout_cart(request.user.active_profile)
+        return Response(
+            OrderSummarySerializer(order).data,
             status=status.HTTP_201_CREATED,
         )
 

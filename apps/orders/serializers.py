@@ -1,11 +1,16 @@
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema_field
 from drf_writable_nested import WritableNestedModelSerializer
 from rest_framework import serializers
 
 from apps.assets.models import Asset
-from apps.orders.models import Order, OrderItem
-from apps.orders.services import OrderService
+from apps.orders.models import Cart, CartItem, Order, OrderItem
+from apps.orders.services import OrderCheckoutService
+
+
+def format_money(value):
+    return f"{value:.2f}"  # noqa
 
 
 class OrderItemCreateInputSerializer(serializers.ModelSerializer):
@@ -39,7 +44,23 @@ class OrderCreateSerializer(WritableNestedModelSerializer):
         request = self.context.get("request")
         customer = request.user.active_profile
         items_payload = validated_data["items"]
-        return OrderService.create_order(customer, items_payload)
+        return OrderCheckoutService.create_order_from_items(
+            customer,
+            items_payload,
+        )
+
+
+class CheckoutSerializer(serializers.Serializer):
+    pass
+
+
+class CartItemCreateSerializer(serializers.Serializer):
+    asset_id = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class CartItemUpdateSerializer(serializers.Serializer):
+    quantity = serializers.IntegerField(min_value=1)
 
 
 class AssetOrderSerializer(serializers.ModelSerializer):
@@ -56,6 +77,81 @@ class AssetOrderSerializer(serializers.ModelSerializer):
             "count",
         ]
         read_only_fields = fields
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+    asset_id = serializers.IntegerField(read_only=True)
+    title = serializers.CharField(source="asset.title", read_only=True)
+    seller_id = serializers.IntegerField(read_only=True)
+    seller_nickname = serializers.CharField(
+        source="seller.nickname",
+        read_only=True,
+        allow_blank=True,
+    )
+    unit_price = serializers.DecimalField(
+        source="unit_price_snapshot",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CartItem
+        fields = [
+            "id",
+            "asset_id",
+            "title",
+            "seller_id",
+            "seller_nickname",
+            "quantity",
+            "unit_price",
+            "total",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(
+        serializers.DecimalField(max_digits=10, decimal_places=2)
+    )
+    def get_total(self, obj):
+        return format_money(obj.quantity * obj.unit_price_snapshot)
+
+
+class CartSerializer(serializers.ModelSerializer):
+    items = CartItemSerializer(many=True, read_only=True)
+    subtotal = serializers.SerializerMethodField()
+    items_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cart
+        fields = [
+            "id",
+            "status",
+            "items",
+            "subtotal",
+            "items_count",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(
+        serializers.DecimalField(max_digits=10, decimal_places=2)
+    )
+    def get_subtotal(self, obj):
+        subtotal = sum(
+            (
+                item.quantity * item.unit_price_snapshot
+                for item in obj.items.all()
+            ),
+            Decimal("0.00"),
+        )
+        return format_money(subtotal)
+
+    def get_items_count(self, obj) -> int:
+        return obj.items.count()
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -84,6 +180,44 @@ class OrderItemSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class OrderItemSummarySerializer(serializers.ModelSerializer):
+    asset_id = serializers.IntegerField(read_only=True)
+    title = serializers.CharField(source="asset.title", read_only=True)
+    seller_id = serializers.IntegerField(read_only=True)
+    seller_nickname = serializers.CharField(
+        source="seller.nickname",
+        read_only=True,
+        allow_blank=True,
+    )
+    unit_price = serializers.DecimalField(
+        source="unit_price_snapshot",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    total = serializers.DecimalField(
+        source="total_price",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id",
+            "asset_id",
+            "title",
+            "seller_id",
+            "seller_nickname",
+            "quantity",
+            "unit_price",
+            "total",
+            "status",
+        ]
+        read_only_fields = fields
+
+
 class OrderListSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
@@ -93,6 +227,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "status",
+            "total_price",
             "item_count",
             "total_amount",
             "created",
@@ -104,10 +239,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         return obj.items.count()
 
     def get_total_amount(self, obj) -> str:
-        total = sum(
-            (item.total_price for item in obj.items.all()), Decimal("0.00")
-        )
-        return str(total)
+        return str(obj.total_price)
 
 
 class OrderDetailSerializer(OrderListSerializer):
@@ -117,3 +249,27 @@ class OrderDetailSerializer(OrderListSerializer):
         fields = OrderListSerializer.Meta.fields + [
             "items",
         ]
+
+
+class OrderSummarySerializer(serializers.ModelSerializer):
+    items = OrderItemSummarySerializer(many=True, read_only=True)
+    sellers_involved = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            "id",
+            "status",
+            "total_price",
+            "sellers_involved",
+            "items",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(
+        serializers.ListField(child=serializers.IntegerField())
+    )
+    def get_sellers_involved(self, obj):
+        return sorted({item.seller_id for item in obj.items.all()})
