@@ -469,8 +469,100 @@ class TestOrderServiceAndSellerDecisions:
 
         asset_one.refresh_from_db()
         asset_two.refresh_from_db()
-        assert asset_one.count == 5
-        assert asset_two.count == 3
+        assert asset_one.count == 3
+        assert asset_two.count == 2
+
+    def test_seller_approve_does_not_decrement_stock_again(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        client = authenticated_client(seller)
+
+        first_response = client.post(f"/api/orders/items/{item.pk}/approve/")
+        second_response = client.post(f"/api/orders/items/{item.pk}/approve/")
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        order.refresh_from_db()
+        assert item.status == OrderItemStatus.APPROVED
+        assert asset.count == 3
+        assert order.status == OrderStatus.PROCESSING
+        assert (
+            OrderEvent.objects.filter(
+                order=order,
+                event_type=OrderEventType.SELLER_APPROVED,
+            ).count()
+            == 1
+        )
+
+    def test_seller_reject_does_not_restore_stock_and_cancels_order(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        client = authenticated_client(seller)
+
+        response = client.post(f"/api/orders/items/{item.pk}/reject/")
+
+        assert response.status_code == 200
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        order.refresh_from_db()
+        assert item.status == OrderItemStatus.REJECTED
+        assert asset.count == 3
+        assert order.status == OrderStatus.CANCELLED
+
+    def test_partial_rejection_updates_parent_status(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset_one = SupplyFactory(owner=seller.active_profile, count=5)
+        asset_two = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [
+                {"asset_id": asset_one.pk, "quantity": 1},
+                {"asset_id": asset_two.pk, "quantity": 1},
+            ],
+        )
+        rejected_item = order.items.get(asset_id=asset_one.pk)
+        client = authenticated_client(seller)
+
+        response = client.post(f"/api/orders/items/{rejected_item.pk}/reject/")
+
+        assert response.status_code == 200
+        order.refresh_from_db()
+        assert order.status == OrderStatus.PARTIAL_REJECTED
+
+    def test_seller_cannot_approve_another_sellers_order_item(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller_one = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_two = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller_two.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        client = authenticated_client(seller_one)
+
+        response = client.post(f"/api/orders/items/{item.pk}/approve/")
+
+        assert response.status_code == 404
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        assert item.status == OrderItemStatus.PENDING_SELLER
+        assert asset.count == 3
 
     def test_seller_approve_decrements_stock_once(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

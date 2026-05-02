@@ -754,7 +754,7 @@ Current e-commerce foundation:
 - seller rejection updates item/order statuses but does not change stock
 - lightweight order events exist as notification placeholders
 - this does not mean market workflows are complete yet
-- payment review, handoff, settlement, and ownership transfer are still not implemented
+- payment review, handoff, stock restoration after rejection, settlement, and ownership transfer are still not implemented
 
 Current product asset visibility:
 

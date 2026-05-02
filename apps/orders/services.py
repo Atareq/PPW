@@ -535,9 +535,46 @@ class OrderItemService:
         asset.save(update_fields=update_fields)
 
     @staticmethod
-    def _validate_seller_owns_item(item, seller):
-        if item.seller_id != seller.pk:
-            raise ValidationError("Order item does not belong to this seller.")
+    def _create_reserved_order(
+        customer_profile,
+        items_payload,
+        asset_map,
+        seller_map,
+    ):
+        order = Order.objects.create(
+            owner=customer_profile,
+            status=OrderStatus.PENDING,
+            total_price=Decimal("0.00"),
+        )
+
+        order_items = []
+        total_price = Decimal("0.00")
+        for item_payload in items_payload:
+            asset = asset_map[item_payload["asset_id"]]
+            quantity = item_payload["quantity"]
+            unit_price = asset.price
+            item_total = quantity * unit_price
+            total_price += item_total
+
+            order_items.append(
+                OrderItem(
+                    order=order,
+                    asset=asset,
+                    seller=seller_map[asset.owner_id],
+                    quantity=quantity,
+                    unit_price_snapshot=unit_price,
+                    total_price=item_total,
+                    status=OrderItemStatus.PENDING_SELLER,
+                )
+            )
+            OrderCheckoutService._reserve_stock(asset, quantity)
+
+        OrderItem.objects.bulk_create(order_items)
+        order.total_price = total_price
+        order.save(update_fields=["total_price", "modified"])
+        order = OrderService.get_order(order.pk)
+        OrderCheckoutService._create_checkout_events(order)
+        return OrderService.get_order(order.pk)
 
     @staticmethod
     def _create_seller_approved_event(item):
