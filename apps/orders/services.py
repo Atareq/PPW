@@ -567,7 +567,7 @@ class OrderItemService:
                     status=OrderItemStatus.PENDING_SELLER,
                 )
             )
-            OrderCheckoutService._reserve_stock(asset, quantity)
+            OrderCheckoutService._ensure_stock_available(asset, quantity)
 
         OrderItem.objects.bulk_create(order_items)
         order.total_price = total_price
