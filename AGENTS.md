@@ -311,6 +311,7 @@ Current responsibilities:
 - cart, checkout, and compatibility direct-order API / serializer / validator / service flow
 - seller approval and rejection of individual order items
 - seller-approval-time stock decrement for fixed-price market order items
+- seller-decision timeout auto-cancellation for stale pending order items
 - lightweight order event records for future notification hooks
 
 Important note:
@@ -365,12 +366,14 @@ Current order behavior:
 - seller approval is idempotent when the item is already `approved`
 - seller rejection changes `pending_seller` to `rejected` only; it does not change stock, asset status, or market listing
 - seller rejection is idempotent when the item is already `rejected`
+- pending seller order items older than `ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS` are automatically moved to `cancelled` by a Celery task
+- auto-cancelling a pending order item refreshes the parent order status but does not change stock, asset status, or market listing
 - aggregate order statuses are `pending`, `processing`, `completed`, `cancelled`, and `partial_rejected`
 - if all order items are rejected or cancelled, the aggregate order status becomes `cancelled`
 - if all order items are completed, the aggregate order status becomes `completed`
 - approved, awaiting-payment-review, ready-handoff, or completed items can move the aggregate order status to `processing`
 - any rejected item plus any non-rejected item makes the aggregate order status `partial_rejected`
-- lightweight `OrderEvent` records are created for order creation, seller pending item notifications, and seller approval
+- lightweight `OrderEvent` records are created for order creation, seller pending item notifications, seller approval, and seller timeout auto-cancellation
 - seller rejection currently does not create an `OrderEvent`
 - ownership transfer is not implemented yet
 
@@ -379,6 +382,7 @@ Current order service implementation names:
 - `OrderCheckoutService._create_pending_order()` creates the order and pending seller items for cart checkout and direct order creation
 - `OrderCheckoutService._ensure_stock_available()` validates count during checkout/order creation without mutating assets; purchase validators enforce listed/status/seller/customer rules before this helper runs
 - `OrderItemService._apply_stock_deduction()` decrements stock on seller approval and marks zero-count assets sold/unlisted
+- `OrderItemService.cancel_expired_pending_items()` cancels stale `pending_seller` order items whose `created` timestamp is outside the configured seller decision window
 
 ### `apps.auctions`
 
@@ -584,7 +588,7 @@ OrderEvent is a lightweight record for order-related notification and traceabili
 Current design choice:
 
 - events are written synchronously by order services
-- current event types include order creation, seller pending item, and seller approval
+- current event types include order creation, seller pending item, seller approval, and seller timeout auto-cancellation
 - there is no push delivery, async notification task, or external notification integration yet
 
 #### Auction
@@ -903,6 +907,7 @@ Current order permission pattern:
 - cart schema tags are `Cart`; checkout schema tags are `Checkout`
 - managers currently pass `HasAppAccess` for cart and checkout because manager bypass remains global; service validation still requires a customer profile for cart/checkout execution
 - dynamic per-user resource permissions are planned after most resources are implemented
+- authenticated users with no active valid role are denied by `HasAppAccess` before resource action checks run
 - sellers must switch to customer mode before using cart or checkout endpoints
 - sellers do not access `/api/orders/`; seller order work happens through order-item endpoints
 - `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
@@ -964,6 +969,7 @@ The codebase currently provides:
 - order validators and services for stock-validating fixed-price order creation
 - seller item approval/rejection foundation
 - seller-approval-time stock decrement for market order items
+- seller-decision timeout auto-cancellation for stale pending market order items
 - lightweight order events for future notification hooks
 - auctions, auction items, bids, and events
 - auction creation, bidding, limited update locking, cancellation, buy-now, and close/winner-resolution flows
@@ -975,7 +981,7 @@ The codebase currently provides:
 Current API documentation coverage:
 
 - mounted DRF routers, APIViews, and manual `GenericViewSet.as_view(...)` endpoints appear in the schema
-- custom actions in auctions, auth, cart, checkout, and order-item approval/rejection have targeted schema annotations
+- custom actions in auctions, auth, manual cart/checkout ViewSets, and order-item approval/rejection have targeted schema annotations
 - schema tests cover auth policy for `/api/schema/`, Bearer security output, cart/checkout paths, and representative custom/manual endpoints
 
 The codebase does not yet fully implement:
@@ -1233,7 +1239,7 @@ Celery is now part of the current repo implementation.
 Current implementation:
 
 - `ppw/celery.py` initializes the Celery app
-- `ppw/settings/base.py` configures broker, result backend, eager-mode test flags, and beat schedule
+- `ppw/settings/base.py` configures broker, result backend, eager-mode test flags, order-item seller-decision timeout days, and beat schedule
 - Docker Compose runs `redis`, `celery_worker`, and `celery_beat`
 - the shared container image switches behavior through `APP_ROLE`
 
@@ -1242,6 +1248,7 @@ Rules:
 - do not execute time-based or heavy operations inside the request/response cycle
 - use Celery for:
   - auction lifecycle updates and auction settling
+  - stale pending seller order-item cancellation
   - delayed or scheduled transitions
   - notifications later
   - non-critical async work
@@ -1304,6 +1311,24 @@ It must be:
 - background-driven
 - centrally controlled
 
+### Order Item Seller Timeout
+
+Current implementation approach:
+
+- `ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS` defaults to `3`
+- Celery Beat runs `orders.tasks.cancel_expired_pending_order_items` hourly
+- `OrderItemService.cancel_expired_pending_items()` selects `pending_seller` items whose `created` timestamp is older than the configured timeout
+- each stale item is locked before it is moved to `cancelled`
+- parent `Order.status` is refreshed after each item cancellation
+- `seller_auto_cancelled` `OrderEvent` rows are written for the customer/order owner
+- auto-cancellation never restores or decrements stock and never changes asset status or market listing state
+
+Rules:
+
+- seller timeout cancellation is per `OrderItem`, not per `Order`
+- timeout starts from `OrderItem.created`
+- task execution must remain idempotent and skip non-pending items
+
 ## Guidance For Future Codex Work
 
 When working on this repo:
@@ -1332,9 +1357,9 @@ If adding new modules:
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
 - current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `37 passed`
+- current targeted order baseline: `pytest tests/orders -q` passes with `45 passed`
 - current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `167 passed`
+- current full-suite baseline: `pytest -q` passes with `175 passed`
 - pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior

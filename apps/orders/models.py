@@ -39,6 +39,10 @@ class OrderEventType(models.TextChoices):
     ORDER_CREATED = "order_created", "Order Created"
     SELLER_PENDING_ITEM = "seller_pending_item", "Seller Pending Item"
     SELLER_APPROVED = "seller_approved", "Seller Approved"
+    SELLER_AUTO_CANCELLED = (
+        "seller_auto_cancelled",
+        "Seller Auto Cancelled",
+    )
 
 
 class Cart(BaseModel):

@@ -1,5 +1,8 @@
+from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
+from django.utils import timezone
 import pytest
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
@@ -12,11 +15,13 @@ from apps.orders.models import (
     CartStatus,
     OrderEvent,
     OrderEventType,
+    OrderItem,
     OrderItemStatus,
     OrderStatus,
 )
 from apps.orders.serializers import OrderCreateSerializer
-from apps.orders.services import CartService, OrderService
+from apps.orders.services import CartService, OrderItemService, OrderService
+from apps.orders.tasks import cancel_expired_pending_order_items
 from apps.orders.validators import OrderCreationValidator
 from apps.users.constants import ProfileType
 from tests.factories import (
@@ -520,6 +525,168 @@ class TestOrderServiceAndSellerDecisions:
         assert item.status == OrderItemStatus.REJECTED
         assert asset.count == 5
         assert order.status == OrderStatus.CANCELLED
+
+    def test_auto_cancel_stale_pending_item_updates_order_and_event(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 2}],
+        )
+        item = order.items.get()
+        stale_time = timezone.now() - timedelta(days=4)
+        OrderItem.objects.filter(pk=item.pk).update(created=stale_time)
+
+        cancelled_count = OrderItemService.cancel_expired_pending_items(
+            timeout_days=3
+        )
+
+        item.refresh_from_db()
+        asset.refresh_from_db()
+        order.refresh_from_db()
+        event = OrderEvent.objects.get(
+            order=order,
+            item=item,
+            event_type=OrderEventType.SELLER_AUTO_CANCELLED,
+        )
+        assert cancelled_count == 1
+        assert item.status == OrderItemStatus.CANCELLED
+        assert order.status == OrderStatus.CANCELLED
+        assert asset.count == 5
+        assert asset.status == AssetStatus.AVAILABLE
+        assert asset.is_market_listed is True
+        assert event.recipient_id == order.owner_id
+        assert event.metadata == {
+            "asset_id": asset.pk,
+            "seller_id": seller.active_profile.pk,
+            "timeout_days": 3,
+        }
+
+    def test_auto_cancel_stale_item_can_make_order_partial_rejected(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        asset_one = SupplyFactory(owner=seller.active_profile, count=5)
+        asset_two = SupplyFactory(owner=seller.active_profile, count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [
+                {"asset_id": asset_one.pk, "quantity": 1},
+                {"asset_id": asset_two.pk, "quantity": 1},
+            ],
+        )
+        stale_item = order.items.get(asset_id=asset_one.pk)
+        fresh_item = order.items.get(asset_id=asset_two.pk)
+        OrderItem.objects.filter(pk=stale_item.pk).update(
+            created=timezone.now() - timedelta(days=4)
+        )
+
+        cancelled_count = OrderItemService.cancel_expired_pending_items(
+            timeout_days=3
+        )
+
+        stale_item.refresh_from_db()
+        fresh_item.refresh_from_db()
+        order.refresh_from_db()
+        assert cancelled_count == 1
+        assert stale_item.status == OrderItemStatus.CANCELLED
+        assert fresh_item.status == OrderItemStatus.PENDING_SELLER
+        assert order.status == OrderStatus.PARTIAL_REJECTED
+
+    def test_auto_cancel_skips_fresh_pending_item(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 1}],
+        )
+        item = order.items.get()
+
+        cancelled_count = OrderItemService.cancel_expired_pending_items(
+            timeout_days=3
+        )
+
+        item.refresh_from_db()
+        order.refresh_from_db()
+        assert cancelled_count == 0
+        assert item.status == OrderItemStatus.PENDING_SELLER
+        assert order.status == OrderStatus.PENDING
+        assert not OrderEvent.objects.filter(
+            order=order,
+            event_type=OrderEventType.SELLER_AUTO_CANCELLED,
+        ).exists()
+
+    def test_auto_cancel_skips_non_pending_items(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        approved_asset = SupplyFactory(count=5)
+        rejected_asset = SupplyFactory(count=5)
+        cancelled_asset = SupplyFactory(count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [
+                {"asset_id": approved_asset.pk, "quantity": 1},
+                {"asset_id": rejected_asset.pk, "quantity": 1},
+                {"asset_id": cancelled_asset.pk, "quantity": 1},
+            ],
+        )
+        stale_time = timezone.now() - timedelta(days=4)
+        order.items.update(created=stale_time)
+        order.items.filter(asset=approved_asset).update(
+            status=OrderItemStatus.APPROVED
+        )
+        order.items.filter(asset=rejected_asset).update(
+            status=OrderItemStatus.REJECTED
+        )
+        order.items.filter(asset=cancelled_asset).update(
+            status=OrderItemStatus.CANCELLED
+        )
+
+        cancelled_count = OrderItemService.cancel_expired_pending_items(
+            timeout_days=3
+        )
+
+        assert cancelled_count == 0
+        assert not OrderEvent.objects.filter(
+            order=order,
+            event_type=OrderEventType.SELLER_AUTO_CANCELLED,
+        ).exists()
+
+    @override_settings(ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS=1)
+    def test_auto_cancel_uses_timeout_setting_override(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 1}],
+        )
+        item = order.items.get()
+        OrderItem.objects.filter(pk=item.pk).update(
+            created=timezone.now() - timedelta(days=2)
+        )
+
+        cancelled_count = OrderItemService.cancel_expired_pending_items()
+
+        item.refresh_from_db()
+        assert cancelled_count == 1
+        assert item.status == OrderItemStatus.CANCELLED
+
+    def test_auto_cancel_task_delegates_to_service_layer(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=5)
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 1}],
+        )
+        item = order.items.get()
+        OrderItem.objects.filter(pk=item.pk).update(
+            created=timezone.now() - timedelta(days=4)
+        )
+
+        cancelled_count = cancel_expired_pending_order_items()
+
+        item.refresh_from_db()
+        assert cancelled_count == 1
+        assert item.status == OrderItemStatus.CANCELLED
 
     def test_seller_approval_marks_sold_out_asset_sold_and_unlisted(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
