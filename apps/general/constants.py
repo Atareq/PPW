@@ -48,6 +48,16 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
     ],
+    "CART": [
+        "retrieve",
+        "post",
+        "patch",
+        "remove_cart_item",
+        "delete",
+    ],
+    "CHECKOUT": [
+        "post",
+    ],
     "AUCTION": [
         "list",
         "retrieve",

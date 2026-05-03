@@ -13,19 +13,21 @@ When current implementation and future intent differ, current code is the source
 
 ## Project Summary
 
-PPW is a Django + DRF backend for a pigeon marketplace and auction platform.
+PPW is a Django + DRF backend for a bird marketplace and auction platform.
 
-The platform supports and will continue to expand around:
+The platform currently supports and will continue to expand around:
 
 - user authentication with multiple profile types
 - bird ownership and bird listing
 - auction creation and bidding
-- admin-assisted post-auction completion
-- future marketplace, pedigree, QR, reviews, points, chat, and promotion modules
+- scheduled auction closing with winner resolution
+- fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
+- planned admin-assisted post-auction and marketplace completion
+- future media, pedigree, QR, reviews, points, chat, and promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
 
-Core business reality:
+Core business reality and intended product policy:
 
 - no in-app payment gateway
 - no automated shipping or logistics integration
@@ -33,13 +35,17 @@ Core business reality:
 - handoff or delivery is manually confirmed by seller
 - ownership transfer happens only after the required manual confirmations
 
+Current implementation caveat:
+
+- manual payment review, seller handoff confirmation, and ownership transfer workflows are not implemented yet
+
 The project must remain a modular monolith. Simplicity and correctness are preferred over feature richness and abstractions.
 
 ## Technology Stack
 
-- Python
-- Django
-- Django REST Framework
+- Python 3.11
+- Django 4.2.15
+- Django REST Framework 3.16.1
 - drf-spectacular
 - PostgreSQL
 - Docker
@@ -53,6 +59,7 @@ The project must remain a modular monolith. Simplicity and correctness are prefe
 - django-filter
 - safedelete
 - phonenumber_field
+- drf-writable-nested
 
 General approach:
 
@@ -96,7 +103,7 @@ Current service roles:
 - `celery_worker`: background task execution
 - `celery_beat`: scheduled task runner
 - `redis`: Celery broker and result backend
-- `db`: local PostgreSQL service in local Docker only
+- `db`: PostgreSQL service defined by the local and production Compose overrides
 - `nginx`: production reverse proxy in production Docker only
 
 Current container behavior:
@@ -105,7 +112,9 @@ Current container behavior:
 - web role runs migrations and `collectstatic` before Gunicorn starts
 - worker and beat roles reuse the same image and switch behavior through `APP_ROLE`
 - local Docker uses `.env` and bind mounts the repo into `/app`
-- production Docker uses `.env.prod` and serves static files through Nginx
+- local PostgreSQL is exposed on host port `5433` and container port `5432`
+- production Docker uses `.env.prod` for the Django and Celery services, keeps a Compose-managed `db` service using `.env`, and serves static files through Nginx
+- `docker/entrypoint.sh` expects `DB_HOST` and `DB_PORT` to be available for every container role
 
 ### `apps.authentication`
 
@@ -117,18 +126,39 @@ Current responsibilities:
 - active profile switching
 - JWT profile-claim synchronization through `ProfileSyncJWTAuthentication`
 
+Current auth API:
+
+- `/api/auth/register/customer/`
+  - `POST`: public customer registration
+- `/api/auth/register/manager/`
+  - `POST`: currently public manager registration; this is a known security gap
+- `/api/auth/login/`
+  - `POST`: token pair login using the custom token serializer
+- `/api/auth/token/refresh/`
+  - `POST`: SimpleJWT refresh endpoint
+- `/api/auth/switch-profile/`
+  - `POST`: authenticated active profile switch by `new_profile` type value
+
 Current auth behavior:
 
 - `ppw/settings/base.py` uses `apps.authentication.authentication.ProfileSyncJWTAuthentication`
 - JWTs must include a `profile` claim
+- token `profile` values use the exact `ProfileType` stored values:
+  - `Seller`
+  - `Customer`
+  - `Manager`
 - `build_token_for_user_role()` writes:
   - `profile`
   - `user_id`
   - `is_activated`
+- `build_token_for_user()` reads the first `Profile` row with `is_active=True`; it does not call the stricter `user.active_profile` property
 - a token without `profile` is rejected with authentication failure
 - if token `profile` differs from `request.user.role`, authentication attempts `switch_user_profile(user, new_profile_type=token_profile)`
 - if profile switching fails, authentication continues with the current active profile
 - `switch_user_profile()` returns a `(success, profile_type)` style result
+- `switch_user_profile()` switches by profile type, not profile id
+- `switch_user_profile()` currently refuses to switch away from a current `Manager` role
+- `switch_user_profile()` does not currently filter the target profile by `activated`, `is_valid`, or `deleted__isnull=True` before setting `is_active=True`
 
 Must not own:
 
@@ -145,11 +175,28 @@ Current responsibilities:
 - profile validity and activation state
 - profile-level business identity
 
+Current user/profile API:
+
+- `/api/users/admin/sellers/`
+  - admin/staff CRUD for seller profiles through `SellerProfileAdminViewSet`
+- `/api/users/admin/customers/`
+  - admin/staff CRUD for customer profiles through `CustomerProfileAdminViewSet`
+- `/api/users/mobile/sellers/`
+  - authenticated user-facing seller profile API
+- `/api/users/mobile/customers/`
+  - authenticated user-facing customer profile API
+
 Current profile behavior:
 
 - `active_profile` requires `is_active=True`, `is_valid=True`, and `activated=True`
 - `Profile.is_valid` is the current punishment / disabled-profile flag
-- exactly one active profile per user is enforced through the active-profile uniqueness constraint
+- exactly one `is_active=True` profile per user is enforced through the active-profile uniqueness constraint
+- persisted profile type values are title-case strings: `Seller`, `Customer`, and `Manager`
+- `Profile.save()` derives `type` from the concrete subclass
+- customer registration creates an active customer profile
+- manager registration creates an active, activated manager profile and sets `is_staff=True`
+- mobile seller profile creation creates an inactive seller profile and overwrites submitted `nickname` with `user.username`
+- deleting active mobile customer or seller profiles marks them inactive/invalid, soft-deletes them, and attempts to switch to the first other profile
 
 Must not own:
 
@@ -181,6 +228,7 @@ Current model shape:
 
 - `Asset` remains the concrete shared base model
 - asset classification now uses `category`, not `asset_type`
+- `Asset.count` is still a shared integer field on `Asset`; product-specific stock modeling is not split out yet
 - current asset categories are:
   - `bird`
   - `supply`
@@ -196,6 +244,19 @@ Current model shape:
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
+
+Current bird API:
+
+- `/api/assets/birds/`
+
+Current bird API behavior:
+
+- `BirdViewSet` is a DRF `ModelViewSet`
+- `BirdSerializer` sets `owner` from `request.user.active_profile` on create
+- `owner` is read-only in API input
+- `BirdValidator` enforces seller ownership, future birthday rejection, non-negative flying speed, parent gender, parent age, and no self-parent
+- `Bird.save()` forces `count=1`
+- `Bird.save()` also inherits subtype category enforcement, so `Bird.category` is always `bird`
 
 Current product asset API:
 
@@ -249,12 +310,12 @@ Current responsibilities:
 - price snapshot storage for future settlement flows
 - cart, checkout, and compatibility direct-order API / serializer / validator / service flow
 - seller approval and rejection of individual order items
-- checkout-time stock reservation for fixed-price market order items
+- seller-approval-time stock decrement for fixed-price market order items
 - lightweight order event records for future notification hooks
 
 Important note:
 
-This app currently provides the first cart and fixed-price checkout workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, stock restoration after seller rejection, or ownership transfer workflow.
+This app currently provides the first cart and fixed-price checkout workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, or ownership transfer workflow.
 
 Current order API:
 
@@ -268,10 +329,10 @@ Current order API:
 - `/api/orders/cart/clear/`
   - `DELETE`: customer clears all active cart items
 - `/api/orders/checkout/`
-  - `POST`: customer converts the full active cart into an order and reserves stock
+  - `POST`: customer converts the full active cart into an order after validating stock availability
 - `/api/orders/`
   - `GET`: customer lists own orders; manager lists all orders
-  - `POST`: compatibility alias for direct order creation from market-listed seller assets; reserves stock immediately through the checkout service
+  - `POST`: compatibility alias for direct order creation from market-listed seller assets; validates stock availability without decrementing stock
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
@@ -286,21 +347,38 @@ Current order behavior:
 - each customer can have one active cart; active carts are created lazily
 - customers can add only available, market-listed assets with enough stock from valid seller profiles
 - adding the same asset to a cart increases the existing cart item quantity instead of creating a duplicate row
+- cart add and update store a `unit_price_snapshot`, but checkout revalidates using current DB asset prices
 - duplicate `asset_id` entries in one order payload are rejected
 - customers cannot order or cart assets owned by another profile on the same user account
 - checkout runs in a DB transaction and locks the active cart plus all checked-out asset rows
 - checkout revalidates cart items under lock and uses latest `Asset.price`, not stale cart price snapshots
+- checkout converts the active cart to `converted`; a later `GET /api/orders/cart/` lazily creates a new active cart
 - order creation stores `total_price` on `Order`, plus `unit_price_snapshot` and `total_price` on each item
-- checkout and direct `POST /api/orders/` decrement stock immediately to reserve inventory
-- when reserved stock reaches zero, the asset is marked `sold` and unlisted from the market
+- checkout and direct `POST /api/orders/` validate stock but do not decrement `Asset.count`
+- checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
 - new order items start as `pending_seller`
-- seller approval changes `pending_seller` to `approved` only; it does not decrement stock again
-- seller rejection changes `pending_seller` to `rejected` only; it does not restore stock in the current sprint
+- seller approval is the stock mutation point and revalidates the locked asset before decrementing `Asset.count`
+- seller approval revalidation checks that the asset is not soft-deleted, has status `available`, and has enough count
+- seller approval does not require the asset to still be market-listed
+- seller approval changes `pending_seller` to `approved` after successful stock decrement
+- when seller approval decrements stock to zero, the asset is marked `sold` and unlisted from the market
+- seller approval is idempotent when the item is already `approved`
+- seller rejection changes `pending_seller` to `rejected` only; it does not change stock, asset status, or market listing
+- seller rejection is idempotent when the item is already `rejected`
 - aggregate order statuses are `pending`, `processing`, `completed`, `cancelled`, and `partial_rejected`
 - if all order items are rejected or cancelled, the aggregate order status becomes `cancelled`
+- if all order items are completed, the aggregate order status becomes `completed`
+- approved, awaiting-payment-review, ready-handoff, or completed items can move the aggregate order status to `processing`
 - any rejected item plus any non-rejected item makes the aggregate order status `partial_rejected`
 - lightweight `OrderEvent` records are created for order creation, seller pending item notifications, and seller approval
+- seller rejection currently does not create an `OrderEvent`
 - ownership transfer is not implemented yet
+
+Current order service implementation names:
+
+- `OrderCheckoutService._create_pending_order()` creates the order and pending seller items for cart checkout and direct order creation
+- `OrderCheckoutService._ensure_stock_available()` validates count during checkout/order creation without mutating assets; purchase validators enforce listed/status/seller/customer rules before this helper runs
+- `OrderItemService._apply_stock_deduction()` decrements stock on seller approval and marks zero-count assets sold/unlisted
 
 ### `apps.auctions`
 
@@ -312,9 +390,66 @@ Current responsibilities:
 - auction events
 - auction business validation
 - bidding orchestration
-- settlement logic
+- auction closing and winner resolution logic
+- limited auction editing through service-layer update locking
 
 This app currently has the clearest service / validator / factory layering in the repo and should be the reference pattern for future backend workflows.
+
+Important note:
+
+Auction closing currently resolves winners and marks items sold or unsold. It does not implement payment review, handoff confirmation, ownership transfer, dispute handling, or post-auction market completion.
+
+Current auction API:
+
+- `/api/auctions/`
+  - `GET`: authenticated list of visible auctions for allowed roles
+  - `POST`: seller creates an auction with nested items
+- `/api/auctions/<id>/`
+  - `GET`: retrieve auction detail, subject to current object permission behavior
+  - `PATCH`: owner or manager updates only `title`, `description`, and `tags` while editable
+  - `DELETE`: owner or manager soft-deletes through the default `ModelViewSet` destroy path
+- `/api/auctions/my_auctions/`
+  - `GET`: seller lists own auctions, optionally filtered by `status`
+- `/api/auctions/active/`
+  - `GET`: list visible auctions whose time window is currently active
+- `/api/auctions/ending_soon/`
+  - `GET`: list visible auctions ending within the requested `minutes`
+- `/api/auctions/<id>/cancel/`
+  - `POST`: owner or manager cancels an auction through `AuctionService.cancel_auction`
+- `/api/auctions/<id>/close/`
+  - `POST`: admin/staff manually closes an auction and resolves item winners
+- `/api/auctions/items/`
+  - `GET`: read-only auction item list, optionally filtered by `auction_id`
+- `/api/auctions/items/<id>/place_bid/`
+  - `POST`: authenticated bid placement
+- `/api/auctions/items/<id>/buy_now/`
+  - `POST`: authenticated buy-now action
+- `/api/auctions/bids/`
+  - `GET`: read-only bid list, optionally filtered by `item_id`
+- `/api/auctions/bids/my_bids/`
+  - `GET`: authenticated current-profile bid list
+- `/api/auctions/events/`
+  - `GET`: read-only auction event list, optionally filtered by `auction_id`
+
+Current auction behavior:
+
+- auction type values are `single`, `multi`, `pair`, `breeding`, and `racing`
+- auction statuses are `active`, `ended`, `cancelled`, and `closed`
+- auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
+- auction creation requires future `start_time`, later `end_time`, and nested item payloads
+- `AuctionBusinessValidator` enforces item counts by auction type, pair gender rules, duplicate bird rejection, overlapping active-auction bird rejection, auto-extend config, and deposit config
+- `AuctionBusinessValidator` currently does not enforce that every submitted bird belongs to the requesting seller
+- `AuctionService.create_auction()` writes a `created` event
+- `BidBusinessValidator` requires a customer profile, an active time window, an active item, starting-price compliance, and minimum increment compliance
+- bid placement revalidates under an `AuctionItem` row lock before creating the bid
+- bid placement updates `AuctionItem.current_price`, optionally auto-extends, and writes a `bid_placed` event
+- auto-extend uses the module constant `AUCTION_AUTO_EXTEND_MINUTES = 10` as the trigger window and extends by `auction.auto_extend_minutes`
+- `AuctionService.update_auction()` allows updates only when status is `active`, the start time is still in the future, and no bids exist
+- scheduled closing is handled by Celery Beat through `auctions.tasks.close_expired_auctions`
+- `AuctionService.close_expired_auctions()` selects active auctions with `end_time <= now`
+- `AuctionService.close_auction()` is idempotent for already closed auctions
+- closing an auction marks each item `sold` with winner data when bids exist, otherwise `unsold`, sets the auction to `closed`, and writes an `auction_ended` event
+- buy-now creates a bid at `auction.buy_now_price`, marks the item sold, sets winner fields, updates current price, and writes a `buy_now_triggered` event
 
 ### `apps.general`
 
@@ -344,9 +479,13 @@ Profile is the real business actor in the system.
 
 Current profile types:
 
-- seller
-- customer
-- manager
+- `Seller`
+- `Customer`
+- `Manager`
+
+Important implementation detail:
+
+These are exact persisted and JWT claim values from `ProfileType`, not lowercase slugs.
 
 Important rule:
 
@@ -452,6 +591,12 @@ Current design choice:
 
 Auction is the top-level aggregate for timed bidding. It contains one or more auction items. Auction type determines creation and validation rules.
 
+Current design choice:
+
+- `Auction.status` is lifecycle state, but `Auction.is_active()` currently checks only the time window
+- scheduled expiry moves active auctions to `closed`, not `ended`
+- `ended` remains a model choice but is not the normal scheduled close outcome
+
 #### AuctionItem
 
 AuctionItem is the unit of bidding and sale.
@@ -463,6 +608,11 @@ Each item has:
 - independent bid stream
 - status
 - winner data
+
+Current design choice:
+
+- `AuctionItem.status`, `winner`, and `winner_bid` are resolved when an auction is closed
+- sold auction items do not yet trigger payment, handoff, or ownership-transfer workflow
 
 #### Bid
 
@@ -544,9 +694,12 @@ Current schema/auth documentation behavior:
 - auctions are created by sellers
 - bidding is done by customers
 - sellers must not bid on auctions
-- no editing of published or live auctions should be allowed once enforcement is complete
+- current partial update permits only `title`, `description`, and `tags`
+- current partial update is blocked after auction start, after any bid, or when status is not `active`
 - birds should not be placed in overlapping active auctions
 - auction state transitions must be explicit and safe
+- scheduled auction expiry transitions auctions to `closed` and resolves item winner fields
+- full post-auction completion remains planned, not implemented
 
 ### Payments
 
@@ -589,21 +742,24 @@ Current e-commerce foundation:
 - product asset list endpoints support filtering, search, and ordering
 - carts, checkout, orders, and order items now have an API / serializer / validator / service layer
 - customers can add listed seller assets to a persistent server-side cart
-- customers can checkout the full active cart into a reserved-stock market order
-- direct `POST /api/orders/` remains available as a compatibility alias with the same stock reservation semantics
+- customers can checkout the full active cart into a pending seller decision market order
+- direct `POST /api/orders/` remains available as a compatibility alias with the same stock-validation semantics
 - sellers can approve or reject their own order items
-- checkout-time stock reservation decrements stock and can mark sold-out assets unavailable
-- seller approval and rejection update item/order statuses but do not change stock in the current sprint
+- checkout-time stock validation does not decrement stock or change listing state
+- seller approval updates stock and can mark sold-out assets unavailable
+- seller rejection updates item/order statuses but does not change stock
 - lightweight order events exist as notification placeholders
 - this does not mean market workflows are complete yet
-- payment review, handoff, stock restoration after rejection, settlement, and ownership transfer are still not implemented
+- payment review, handoff, settlement, and ownership transfer are still not implemented
 
 Current product asset visibility:
 
 - managers can list, retrieve, create, update, and delete all product assets
+- manager-created products are owned by the manager active profile because create always sets `owner=request.user.active_profile`
 - sellers can create, update, and delete only their own product assets
 - sellers can read their own product assets plus market-listed product assets
 - customers can read only market-listed product assets
+- product safe-read visibility is scoped before django-filter filters and ordering run
 
 Planned direction:
 
@@ -636,7 +792,7 @@ Examples:
 - place bid
 - create auction
 - checkout cart
-- create reserved market order
+- create pending seller decision market order
 - cancel auction
 - approve payment
 - confirm handoff
@@ -659,7 +815,8 @@ Views and viewsets should orchestrate request and response only.
 Use `transaction.atomic()` for critical write flows:
 
 - bid placement
-- cart checkout and direct reserved market order creation
+- cart checkout and direct market order creation
+- seller approval stock decrement
 - settlement
 - payment approval
 - ownership transfer
@@ -687,6 +844,8 @@ Implement the smallest correct solution first. Do not over-engineer for hypothet
 
 - match current repo style
 - preserve existing naming unless there is a strong correction needed
+- prefer short, framework-native action names such as `retrieve`, `post`, `patch`, and `delete` where practical
+- explain endpoint-specific behavior through schema summaries/descriptions and docs instead of long customized method names
 - avoid large refactors during feature work
 - do not change unrelated files
 
@@ -714,6 +873,8 @@ Current permission resources:
 - `BIRD`
 - `PRODUCT_ASSET`
 - `AUCTION`
+- `CART`
+- `CHECKOUT`
 - `ORDER`
 - `ORDER_ITEM`
 
@@ -724,18 +885,40 @@ Current product asset permission pattern:
 - set `allow_scoped_read_access = True`
 - scope readable objects in `get_queryset()` before filters run
 
+Current bird permission pattern:
+
+- `BirdViewSet` uses `HasAppAccess` with `permission_resource = "BIRD"`
+- `BirdViewSet` does not currently scope `get_queryset()` by role, owner, or listing state
+- list access is therefore broader than object retrieve/update/delete checks
+- create still depends on serializer validation that requires an active seller profile as owner
+
 Current order permission pattern:
 
 - `OrderViewSet` uses `HasAppAccess` with `permission_resource = "ORDER"`
 - customers can list, retrieve, and create only their own orders through `Order.owner`
-- cart and checkout APIViews require authentication plus an active customer profile
+- cart endpoints use `ActiveCartViewSet` plus `HasAppAccess` with `permission_resource = "CART"`
+- current `CART` customer actions are `retrieve`, `post`, `patch`, `remove_cart_item`, and `delete`
+- checkout uses `CheckoutViewSet` plus `HasAppAccess` with `permission_resource = "CHECKOUT"`
+- current `CHECKOUT` customer action is `post`
+- cart schema tags are `Cart`; checkout schema tags are `Checkout`
+- managers currently pass `HasAppAccess` for cart and checkout because manager bypass remains global; service validation still requires a customer profile for cart/checkout execution
+- dynamic per-user resource permissions are planned after most resources are implemented
 - sellers must switch to customer mode before using cart or checkout endpoints
-- managers do not get cart or checkout access in the current sprint
 - sellers do not access `/api/orders/`; seller order work happens through order-item endpoints
 - `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
 - order-item object checks use `permission_owner_field = "seller_id"`
-- sellers can list, approve, and reject only their own sold order items
+- sellers can list, approve, and reject only their own seller-side order items
 - managers can access all order and order-item actions through existing manager behavior
+
+Current auction permission pattern:
+
+- `AuctionViewSet` uses `IsAuthenticated` plus `HasAppAccess` with `permission_resource = "AUCTION"`
+- sellers can create and manage their own auctions through owner-scoped querysets for owner actions
+- managers bypass `AuthorizationService` checks when their active role is `Manager`
+- customers can use configured auction read actions, but `AuctionViewSet` does not set `allow_scoped_read_access`
+- `AuctionItemViewSet`, `BidViewSet`, and `AuctionEventViewSet` use DRF read-only public permissions for list/retrieve and custom auth checks on write actions
+- `place_bid` requires authentication and is restricted to customer profiles by `BidBusinessValidator`
+- `buy_now` requires authentication but currently does not enforce `Customer` profile type in the same way as regular bidding
 
 Important scoped-read rule:
 
@@ -773,17 +956,18 @@ The codebase currently provides:
 - auth, profile switching, and JWT profile-claim synchronization
 - internal OpenAPI schema generation and Swagger UI for development teams
 - asset base model with shared market/listing fields
-- bird entity and validation
+- bird entity, CRUD endpoint, and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
 - product asset filtering, search, and ordering
 - persistent customer cart and cart item API foundation for market flows
 - checkout and compatibility direct-order APIs for fixed-price order creation
-- order validators and services for reserved-stock fixed-price order creation
+- order validators and services for stock-validating fixed-price order creation
 - seller item approval/rejection foundation
-- checkout-time stock reservation for market order items
+- seller-approval-time stock decrement for market order items
 - lightweight order events for future notification hooks
 - auctions, auction items, bids, and events
-- service / validator pattern in auctions
+- auction creation, bidding, limited update locking, cancellation, buy-now, and close/winner-resolution flows
+- service / validator / factory-style pattern in auctions, although the create path currently constructs the auction in the view and uses the factory only for items
 - Dockerized local and production runtime configuration
 - Redis + Celery worker/beat infrastructure for background jobs
 - automatic scheduled auction closing through Celery Beat
@@ -827,19 +1011,31 @@ These risks are important and should be respected during future work.
 
 - manager registration must not remain publicly open
 - profile switching must respect activation and business constraints
+- current `switch_user_profile()` can set an inactive/invalid/deleted target type active because it does not filter target profile validity before assignment
+- current `build_token_for_user()` reads the first `is_active=True` profile row instead of the stricter `active_profile` property
 - token `profile` claim and active profile behavior must stay aligned
 - test JWTs must include `profile` unless testing missing-claim behavior
 - permission constants and object-level rules need tightening
 - current authorization behavior for managers, superusers, and JSON permissions is not yet fully intuitive
 - `allow_scoped_read_access` can expose data if used without correct `get_queryset()` scoping
+- `BirdViewSet` list visibility is not scoped even though object checks are owner-based
+- `AuctionViewSet` visible list behavior and object-level retrieve behavior are not fully aligned because scoped safe reads are not enabled there
 
 ### Auction Risks
 
 - bid validation must be correct and re-checked under DB lock
 - event types must be consistent
-- auction editing restrictions must be enforced
+- auction editing restrictions are partially enforced for `PATCH`, but default destroy still uses the base `ModelViewSet` path
 - birds must not be reusable in conflicting active auctions
-- settlement must enforce end-time and state rules
+- auction creation currently checks overlapping active auctions but does not verify submitted bird ownership against the requesting seller
+- regular bids require a customer profile, but buy-now currently lacks the same customer-profile type check
+- same-user customer/seller profile bidding against that user's own seller auction is not explicitly blocked
+- `Auction.is_active()` currently checks time only and does not include `Auction.status`
+- manual `close_auction()` currently does not enforce `end_time <= now`; only the scheduled selector filters expired auctions
+- `cancel_auction()` blocks `ended` and already-cancelled auctions, but does not explicitly block `closed`
+- `AuctionFactory.create_auction()` is currently stale/unused and references non-model `auto_extend_threshold`
+- permission constants include auction actions such as `publish` and `ended`, but no matching view actions currently exist
+- settlement must enforce end-time and state rules before post-auction completion is added
 
 ### Business Flow Gap
 
@@ -851,7 +1047,7 @@ Without this, auctions can end technically but not complete business-wise.
 
 Important related gap:
 
-- marketplace cart, checkout, order creation, and seller approval now exist, but payment review, stock restoration after rejection, handoff, settlement, and ownership transfer do not
+- marketplace cart, checkout, order creation, and seller approval now exist, but payment review, handoff, settlement, and ownership transfer do not
 
 ### Media Gap
 
@@ -864,6 +1060,9 @@ Current assets app is domain modeling, not file/media handling.
   - `apps/assets/serializer.py` is singular
   - `ManagerProfileadminSerializer` casing is inconsistent
   - several files contain TODOs or mixed comment quality
+- auction service drift exists and should be fixed intentionally, not casually:
+  - `AuctionFactory.create_auction()` references `auto_extend_threshold`, which is not a field on `Auction`
+  - the live auction create endpoint constructs the `Auction` object in the view instead of using `AuctionFactory.create_auction()`
 - ownership and soft-delete behavior are sometimes implicit in views and models; preserve existing semantics unless the task explicitly requires standardization
 - product asset routes are currently plural under `/api/assets/`
 - product asset tests should use project token builders, not raw SimpleJWT tokens
@@ -928,7 +1127,7 @@ Includes:
 - manual completion workflow similar to auctions
 - payment review and seller handoff flow
 - ownership transfer after manual confirmations
-- stock restoration or adjustment rules for rejected/resolved order items
+- stock adjustment rules for resolved order items
 - stronger stock and quantity handling around completion
 
 ### Phase D - Trust Layer
@@ -1000,7 +1199,7 @@ Important project decision:
 - no in-app financial processing
 - admin manually confirms payment status
 
-Expected flow:
+Planned expected flow:
 
 1. auction winner is determined
 2. buyer submits payment proof or info manually
@@ -1017,7 +1216,7 @@ Important project decision:
 
 There is no logistics provider integration and no shipping orchestration inside the app.
 
-Expected flow:
+Planned expected flow:
 
 - seller confirms that the item or bird has been handed over
 - optional buyer confirmation may be introduced later
@@ -1069,9 +1268,15 @@ Current implementation approach:
 
 - Celery Beat runs `auctions.tasks.close_expired_auctions` every minute
 - identify auctions where:
-  - status is active/live
+  - status is `active`
   - `end_time <= now`
 - transition them to `CLOSED` via service layer
+- `AuctionService.close_auction()` settles item winners and writes one `auction_ended` event
+- `AuctionService.close_auction()` is idempotent for already `closed` auctions
+
+Current caveat:
+
+- the scheduled selector enforces expiry, but direct/manual calls to `close_auction()` do not currently reject early close attempts because the end-time check is commented out in the service
 
 Rules:
 
@@ -1104,7 +1309,8 @@ It must be:
 When working on this repo:
 
 - understand first, then change
-- always plan briefly before coding and ask for approval
+- plan briefly before coding when the change is non-trivial
+- ask for approval when business rules, permission semantics, public API contracts, or destructive actions are ambiguous
 - ask if business rules are ambiguous
 - keep answers concise unless asked for detail
 - prefer token efficiency
@@ -1126,9 +1332,9 @@ If adding new modules:
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
 - current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `35 passed`
+- current targeted order baseline: `pytest tests/orders -q` passes with `37 passed`
 - current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `165 passed`
+- current full-suite baseline: `pytest -q` passes with `167 passed`
 - pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior

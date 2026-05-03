@@ -1,12 +1,11 @@
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import mixins, permissions, status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.general.authorizations import HasAppAccess
-from apps.orders.models import Order, OrderItem
+from apps.orders.models import Cart, Order, OrderItem
 from apps.orders.serializers import (
     CartItemCreateSerializer,
     CartItemUpdateSerializer,
@@ -25,19 +24,6 @@ from apps.orders.services import (
     order_item_queryset,
 )
 from apps.users.constants import ProfileType
-
-
-class ActiveCustomerPermission(permissions.BasePermission):
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-
-        active_profile = getattr(user, "active_profile", None)
-        return (
-            active_profile is not None
-            and active_profile.type == ProfileType.CUSTOMER
-        )
 
 
 @extend_schema_view(
@@ -101,29 +87,32 @@ class OrderViewSet(
         )
 
 
-@extend_schema_view(
-    get=extend_schema(tags=["Orders"], responses={200: CartSerializer}),
-)
-class CartAPIView(APIView):
-    permission_classes = [ActiveCustomerPermission]
+class ActiveCartViewSet(viewsets.GenericViewSet):
+    permission_classes = [HasAppAccess]
+    permission_resource = "CART"
+    serializer_class = CartSerializer
+    queryset = Cart.objects.all()
 
-    def get(self, request):
+    @extend_schema(
+        tags=["Cart"],
+        summary="Retrieve active cart",
+        description="Returns the customer's active cart, creating one when none exists.",  # noqa
+        responses={200: CartSerializer},
+    )
+    def retrieve(self, request):
         cart = CartService.get_or_create_active_cart(
             request.user.active_profile
         )
         return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
 
-
-@extend_schema_view(
-    post=extend_schema(
-        tags=["Orders"],
+    @extend_schema(
+        tags=["Cart"],
+        summary="Add item to cart",
+        description="Adds a market-listed asset to the active cart, "
+        "merging quantity when the asset is already present.",
         request=CartItemCreateSerializer,
         responses={201: CartSerializer},
-    ),
-)
-class CartItemCreateAPIView(APIView):
-    permission_classes = [ActiveCustomerPermission]
-
+    )
     def post(self, request):
         serializer = CartItemCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -136,23 +125,14 @@ class CartItemCreateAPIView(APIView):
             CartSerializer(cart).data, status=status.HTTP_201_CREATED
         )
 
-
-@extend_schema_view(
-    patch=extend_schema(
-        tags=["Orders"],
+    @extend_schema(
+        tags=["Cart"],
+        summary="Update cart item",
+        description="Updates the quantity of one item in the customer's active cart.",
         request=CartItemUpdateSerializer,
         responses={200: CartSerializer},
-    ),
-    delete=extend_schema(
-        tags=["Orders"],
-        request=None,
-        responses={204: None},
-    ),
-)
-class CartItemDetailAPIView(APIView):
-    permission_classes = [ActiveCustomerPermission]
-
-    def patch(self, request, pk):
+    )
+    def patch(self, request, pk=None):
         serializer = CartItemUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         cart = CartService.update_item(
@@ -162,36 +142,43 @@ class CartItemDetailAPIView(APIView):
         )
         return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
 
-    def delete(self, request, pk):
+    @extend_schema(
+        tags=["Cart"],
+        summary="Remove cart item",
+        description="Removes one item from the customer's active cart.",
+        request=None,
+        responses={204: None},
+    )
+    def remove_cart_item(self, request, pk=None):
         CartService.remove_item(request.user.active_profile, pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-
-@extend_schema_view(
-    delete=extend_schema(
-        tags=["Orders"],
+    @extend_schema(
+        tags=["Cart"],
+        summary="Clear active cart",
+        description="Removes all items from the customer's active cart.",
         request=None,
         responses={204: None},
-    ),
-)
-class CartClearAPIView(APIView):
-    permission_classes = [ActiveCustomerPermission]
-
+    )
     def delete(self, request):
         CartService.clear_cart(request.user.active_profile)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@extend_schema_view(
-    post=extend_schema(
-        tags=["Orders"],
+class CheckoutViewSet(viewsets.GenericViewSet):
+    permission_classes = [HasAppAccess]
+    permission_resource = "CHECKOUT"
+    serializer_class = CheckoutSerializer
+    queryset = Order.objects.all()
+
+    @extend_schema(
+        tags=["Checkout"],
+        summary="Checkout active cart",
+        description="Converts the customer's active cart into pending "
+        "seller decision order items after stock validation.",
         request=CheckoutSerializer,
         responses={201: OrderSummarySerializer},
-    ),
-)
-class CheckoutAPIView(APIView):
-    permission_classes = [ActiveCustomerPermission]
-
+    )
     def post(self, request):
         serializer = CheckoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
