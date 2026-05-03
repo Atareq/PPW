@@ -1,7 +1,10 @@
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
+from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset, AssetStatus
@@ -391,6 +394,35 @@ class OrderItemService:
     """Orchestrate seller decisions for individual order items."""
 
     @staticmethod
+    def cancel_expired_pending_items(now=None, timeout_days=None):
+        now = now or timezone.now()
+        timeout_days = (
+            settings.ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS
+            if timeout_days is None
+            else timeout_days
+        )
+        cutoff = now - timedelta(days=timeout_days)
+        item_ids = list(
+            OrderItem.objects.filter(
+                status=OrderItemStatus.PENDING_SELLER,
+                created__lte=cutoff,
+            )
+            .order_by("id")
+            .values_list("id", flat=True)
+        )
+
+        cancelled_count = 0
+        for item_id in item_ids:
+            if OrderItemService._cancel_expired_pending_item(
+                item_id,
+                cutoff=cutoff,
+                timeout_days=timeout_days,
+            ):
+                cancelled_count += 1
+
+        return cancelled_count
+
+    @staticmethod
     @transaction.atomic
     def approve_item(order_item, seller):
         seller_profile = PurchaseRuleValidator.get_seller_profile(seller)
@@ -434,6 +466,27 @@ class OrderItemService:
         return OrderItemService.get_item(item.pk)
 
     @staticmethod
+    @transaction.atomic
+    def _cancel_expired_pending_item(item_id, *, cutoff, timeout_days):
+        item = OrderItemService._get_locked_item(item_id)
+
+        if item.status != OrderItemStatus.PENDING_SELLER:
+            return False
+
+        if item.created > cutoff:
+            return False
+
+        item.status = OrderItemStatus.CANCELLED
+        item.save(update_fields=["status", "modified"])
+        OrderService.refresh_order_status(item.order_id)
+        OrderItemService._create_seller_auto_cancelled_event(
+            item,
+            timeout_days=timeout_days,
+        )
+
+        return True
+
+    @staticmethod
     def get_item(item_id):
         return order_item_queryset().get(pk=item_id)
 
@@ -441,7 +494,7 @@ class OrderItemService:
     def _get_locked_item(item_id):
         return (
             OrderItem.objects.select_for_update()
-            .select_related("order", "asset", "seller")
+            .select_related("order", "order__owner", "asset", "seller")
             .get(pk=item_id)
         )
 
@@ -497,4 +550,19 @@ class OrderItemService:
                 "Seller approved your order you need to complete the payment."
             ),
             metadata={"asset_id": item.asset_id},
+        )
+
+    @staticmethod
+    def _create_seller_auto_cancelled_event(item, *, timeout_days):
+        OrderEvent.objects.create(
+            order=item.order,
+            item=item,
+            recipient=item.order.owner,
+            event_type=OrderEventType.SELLER_AUTO_CANCELLED,
+            message="Order item was cancelled because the seller did not act.",
+            metadata={
+                "asset_id": item.asset_id,
+                "seller_id": item.seller_id,
+                "timeout_days": timeout_days,
+            },
         )

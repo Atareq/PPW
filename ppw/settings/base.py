@@ -165,11 +165,18 @@ CELERY_TASK_EAGER_PROPAGATES = env_bool(
     "CELERY_TASK_EAGER_PROPAGATES",
     CELERY_TASK_ALWAYS_EAGER,
 )
+ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS = int(
+    os.getenv("ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS", "3")
+)
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {
         "task": "auctions.tasks.close_expired_auctions",
         "schedule": timedelta(minutes=1),
-    }
+    },
+    "cancel-expired-pending-order-items-hourly": {
+        "task": "orders.tasks.cancel_expired_pending_order_items",
+        "schedule": timedelta(hours=12),
+    },
 }
 
 STATIC_URL = "/static/"
