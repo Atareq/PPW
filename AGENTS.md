@@ -311,13 +311,11 @@ Current responsibilities:
 - cart, checkout, and compatibility direct-order API / serializer / validator / service flow
 - seller approval and rejection of individual order items
 - seller-approval-time stock decrement for fixed-price market order items
-- checkout-time stock reservation for fixed-price market order items
 - lightweight order event records for future notification hooks
 
 Important note:
 
 This app currently provides the first cart and fixed-price checkout workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, or ownership transfer workflow.
-This app currently provides the first cart and fixed-price checkout workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, stock restoration after seller rejection, or ownership transfer workflow.
 
 Current order API:
 
@@ -335,10 +333,6 @@ Current order API:
 - `/api/orders/`
   - `GET`: customer lists own orders; manager lists all orders
   - `POST`: compatibility alias for direct order creation from market-listed seller assets; validates stock availability without decrementing stock
-  - `POST`: customer converts the full active cart into an order and reserves stock
-- `/api/orders/`
-  - `GET`: customer lists own orders; manager lists all orders
-  - `POST`: compatibility alias for direct order creation from market-listed seller assets; reserves stock immediately through the checkout service
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
@@ -385,17 +379,6 @@ Current order service implementation names:
 - `OrderCheckoutService._create_pending_order()` creates the order and pending seller items for cart checkout and direct order creation
 - `OrderCheckoutService._ensure_stock_available()` validates count during checkout/order creation without mutating assets; purchase validators enforce listed/status/seller/customer rules before this helper runs
 - `OrderItemService._apply_stock_deduction()` decrements stock on seller approval and marks zero-count assets sold/unlisted
-- order creation stores `total_price` on `Order`, plus `unit_price_snapshot` and `total_price` on each item
-- checkout and direct `POST /api/orders/` decrement stock immediately to reserve inventory
-- when reserved stock reaches zero, the asset is marked `sold` and unlisted from the market
-- new order items start as `pending_seller`
-- seller approval changes `pending_seller` to `approved` only; it does not decrement stock again
-- seller rejection changes `pending_seller` to `rejected` only; it does not restore stock in the current sprint
-- aggregate order statuses are `pending`, `processing`, `completed`, `cancelled`, and `partial_rejected`
-- if all order items are rejected or cancelled, the aggregate order status becomes `cancelled`
-- any rejected item plus any non-rejected item makes the aggregate order status `partial_rejected`
-- lightweight `OrderEvent` records are created for order creation, seller pending item notifications, and seller approval
-- ownership transfer is not implemented yet
 
 ### `apps.auctions`
 
@@ -765,14 +748,9 @@ Current e-commerce foundation:
 - checkout-time stock validation does not decrement stock or change listing state
 - seller approval updates stock and can mark sold-out assets unavailable
 - seller rejection updates item/order statuses but does not change stock
-- customers can checkout the full active cart into a reserved-stock market order
-- direct `POST /api/orders/` remains available as a compatibility alias with the same stock reservation semantics
-- sellers can approve or reject their own order items
-- checkout-time stock reservation decrements stock and can mark sold-out assets unavailable
-- seller approval and rejection update item/order statuses but do not change stock in the current sprint
 - lightweight order events exist as notification placeholders
 - this does not mean market workflows are complete yet
-- payment review, handoff, stock restoration after rejection, settlement, and ownership transfer are still not implemented
+- payment review, handoff, settlement, and ownership transfer are still not implemented
 
 Current product asset visibility:
 
@@ -815,7 +793,6 @@ Examples:
 - create auction
 - checkout cart
 - create pending seller decision market order
-- create reserved market order
 - cancel auction
 - approve payment
 - confirm handoff
@@ -840,7 +817,6 @@ Use `transaction.atomic()` for critical write flows:
 - bid placement
 - cart checkout and direct market order creation
 - seller approval stock decrement
-- cart checkout and direct reserved market order creation
 - settlement
 - payment approval
 - ownership transfer
@@ -928,9 +904,6 @@ Current order permission pattern:
 - managers currently pass `HasAppAccess` for cart and checkout because manager bypass remains global; service validation still requires a customer profile for cart/checkout execution
 - dynamic per-user resource permissions are planned after most resources are implemented
 - sellers must switch to customer mode before using cart or checkout endpoints
-- cart and checkout APIViews require authentication plus an active customer profile
-- sellers must switch to customer mode before using cart or checkout endpoints
-- managers do not get cart or checkout access in the current sprint
 - sellers do not access `/api/orders/`; seller order work happens through order-item endpoints
 - `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
 - order-item object checks use `permission_owner_field = "seller_id"`
@@ -991,9 +964,6 @@ The codebase currently provides:
 - order validators and services for stock-validating fixed-price order creation
 - seller item approval/rejection foundation
 - seller-approval-time stock decrement for market order items
-- order validators and services for reserved-stock fixed-price order creation
-- seller item approval/rejection foundation
-- checkout-time stock reservation for market order items
 - lightweight order events for future notification hooks
 - auctions, auction items, bids, and events
 - auction creation, bidding, limited update locking, cancellation, buy-now, and close/winner-resolution flows
@@ -1078,7 +1048,6 @@ Without this, auctions can end technically but not complete business-wise.
 Important related gap:
 
 - marketplace cart, checkout, order creation, and seller approval now exist, but payment review, handoff, settlement, and ownership transfer do not
-- marketplace cart, checkout, order creation, and seller approval now exist, but payment review, stock restoration after rejection, handoff, settlement, and ownership transfer do not
 
 ### Media Gap
 
@@ -1159,7 +1128,6 @@ Includes:
 - payment review and seller handoff flow
 - ownership transfer after manual confirmations
 - stock adjustment rules for resolved order items
-- stock restoration or adjustment rules for rejected/resolved order items
 - stronger stock and quantity handling around completion
 
 ### Phase D - Trust Layer
@@ -1364,12 +1332,9 @@ If adding new modules:
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
 - current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `37 passed`
+- current targeted order baseline: `pytest tests/orders -q` passes with `39 passed`
 - current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `167 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `35 passed`
-- current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `165 passed`
+- current full-suite baseline: `pytest -q` passes with `169 passed`
 - pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
