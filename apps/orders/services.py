@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from rest_framework.exceptions import NotFound, ValidationError
 
-from apps.assets.models import Asset, AssetCategory, AssetStatus
+from apps.assets.models import Asset, AssetStatus
 from apps.orders.models import (
     Cart,
     CartItem,
@@ -245,7 +245,7 @@ class OrderService:
 
 
 class OrderCheckoutService:
-    """Convert cart/direct payloads into stock-reserving orders."""
+    """Convert cart/direct payloads into pending seller decision orders."""
 
     @staticmethod
     @transaction.atomic
@@ -278,7 +278,7 @@ class OrderCheckoutService:
             {"asset_id": item.asset_id, "quantity": item.quantity}
             for item in cart_items
         ]
-        order = OrderCheckoutService._create_reserved_order(
+        order = OrderCheckoutService._create_pending_order(
             validator.customer_profile,
             item_payloads,
             asset_map,
@@ -297,7 +297,7 @@ class OrderCheckoutService:
             items_payload,
             lock_assets=True,
         ).validate()
-        return OrderCheckoutService._create_reserved_order(
+        return OrderCheckoutService._create_pending_order(
             validator.customer_profile,
             items_payload,
             validator.asset_map,
@@ -316,7 +316,7 @@ class OrderCheckoutService:
         return {asset.pk: asset for asset in assets}
 
     @staticmethod
-    def _create_reserved_order(
+    def _create_pending_order(
         customer_profile,
         items_payload,
         asset_map,
@@ -348,7 +348,7 @@ class OrderCheckoutService:
                     status=OrderItemStatus.PENDING_SELLER,
                 )
             )
-            OrderCheckoutService._reserve_stock(asset, quantity)
+            OrderCheckoutService._ensure_stock_available(asset, quantity)
 
         OrderItem.objects.bulk_create(order_items)
         order.total_price = total_price
@@ -358,19 +358,10 @@ class OrderCheckoutService:
         return OrderService.get_order(order.pk)
 
     @staticmethod
-    def _reserve_stock(asset, quantity):
+    def _ensure_stock_available(asset, quantity):
+        """Validate availability without mutating stock during checkout."""
         if asset.count < quantity:
             raise ValidationError({"detail": "Insufficient stock"})
-
-        asset.count -= quantity
-        update_fields = ["count", "modified"]
-
-        if asset.category == AssetCategory.BIRD or asset.count == 0:
-            asset.status = AssetStatus.SOLD
-            asset.is_market_listed = False
-            update_fields.extend(["status", "is_market_listed"])
-
-        asset.save(update_fields=update_fields)
 
     @staticmethod
     def _create_checkout_events(order):
@@ -412,6 +403,10 @@ class OrderItemService:
         if item.status != OrderItemStatus.PENDING_SELLER:
             raise ValidationError("Only pending order items can be approved.")
 
+        asset = OrderItemService._get_locked_asset(item.asset_id)
+        OrderItemService._validate_asset_can_be_approved(asset, item.quantity)
+        OrderItemService._apply_stock_deduction(asset, item.quantity)
+
         item.status = OrderItemStatus.APPROVED
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)
@@ -449,6 +444,42 @@ class OrderItemService:
             .select_related("order", "asset", "seller")
             .get(pk=item_id)
         )
+
+    @staticmethod
+    def _get_locked_asset(asset_id):
+        try:
+            return Asset.all_objects.select_for_update().get(pk=asset_id)
+        except Asset.DoesNotExist as exc:
+            raise ValidationError(
+                {"asset": "Asset is no longer available."}
+            ) from exc
+
+    @staticmethod
+    def _validate_asset_can_be_approved(asset, quantity):
+        if getattr(asset, "deleted", None) is not None:
+            raise ValidationError(
+                {"asset": f"Asset #{asset.pk} is no longer available."}
+            )
+
+        if asset.status != AssetStatus.AVAILABLE:
+            raise ValidationError(
+                {"asset": f"Asset #{asset.pk} is not available."}
+            )
+
+        if asset.count < quantity:
+            raise ValidationError({"detail": "Insufficient stock"})
+
+    @staticmethod
+    def _apply_stock_deduction(asset, quantity):
+        asset.count -= quantity
+        update_fields = ["count", "modified"]
+
+        if asset.count == 0:
+            asset.status = AssetStatus.SOLD
+            asset.is_market_listed = False
+            update_fields.extend(["status", "is_market_listed"])
+
+        asset.save(update_fields=update_fields)
 
     @staticmethod
     def _validate_seller_owns_item(item, seller):

@@ -1,11 +1,8 @@
 from django.urls import path
 
 from apps.orders.views import (
-    CartAPIView,
-    CartClearAPIView,
-    CartItemCreateAPIView,
-    CartItemDetailAPIView,
-    CheckoutAPIView,
+    ActiveCartViewSet,
+    CheckoutViewSet,
     OrderItemViewSet,
     OrderViewSet,
 )
@@ -36,21 +33,23 @@ order_item_reject = OrderItemViewSet.as_view(
         "post": "reject",
     }
 )
+cart_detail = ActiveCartViewSet.as_view({"get": "retrieve"})
+cart_item_create = ActiveCartViewSet.as_view({"post": "post"})
+cart_item_detail = ActiveCartViewSet.as_view(
+    {
+        "patch": "patch",
+        "delete": "remove_cart_item",
+    }
+)
+cart_clear = ActiveCartViewSet.as_view({"delete": "delete"})
+checkout = CheckoutViewSet.as_view({"post": "post"})
 
 urlpatterns = [
-    path("cart/", CartAPIView.as_view(), name="cart-detail"),
-    path(
-        "cart/items/",
-        CartItemCreateAPIView.as_view(),
-        name="cart-item-create",
-    ),
-    path(
-        "cart/items/<int:pk>/",
-        CartItemDetailAPIView.as_view(),
-        name="cart-item-detail",
-    ),
-    path("cart/clear/", CartClearAPIView.as_view(), name="cart-clear"),
-    path("checkout/", CheckoutAPIView.as_view(), name="checkout"),
+    path("cart/", cart_detail, name="cart-detail"),
+    path("cart/items/", cart_item_create, name="cart-item-create"),
+    path("cart/items/<int:pk>/", cart_item_detail, name="cart-item-detail"),
+    path("cart/clear/", cart_clear, name="cart-clear"),
+    path("checkout/", checkout, name="checkout"),
     path("", order_list, name="order-list"),
     path("items/", order_item_list, name="order-item-list"),
     path(

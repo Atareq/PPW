@@ -17,7 +17,11 @@ class AuthorizationService:
         owner_field: str = "owner_id",
     ) -> bool:
 
-        if user.role == ProfileType.MANAGER:
+        role = getattr(user, "role", None)
+        if not role:
+            return False
+
+        if role == ProfileType.MANAGER:
             return True
 
         if user.is_superuser:
@@ -29,8 +33,8 @@ class AuthorizationService:
             ProfileType.CUSTOMER: CUSTOMER_PERMISSIONS,
             ProfileType.SELLER: SELLER_PERMISSIONS,
         }
-        if user.role in role_permissions_map:
-            permissions_dict = role_permissions_map[user.role]
+        if role in role_permissions_map:
+            permissions_dict = role_permissions_map[role]
 
             allowed_actions = permissions_dict.get(resource, [])
 

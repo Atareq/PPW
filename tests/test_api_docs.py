@@ -99,6 +99,13 @@ def test_cart_and_checkout_paths_are_documented(
     assert "/api/orders/cart/items/{id}/" in schema["paths"]
     assert "/api/orders/cart/clear/" in schema["paths"]
     assert "/api/orders/checkout/" in schema["paths"]
+    assert schema["paths"]["/api/orders/cart/"]["get"]["tags"] == ["Cart"]
+    assert schema["paths"]["/api/orders/cart/items/"]["post"]["tags"] == [
+        "Cart"
+    ]
+    assert schema["paths"]["/api/orders/checkout/"]["post"]["tags"] == [
+        "Checkout"
+    ]
     assert {"BearerAuth": []} in schema["paths"]["/api/orders/checkout/"][
         "post"
     ]["security"]
