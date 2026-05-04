@@ -508,6 +508,11 @@ class OrderItemService:
             ) from exc
 
     @staticmethod
+    def _validate_seller_owns_item(item, seller_profile):
+        if item.seller_id != seller_profile.pk:
+            raise NotFound("Order item was not found.")
+
+    @staticmethod
     def _validate_asset_can_be_approved(asset, quantity):
         if getattr(asset, "deleted", None) is not None:
             raise ValidationError(
@@ -533,48 +538,6 @@ class OrderItemService:
             update_fields.extend(["status", "is_market_listed"])
 
         asset.save(update_fields=update_fields)
-
-    @staticmethod
-    def _create_reserved_order(
-        customer_profile,
-        items_payload,
-        asset_map,
-        seller_map,
-    ):
-        order = Order.objects.create(
-            owner=customer_profile,
-            status=OrderStatus.PENDING,
-            total_price=Decimal("0.00"),
-        )
-
-        order_items = []
-        total_price = Decimal("0.00")
-        for item_payload in items_payload:
-            asset = asset_map[item_payload["asset_id"]]
-            quantity = item_payload["quantity"]
-            unit_price = asset.price
-            item_total = quantity * unit_price
-            total_price += item_total
-
-            order_items.append(
-                OrderItem(
-                    order=order,
-                    asset=asset,
-                    seller=seller_map[asset.owner_id],
-                    quantity=quantity,
-                    unit_price_snapshot=unit_price,
-                    total_price=item_total,
-                    status=OrderItemStatus.PENDING_SELLER,
-                )
-            )
-            OrderCheckoutService._ensure_stock_available(asset, quantity)
-
-        OrderItem.objects.bulk_create(order_items)
-        order.total_price = total_price
-        order.save(update_fields=["total_price", "modified"])
-        order = OrderService.get_order(order.pk)
-        OrderCheckoutService._create_checkout_events(order)
-        return OrderService.get_order(order.pk)
 
     @staticmethod
     def _create_seller_approved_event(item):

@@ -1357,9 +1357,9 @@ If adding new modules:
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
 - current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `39 passed`
+- current targeted order baseline: `pytest tests/orders -q` passes with `45 passed`
 - current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `169 passed`
+- current full-suite baseline: `pytest -q` passes with `175 passed`
 - pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
