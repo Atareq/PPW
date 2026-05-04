@@ -24,9 +24,11 @@ from apps.orders.services import CartService, OrderItemService, OrderService
 from apps.orders.tasks import cancel_expired_pending_order_items
 from apps.orders.validators import OrderCreationValidator
 from apps.users.constants import ProfileType
+from apps.users.models import CustomerProfile
 from tests.factories import (
     BirdFactory,
     CustomerProfileFactory,
+    OrderFactory,
     SellerProfileFactory,
     SupplyFactory,
     UserAccountFactory,
@@ -40,6 +42,10 @@ def authenticated_client(user):
     refresh = build_token_for_user(user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return client
+
+
+def concrete_customer_profile(user):
+    return CustomerProfile.objects.get(pk=user.active_profile.pk)
 
 
 class TestOrderCreateSerializer:
@@ -802,7 +808,7 @@ class TestOrderReadEndpoints:
 
         assert create_response.status_code == 201
         assert list_response.status_code == 200
-        assert [order["id"] for order in list_response.data] == [
+        assert [order["id"] for order in list_response.data["results"]] == [
             create_response.data["id"]
         ]
 
@@ -839,7 +845,9 @@ class TestOrderReadEndpoints:
         response = client.get("/api/orders/items/")
 
         assert response.status_code == 200
-        assert [item["id"] for item in response.data] == [seller_one_item.pk]
+        assert [item["id"] for item in response.data["results"]] == [
+            seller_one_item.pk
+        ]
 
     def test_customer_cannot_list_order_items(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -868,6 +876,89 @@ class TestOrderReadEndpoints:
         items_response = client.get("/api/orders/items/")
 
         assert orders_response.status_code == 200
-        assert len(orders_response.data) == 2
+        assert len(orders_response.data["results"]) == 2
         assert items_response.status_code == 200
-        assert len(items_response.data) == 2
+        assert len(items_response.data["results"]) == 2
+
+    def test_customer_can_filter_own_orders_by_status(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        customer_profile = concrete_customer_profile(customer)
+        other_customer_profile = concrete_customer_profile(other_customer)
+        pending = OrderFactory(
+            owner=customer_profile,
+            status=OrderStatus.PENDING,
+        )
+        OrderFactory(
+            owner=customer_profile,
+            status=OrderStatus.COMPLETED,
+        )
+        OrderFactory(
+            owner=other_customer_profile,
+            status=OrderStatus.PENDING,
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/orders/", {"status": OrderStatus.PENDING})
+
+        assert response.status_code == 200
+        assert [order["id"] for order in response.data["results"]] == [
+            pending.pk
+        ]
+
+    def test_manager_can_filter_all_orders_by_status(self):
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        first_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        second_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        first_customer_profile = concrete_customer_profile(first_customer)
+        second_customer_profile = concrete_customer_profile(second_customer)
+        processing = OrderFactory(
+            owner=first_customer_profile,
+            status=OrderStatus.PROCESSING,
+        )
+        other_processing = OrderFactory(
+            owner=second_customer_profile,
+            status=OrderStatus.PROCESSING,
+        )
+        OrderFactory(
+            owner=second_customer_profile,
+            status=OrderStatus.CANCELLED,
+        )
+        client = authenticated_client(manager)
+
+        response = client.get(
+            "/api/orders/",
+            {"status": OrderStatus.PROCESSING},
+        )
+
+        assert response.status_code == 200
+        assert {order["id"] for order in response.data["results"]} == {
+            processing.pk,
+            other_processing.pk,
+        }
+
+    def test_invalid_order_status_filter_returns_bad_request(self):
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        client = authenticated_client(manager)
+
+        response = client.get("/api/orders/", {"status": "not-a-status"})
+
+        assert response.status_code == 400
+        assert "status" in response.data
+
+    def test_order_list_is_paginated(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        customer_profile = concrete_customer_profile(customer)
+        for _ in range(25):
+            OrderFactory(owner=customer_profile)
+        client = authenticated_client(customer)
+
+        first_page = client.get("/api/orders/")
+        second_page = client.get("/api/orders/", {"page": 2})
+
+        assert first_page.status_code == 200
+        assert first_page.data["count"] == 25
+        assert len(first_page.data["results"]) == 20
+        assert second_page.status_code == 200
+        assert second_page.data["count"] == 25
+        assert len(second_page.data["results"]) == 5

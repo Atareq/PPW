@@ -332,12 +332,12 @@ Current order API:
 - `/api/orders/checkout/`
   - `POST`: customer converts the full active cart into an order after validating stock availability
 - `/api/orders/`
-  - `GET`: customer lists own orders; manager lists all orders
+  - `GET`: paginated customer list of own orders or manager list of all orders; supports exact `status` filtering
   - `POST`: compatibility alias for direct order creation from market-listed seller assets; validates stock availability without decrementing stock
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
-  - `GET`: seller lists own order items; manager lists all order items
+  - `GET`: paginated seller list of own order items or manager list of all order items
 - `/api/orders/items/<id>/approve/`
   - `POST`: seller approves their own pending order item
 - `/api/orders/items/<id>/reject/`
@@ -346,6 +346,7 @@ Current order API:
 Current order behavior:
 
 - each customer can have one active cart; active carts are created lazily
+- order lists can be filtered by exact aggregate order `status`
 - customers can add only available, market-listed assets with enough stock from valid seller profiles
 - adding the same asset to a cart increases the existing cart item quantity instead of creating a duplicate row
 - cart add and update store a `unit_price_snapshot`, but checkout revalidates using current DB asset prices
@@ -650,6 +651,8 @@ From `ppw/settings/base.py`:
 - authentication defaults to JWT via `apps.authentication.authentication.ProfileSyncJWTAuthentication`
 - default schema generation uses `drf_spectacular.openapi.AutoSchema`
 - default DRF permission is `IsAuthenticated`
+- global DRF list pagination uses `PageNumberPagination` with `PAGE_SIZE = 20`
+- paginated list responses use DRF's `count`, `next`, `previous`, and `results` response shape
 - `AUTH_USER_MODEL` is `authentication.UserAccount`
 - `APPEND_SLASH = False`
 
@@ -745,6 +748,7 @@ Current e-commerce foundation:
 - product assets now have CRUD endpoints for supplies, accessories, feeds, and supplements
 - product asset list endpoints support filtering, search, and ordering
 - carts, checkout, orders, and order items now have an API / serializer / validator / service layer
+- order aggregate list endpoints support exact `status` filtering
 - customers can add listed seller assets to a persistent server-side cart
 - customers can checkout the full active cart into a pending seller decision market order
 - direct `POST /api/orders/` remains available as a compatibility alias with the same stock-validation semantics
@@ -1357,9 +1361,9 @@ If adding new modules:
 - current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
 - current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
 - current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `45 passed`
+- current targeted order baseline: `pytest tests/orders -q` passes with `49 passed`
 - current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `175 passed`
+- current full-suite baseline: `pytest -q` passes with `179 passed`
 - pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior

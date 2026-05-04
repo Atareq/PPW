@@ -208,7 +208,7 @@ class TestAuctionFiltering:
         api_client.force_authenticate(user=user)
         response = api_client.get("/api/auctions/active/")
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) > 0
+        assert len(response.data["results"]) > 0
 
     def test_get_my_auctions(self, authenticated_seller_client, seller_user):
         """Test getting user's own auctions."""
