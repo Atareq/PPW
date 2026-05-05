@@ -18,17 +18,6 @@ class PurchaseRuleValidator:
                 {"customer": "Only customer profiles can checkout orders."}
             )
 
-        customer_is_invalid = (
-            not profile.is_active
-            or not profile.is_valid
-            or not profile.activated
-            or getattr(profile, "deleted", None) is not None
-        )
-        if customer_is_invalid:
-            raise ValidationError(
-                {"customer": "Active customer profile is required."}
-            )
-
         try:
             return CustomerProfile.objects.get(pk=profile.pk)
         except CustomerProfile.DoesNotExist as exc:

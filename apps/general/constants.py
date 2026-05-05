@@ -34,6 +34,20 @@ SELLER_PERMISSIONS = {
         "approve",
         "reject",
     ],
+    "ASSET_COMMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_COMMENT": [
+        "list",
+        "create",
+    ],
+    "ASSET_RATING": [
+        "list",
+    ],
+    "SELLER_RATING": [
+        "list",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -66,6 +80,22 @@ CUSTOMER_PERMISSIONS = {
     "ORDER": [
         "list",
         "retrieve",
+        "create",
+    ],
+    "ASSET_COMMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_COMMENT": [
+        "list",
+        "create",
+    ],
+    "ASSET_RATING": [
+        "list",
+        "create",
+    ],
+    "SELLER_RATING": [
+        "list",
         "create",
     ],
 }

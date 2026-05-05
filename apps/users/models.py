@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.db.models import Q, UniqueConstraint
 
@@ -63,6 +65,12 @@ class SellerProfile(Profile):
     recoded_voice = models.CharField(max_length=150, blank=True)
     country = models.CharField(max_length=2, choices=CountryOptions.choices)
     currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
+    avg_rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    ratings_count = models.PositiveIntegerField(default=0)
 
 
 class CustomerProfile(Profile):
