@@ -48,6 +48,15 @@ SELLER_PERMISSIONS = {
     "SELLER_RATING": [
         "list",
     ],
+    "RACE": [
+        "list",
+        "retrieve",
+        "standings",
+    ],
+    "RACE_RESULT": [
+        "list",
+        "retrieve",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -97,5 +106,14 @@ CUSTOMER_PERMISSIONS = {
     "SELLER_RATING": [
         "list",
         "create",
+    ],
+    "RACE": [
+        "list",
+        "retrieve",
+        "standings",
+    ],
+    "RACE_RESULT": [
+        "list",
+        "retrieve",
     ],
 }

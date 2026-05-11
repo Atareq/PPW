@@ -23,6 +23,7 @@ The platform currently supports and will continue to expand around:
 - scheduled auction closing with winner resolution
 - fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
 - ratings and comments as a simple trust and feedback layer
+- race records and race standings for pigeon/bird racing reports
 - planned admin-assisted post-auction and marketplace completion
 - future media, pedigree, QR, reviews, points, chat, and promotion modules
 
@@ -88,6 +89,7 @@ Current major apps:
 - `apps.orders`
 - `apps.auctions`
 - `apps.ratings`
+- `apps.races`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -511,6 +513,51 @@ Current rating behavior:
 - rating creation recomputes `Asset.avg_rating`, `Asset.ratings_count`, `SellerProfile.avg_rating`, and `SellerProfile.ratings_count`
 - rating update/delete, moderation, replies, reports, likes, notifications, points, and analytics are not implemented
 
+### `apps.races`
+
+Current responsibilities:
+
+- race/report records for pigeon or bird racing
+- race result records with denormalized competitor and bird ring details
+- automatic race standing rank recalculation
+- global race-result search
+
+Current race API:
+
+- `/api/races/`
+  - `GET`: authenticated paginated race list
+  - `POST`: manager-only race creation
+- `/api/races/<id>/`
+  - `GET`: authenticated race detail with nested results
+  - `PUT/PATCH/DELETE`: manager-only race updates and deletion
+- `/api/races/<id>/standings/`
+  - `GET`: authenticated paginated results for one race ordered by rank
+- `/api/races/<id>/results/bulk/`
+  - `POST`: manager-only bulk result submission for one race
+- `/api/race-results/`
+  - `GET`: authenticated paginated global result search
+  - `POST`: manager-only individual result creation
+- `/api/race-results/<id>/`
+  - `GET`: authenticated result detail
+  - `PUT/PATCH/DELETE`: manager-only result updates and deletion
+
+Current race behavior:
+
+- only two race-domain models exist: `Race` and `RaceResult`
+- there are no separate competitor, club, season, or race-bird models
+- `RaceResult.competitor_name` and `RaceResult.bird_ring_number` are plain fields
+- `RaceResult.rank` is calculated by service code and is not trusted from request payloads
+- rank recalculation sorts by highest `speed`, then earliest `arrival_datetime`, then lowest `id`
+- `recalculate_race_ranks(race_id)` is the service-layer ranking entry point
+- creating, updating, deleting, or bulk-submitting results recalculates all ranks for the race inside transactions
+- active `RaceResult` rows enforce unique `bird_ring_number` per race and unique `rank` per race
+- `speed` and `distance_km` must be greater than zero
+- `arrival_datetime` must be after the parent race `release_datetime`
+- global result search supports `bird_ring_number`, `competitor_name`, `q`, and `race_id`
+- `include_race=true` on race-result list/detail responses includes a nested race summary; false or omitted excludes it
+- race APIs use `HasAppAccess` with `allow_scoped_read_access=True`
+- managers can write races and results; authenticated sellers and customers can read races, standings, and race-result search
+
 ### `apps.general`
 
 Current responsibilities:
@@ -686,6 +733,31 @@ Current design choice:
 - completed `OrderItem` eligibility is required before rating creation
 - rating aggregates are cached on `Asset` and `SellerProfile`
 
+#### Race
+
+Race is one pigeon or bird racing report.
+
+Current design choice:
+
+- `Race` stores report-level details such as season year, station, release datetime, weather, total birds, competitor count, optional planned distance, coordinates, and notes
+- no separate `Season` or `Club` model exists for race reports
+- race records are manager-written and authenticated-user readable
+- race details can include nested results
+
+#### RaceResult
+
+RaceResult is one reported bird result inside a race.
+
+Current design choice:
+
+- each result belongs to one `Race`
+- competitor name and bird ring number are stored directly on the result
+- no separate race `Bird` or `Competitor` model exists
+- rank is recalculated by service logic from speed within the race
+- higher speed ranks better
+- ties are deterministically ordered by arrival datetime and id because rank remains unique per race
+- result writes must use the service layer so the race standings stay consistent
+
 #### Auction
 
 Auction is the top-level aggregate for timed bidding. It contains one or more auction items. Auction type determines creation and validation rules.
@@ -766,6 +838,8 @@ Mounted API roots:
 - `/api/seller-comments/`
 - `/api/asset-ratings/`
 - `/api/seller-ratings/`
+- `/api/races/`
+- `/api/race-results/`
 
 Current internal API docs endpoints:
 
@@ -1002,6 +1076,8 @@ Current permission resources:
 - `SELLER_COMMENT`
 - `ASSET_RATING`
 - `SELLER_RATING`
+- `RACE`
+- `RACE_RESULT`
 
 Permission implementation rule:
 
@@ -1054,6 +1130,15 @@ Current ratings/comment permission pattern:
 - sellers can list asset/seller ratings but cannot create ratings
 - rating creation remains customer-only through service validation after the shared endpoint permission gate
 - ratings and comments must not use app-local permission classes
+
+Current race permission pattern:
+
+- `RaceViewSet` uses `HasAppAccess` with `permission_resource = "RACE"`
+- `RaceResultViewSet` uses `HasAppAccess` with `permission_resource = "RACE_RESULT"`
+- both race viewsets set `allow_scoped_read_access = True` because readable race data is intentionally available to any authenticated role
+- managers can create, update, delete, and bulk-submit race data through the global manager bypass
+- sellers and customers can list/retrieve races, list standings, and search race results only
+- race write validation and rank recalculation live in serializers/services, not in permission classes
 
 Current auction permission pattern:
 

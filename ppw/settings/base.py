@@ -52,6 +52,8 @@ APPS = [
     "apps.authentication",
     "apps.auctions",
     "apps.ratings",
+    "apps.races",
+    "apps.packages",
 ]
 
 DEBUG_APPS = []
@@ -92,12 +94,8 @@ REST_FRAMEWORK = {
         "apps.authentication.authentication.ProfileSyncJWTAuthentication",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
-    "DEFAULT_PAGINATION_CLASS": (
-        "rest_framework.pagination.PageNumberPagination"
-    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_PAGINATION_CLASS": ("rest_framework.pagination.PageNumberPagination"),
     "PAGE_SIZE": 20,
 }
 

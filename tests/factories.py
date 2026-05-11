@@ -27,6 +27,7 @@ from apps.orders.models import (
     OrderItemStatus,
     OrderStatus,
 )
+from apps.races.models import Race, RaceResult
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
 
@@ -56,9 +57,7 @@ class UserAccountFactory(factory.django.DjangoModelFactory):
         if not create or extracted is False:
             return
 
-        profile_type = (
-            ProfileType.CUSTOMER if extracted in (None, True) else extracted
-        )
+        profile_type = ProfileType.CUSTOMER if extracted in (None, True) else extracted
 
         if profile_type == ProfileType.CUSTOMER:
             CustomerProfileFactory(user=obj, is_active=True)
@@ -223,6 +222,42 @@ class OrderEventFactory(factory.django.DjangoModelFactory):
 
 
 # ============================================================================
+# RACE FACTORIES
+# ============================================================================
+
+
+class RaceFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Race
+
+    title = factory.Sequence(lambda n: f"{500 + n}KM")
+    season_year = 2026
+    station_name = factory.Sequence(lambda n: f"Station {n}")
+    release_datetime = factory.LazyFunction(timezone.now)
+    weather_condition = ""
+    total_birds = 284
+    competitors_count = 22
+    planned_distance_km = Decimal("500.000")
+    coordinate_x = ""
+    coordinate_y = ""
+    notes = ""
+
+
+class RaceResultFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = RaceResult
+
+    race = factory.SubFactory(RaceFactory)
+    rank = factory.Sequence(lambda n: n + 1)
+    competitor_name = factory.Sequence(lambda n: f"Competitor {n}")
+    bird_ring_number = factory.Sequence(lambda n: f"RING-{n:05d}")
+    distance_km = Decimal("490.832")
+    speed = factory.Sequence(lambda n: Decimal("1400.000") + Decimal(n))
+    arrival_datetime = factory.LazyFunction(lambda: timezone.now() + timedelta(hours=1))
+    basket_number = None
+
+
+# ============================================================================
 # AUCTION FACTORIES
 # ============================================================================
 
@@ -235,9 +270,7 @@ class AuctionFactory(factory.django.DjangoModelFactory):
     title = factory.Faker("sentence", nb_words=5)
     description = factory.Faker("text", max_nb_chars=200)
     auction_type = AuctionType.SINGLE
-    start_time = factory.LazyFunction(
-        lambda: timezone.now() - timedelta(hours=1)
-    )
+    start_time = factory.LazyFunction(lambda: timezone.now() - timedelta(hours=1))
     end_time = factory.LazyFunction(lambda: timezone.now() + timedelta(days=7))
     status = AuctionStatus.ACTIVE
     is_visible = True
