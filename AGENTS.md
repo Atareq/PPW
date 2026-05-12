@@ -22,6 +22,8 @@ The platform currently supports and will continue to expand around:
 - auction creation and bidding
 - scheduled auction closing with winner resolution
 - fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
+- ratings and comments as a simple trust and feedback layer
+- race records and race standings for pigeon/bird racing reports
 - planned admin-assisted post-auction and marketplace completion
 - future media, pedigree, QR, reviews, points, chat, and promotion modules
 
@@ -86,6 +88,8 @@ Current major apps:
 - `apps.assets`
 - `apps.orders`
 - `apps.auctions`
+- `apps.ratings`
+- `apps.races`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -113,7 +117,7 @@ Current container behavior:
 - worker and beat roles reuse the same image and switch behavior through `APP_ROLE`
 - local Docker uses `.env` and bind mounts the repo into `/app`
 - local PostgreSQL is exposed on host port `5433` and container port `5432`
-- production Docker uses `.env.prod` for the Django and Celery services, keeps a Compose-managed `db` service using `.env`, and serves static files through Nginx
+- production Docker uses `.env.prod` for Django, Celery, and the Compose-managed `db` service, and serves static files through Nginx
 - `docker/entrypoint.sh` expects `DB_HOST` and `DB_PORT` to be available for every container role
 
 ### `apps.authentication`
@@ -332,12 +336,12 @@ Current order API:
 - `/api/orders/checkout/`
   - `POST`: customer converts the full active cart into an order after validating stock availability
 - `/api/orders/`
-  - `GET`: customer lists own orders; manager lists all orders
+  - `GET`: paginated customer list of own orders or manager list of all orders; supports exact `status` filtering
   - `POST`: compatibility alias for direct order creation from market-listed seller assets; validates stock availability without decrementing stock
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
-  - `GET`: seller lists own order items; manager lists all order items
+  - `GET`: paginated seller list of own order items or manager list of all order items
 - `/api/orders/items/<id>/approve/`
   - `POST`: seller approves their own pending order item
 - `/api/orders/items/<id>/reject/`
@@ -346,6 +350,7 @@ Current order API:
 Current order behavior:
 
 - each customer can have one active cart; active carts are created lazily
+- order lists can be filtered by exact aggregate order `status`
 - customers can add only available, market-listed assets with enough stock from valid seller profiles
 - adding the same asset to a cart increases the existing cart item quantity instead of creating a duplicate row
 - cart add and update store a `unit_price_snapshot`, but checkout revalidates using current DB asset prices
@@ -455,6 +460,104 @@ Current auction behavior:
 - closing an auction marks each item `sold` with winner data when bids exist, otherwise `unsold`, sets the auction to `closed`, and writes an `auction_ended` event
 - buy-now creates a bid at `auction.buy_now_price`, marks the item sold, sets winner fields, updates current price, and writes a `buy_now_triggered` event
 
+### `apps.ratings`
+
+Current responsibilities:
+
+- asset comments and seller comments
+- customer ratings for assets and sellers through separate concrete models
+- rating eligibility validation against completed order items
+- cached rating aggregate refresh for assets and seller profiles
+
+Current ratings/comment API:
+
+- `/api/asset-comments/`
+  - `GET`: authenticated paginated asset comment list; supports `asset_id`, `owner_id`, and ordering filters
+  - `POST`: authenticated active-profile asset comment creation with nested `asset`
+- `/api/seller-comments/`
+  - `GET`: authenticated paginated seller comment list; supports `seller_id`, `owner_id`, and ordering filters
+  - `POST`: authenticated active-profile seller comment creation with nested `seller`
+- `/api/asset-ratings/`
+  - `GET`: authenticated paginated asset rating list; supports `asset_id`, `stars`, and ordering filters
+  - `POST`: authenticated customer-profile asset rating creation with nested `asset` and optional nested `comment`
+- `/api/seller-ratings/`
+  - `GET`: authenticated paginated seller rating list; supports `seller_id`, `stars`, and ordering filters
+  - `POST`: authenticated customer-profile seller rating creation with nested `seller` and optional nested `comment`
+
+Current comment behavior:
+
+- `Comment` is an abstract base class for shared comment fields
+- concrete comment models are `AssetComment` and `SellerComment`
+- comments inherit `OwnerBaseModel`; owner is the active `Profile`
+- comments target exactly one asset or one seller through their concrete model
+- any authenticated user with an active valid profile can comment on any asset or seller
+- no completed order item is required for commenting
+- the same owner cannot create more than one comment on the same target within 2 minutes
+- standalone comment endpoints always create `is_rating_comment=False`
+- rating-related comments can only be created through nested rating API payloads and use `is_rating_comment=True`
+- comments do not support replies, moderation, reporting, likes, notifications, or analytics
+
+Current rating behavior:
+
+- `Rating` is an abstract base class for shared rating fields
+- concrete rating models are `AssetRating` and `SellerRating`
+- ratings store `owner` as `CustomerProfile`
+- ratings target exactly one asset or one seller through their concrete model
+- ratings can optionally create a nested rating comment during rating creation
+- rating APIs do not link existing comments and reject nested `comment.id`
+- ratings require `stars` from 1 through 5 through model field validators and API serializer validation
+- customers can rate an asset only after a completed `OrderItem` for that asset
+- customers can rate a seller only after a completed `OrderItem` for that seller
+- seller and manager active profiles cannot create ratings
+- duplicate active ratings are blocked per customer/asset and per customer/seller
+- rating creation recomputes `Asset.avg_rating`, `Asset.ratings_count`, `SellerProfile.avg_rating`, and `SellerProfile.ratings_count`
+- rating update/delete, moderation, replies, reports, likes, notifications, points, and analytics are not implemented
+
+### `apps.races`
+
+Current responsibilities:
+
+- race/report records for pigeon or bird racing
+- race result records with denormalized competitor and bird ring details
+- automatic race standing rank recalculation
+- global race-result search
+
+Current race API:
+
+- `/api/races/`
+  - `GET`: authenticated paginated race list
+  - `POST`: manager-only race creation
+- `/api/races/<id>/`
+  - `GET`: authenticated race detail with nested results
+  - `PUT/PATCH/DELETE`: manager-only race updates and deletion
+- `/api/races/<id>/standings/`
+  - `GET`: authenticated paginated results for one race ordered by rank
+- `/api/races/<id>/results/bulk/`
+  - `POST`: manager-only bulk result submission for one race
+- `/api/race-results/`
+  - `GET`: authenticated paginated global result search
+  - `POST`: manager-only individual result creation
+- `/api/race-results/<id>/`
+  - `GET`: authenticated result detail
+  - `PUT/PATCH/DELETE`: manager-only result updates and deletion
+
+Current race behavior:
+
+- only two race-domain models exist: `Race` and `RaceResult`
+- there are no separate competitor, club, season, or race-bird models
+- `RaceResult.competitor_name` and `RaceResult.bird_ring_number` are plain fields
+- `RaceResult.rank` is calculated by service code and is not trusted from request payloads
+- rank recalculation sorts by highest `speed`, then earliest `arrival_datetime`, then lowest `id`
+- `recalculate_race_ranks(race_id)` is the service-layer ranking entry point
+- creating, updating, deleting, or bulk-submitting results recalculates all ranks for the race inside transactions
+- active `RaceResult` rows enforce unique `bird_ring_number` per race and unique `rank` per race
+- `speed` and `distance_km` must be greater than zero
+- `arrival_datetime` must be after the parent race `release_datetime`
+- global result search supports `bird_ring_number`, `competitor_name`, `q`, and `race_id`
+- `include_race=true` on race-result list/detail responses includes a nested race summary; false or omitted excludes it
+- race APIs use `HasAppAccess` with `allow_scoped_read_access=True`
+- managers can write races and results; authenticated sellers and customers can read races, standings, and race-result search
+
 ### `apps.general`
 
 Current responsibilities:
@@ -467,9 +570,11 @@ Current responsibilities:
 
 - `apps.general.models.BaseModel`: timestamped + soft-delete base model
 - `apps.general.models.OwnerBaseModel`: common owner relation to `users.Profile`
+- `apps.general.models.ResourcePermission`: persisted resource/owner placeholder; current `HasAppAccess` does not consult this model
 - `apps.general.authorizations.HasAppAccess`: repo-specific permission gate used by app viewsets
 - `HasAppAccess.allow_scoped_read_access`: opt-in read behavior for resources whose `get_queryset()` already scopes readable objects
 - `HasAppAccess.permission_owner_field`: optional view attribute for object checks that use a non-`owner_id` ownership field, such as `OrderItem.seller_id`
+- `apps.general.viewsets.CreateListViewSet`: shared DRF base for endpoints that only need `create` and `list`
 
 ### Main Domain Concepts
 
@@ -494,6 +599,14 @@ These are exact persisted and JWT claim values from `ProfileType`, not lowercase
 Important rule:
 
 Use `active_profile` as the operational actor in business flows.
+
+DRY active-profile rule:
+
+- `user.active_profile` is the source of truth for the current valid active profile
+- do not duplicate `active_profile` validity checks for `is_active`, `is_valid`, `activated`, or `deleted` after retrieving `user.active_profile`
+- keep role/type checks such as `Customer`, `Seller`, or `Manager` when they are business rules for the action
+- keep validation for other profiles or objects, such as asset owners, when they are not the current user's `active_profile`
+- `user.active_profile` returns the base `Profile`; fetch the concrete subtype only when assigning to a concrete FK such as `CustomerProfile` on ratings or orders
 
 #### Bird
 
@@ -591,6 +704,60 @@ Current design choice:
 - current event types include order creation, seller pending item, seller approval, and seller timeout auto-cancellation
 - there is no push delivery, async notification task, or external notification integration yet
 
+#### Comment
+
+Comment is an abstract base for open authenticated discussion records.
+
+Current design choice:
+
+- concrete comment models are `AssetComment` and `SellerComment`
+- comment owner is the active `Profile`
+- any authenticated active profile can create standalone asset or seller comments
+- `is_rating_comment=True` is reserved for comments created through nested rating API payloads
+- standalone comment create payloads use nested targets, for example `{"asset": {"id": 1}, "text": "..."}` or `{"seller": {"id": 2}, "text": "..."}`
+- comment throttling is validation-layer only, not a database constraint
+- comments are flat; replies/threading and moderation/reporting are not implemented
+
+#### Rating
+
+Rating is an abstract base for controlled customer feedback.
+
+Current design choice:
+
+- concrete rating models are `AssetRating` and `SellerRating`
+- rating owner is a `CustomerProfile`
+- rating comments are created only through nested rating API payloads
+- rating create payloads use nested targets, for example `{"asset": {"id": 1}, "stars": 5, "comment": {"text": "..."}}` or `{"seller": {"id": 2}, "stars": 5}`
+- rating APIs reject flat `target_type` / `target_id` payloads and reject nested `comment.id`
+- concrete rating models use field validators for one-to-five `stars`; API serializers also validate the range
+- completed `OrderItem` eligibility is required before rating creation
+- rating aggregates are cached on `Asset` and `SellerProfile`
+
+#### Race
+
+Race is one pigeon or bird racing report.
+
+Current design choice:
+
+- `Race` stores report-level details such as season year, station, release datetime, weather, total birds, competitor count, optional planned distance, coordinates, and notes
+- no separate `Season` or `Club` model exists for race reports
+- race records are manager-written and authenticated-user readable
+- race details can include nested results
+
+#### RaceResult
+
+RaceResult is one reported bird result inside a race.
+
+Current design choice:
+
+- each result belongs to one `Race`
+- competitor name and bird ring number are stored directly on the result
+- no separate race `Bird` or `Competitor` model exists
+- rank is recalculated by service logic from speed within the race
+- higher speed ranks better
+- ties are deterministically ordered by arrival datetime and id because rank remains unique per race
+- result writes must use the service layer so the race standings stay consistent
+
 #### Auction
 
 Auction is the top-level aggregate for timed bidding. It contains one or more auction items. Auction type determines creation and validation rules.
@@ -650,6 +817,8 @@ From `ppw/settings/base.py`:
 - authentication defaults to JWT via `apps.authentication.authentication.ProfileSyncJWTAuthentication`
 - default schema generation uses `drf_spectacular.openapi.AutoSchema`
 - default DRF permission is `IsAuthenticated`
+- global DRF list pagination uses `PageNumberPagination` with `PAGE_SIZE = 20`
+- paginated list responses use DRF's `count`, `next`, `previous`, and `results` response shape
 - `AUTH_USER_MODEL` is `authentication.UserAccount`
 - `APPEND_SLASH = False`
 
@@ -665,6 +834,12 @@ Mounted API roots:
 - `/api/assets/`
 - `/api/auctions/`
 - `/api/orders/`
+- `/api/asset-comments/`
+- `/api/seller-comments/`
+- `/api/asset-ratings/`
+- `/api/seller-ratings/`
+- `/api/races/`
+- `/api/race-results/`
 
 Current internal API docs endpoints:
 
@@ -745,6 +920,7 @@ Current e-commerce foundation:
 - product assets now have CRUD endpoints for supplies, accessories, feeds, and supplements
 - product asset list endpoints support filtering, search, and ordering
 - carts, checkout, orders, and order items now have an API / serializer / validator / service layer
+- order aggregate list endpoints support exact `status` filtering
 - customers can add listed seller assets to a persistent server-side cart
 - customers can checkout the full active cart into a pending seller decision market order
 - direct `POST /api/orders/` remains available as a compatibility alias with the same stock-validation semantics
@@ -863,6 +1039,21 @@ Preferred layering:
 - services: orchestration and state changes
 - views: HTTP layer only
 
+Shared DRF viewset rule:
+
+- when implementing an endpoint that only supports `create` and `list`, prefer `apps.general.viewsets.CreateListViewSet`
+- define `create_serializer_class` for write/input validation and `list_serializer_class` for read/list output
+- create responses from `CreateListViewSet` intentionally use `list_serializer_class`, not the create serializer
+- do not duplicate this base viewset inside individual apps
+- keep endpoint-specific queryset scoping, `permission_resource`, filters, and extra ordering fields on the concrete viewset
+
+Nested serializer rule:
+
+- prefer `WritableNestedModelSerializer` for nested create/update serializers
+- use nested request objects for naturally nested APIs instead of flat `target_type` / `target_id` payloads
+- return nested summaries in responses for APIs that accept nested request objects
+- keep plain `Serializer` only for non-nested command payloads
+
 ### Permissions
 
 Permissions must be checked at:
@@ -881,6 +1072,19 @@ Current permission resources:
 - `CHECKOUT`
 - `ORDER`
 - `ORDER_ITEM`
+- `ASSET_COMMENT`
+- `SELLER_COMMENT`
+- `ASSET_RATING`
+- `SELLER_RATING`
+- `RACE`
+- `RACE_RESULT`
+
+Permission implementation rule:
+
+- do not introduce any new permission class without explicit user approval
+- new endpoint authorization must use `apps.general.authorizations.HasAppAccess` plus `CUSTOMER_PERMISSIONS` / `SELLER_PERMISSIONS` unless the user explicitly approves another approach
+- viewsets using `HasAppAccess` must define both `queryset` and `permission_resource`
+- keep profile-specific business validation in serializers, validators, or services when `HasAppAccess` is only the endpoint gate
 
 Current product asset permission pattern:
 
@@ -914,6 +1118,27 @@ Current order permission pattern:
 - order-item object checks use `permission_owner_field = "seller_id"`
 - sellers can list, approve, and reject only their own seller-side order items
 - managers can access all order and order-item actions through existing manager behavior
+
+Current ratings/comment permission pattern:
+
+- `AssetCommentViewSet` uses `HasAppAccess` with `permission_resource = "ASSET_COMMENT"`
+- `SellerCommentViewSet` uses `HasAppAccess` with `permission_resource = "SELLER_COMMENT"`
+- `AssetRatingViewSet` uses `HasAppAccess` with `permission_resource = "ASSET_RATING"`
+- `SellerRatingViewSet` uses `HasAppAccess` with `permission_resource = "SELLER_RATING"`
+- customers and sellers can list and create comments through shared permission constants
+- customers can list and create asset/seller ratings through shared permission constants
+- sellers can list asset/seller ratings but cannot create ratings
+- rating creation remains customer-only through service validation after the shared endpoint permission gate
+- ratings and comments must not use app-local permission classes
+
+Current race permission pattern:
+
+- `RaceViewSet` uses `HasAppAccess` with `permission_resource = "RACE"`
+- `RaceResultViewSet` uses `HasAppAccess` with `permission_resource = "RACE_RESULT"`
+- both race viewsets set `allow_scoped_read_access = True` because readable race data is intentionally available to any authenticated role
+- managers can create, update, delete, and bulk-submit race data through the global manager bypass
+- sellers and customers can list/retrieve races, list standings, and search race results only
+- race write validation and rank recalculation live in serializers/services, not in permission classes
 
 Current auction permission pattern:
 
@@ -970,6 +1195,9 @@ The codebase currently provides:
 - seller item approval/rejection foundation
 - seller-approval-time stock decrement for market order items
 - seller-decision timeout auto-cancellation for stale pending market order items
+- split asset/seller comments and customer asset/seller ratings as a simple trust layer
+- nested rating comment creation with `is_rating_comment=True`
+- cached rating aggregates on assets and seller profiles
 - lightweight order events for future notification hooks
 - auctions, auction items, bids, and events
 - auction creation, bidding, limited update locking, cancellation, buy-now, and close/winner-resolution flows
@@ -992,7 +1220,7 @@ The codebase does not yet fully implement:
 - handoff flow
 - ownership transfer workflow as a formal process
 - dispute flow
-- ratings / reviews / comments
+- rating/comment moderation, replies, reports, likes, notifications, or analytics
 - pedigree system
 - pedigree reader
 - QR flow
@@ -1140,14 +1368,13 @@ Includes:
 
 Goal:
 
-Add social and business trust features.
+Expand the current ratings/comment trust layer.
 
 Includes:
 
-- ratings
-- reviews
-- comments
-- moderation basics
+- moderation basics for existing comments and ratings
+- richer review workflows if product scope requires them
+- replies, reports, likes, or analytics only when explicitly prioritized
 
 ### Phase E - Bird Intelligence / Domain Enrichment
 
@@ -1316,7 +1543,7 @@ It must be:
 Current implementation approach:
 
 - `ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS` defaults to `3`
-- Celery Beat runs `orders.tasks.cancel_expired_pending_order_items` hourly
+- Celery Beat runs `orders.tasks.cancel_expired_pending_order_items` every 12 hours
 - `OrderItemService.cancel_expired_pending_items()` selects `pending_seller` items whose `created` timestamp is older than the configured timeout
 - each stale item is locked before it is moved to `cancelled`
 - parent `Order.status` is refreshed after each item cancellation
@@ -1354,13 +1581,15 @@ If adding new modules:
 
 ## Testing Baseline
 
-- current targeted auth baseline: `pytest tests/authentication -q` passes with `43 passed`
-- current targeted asset baseline: `pytest tests/assets -q` passes with `16 passed`
-- current targeted API docs baseline: `pytest tests/test_api_docs.py -q` passes with `5 passed`
-- current targeted order baseline: `pytest tests/orders -q` passes with `39 passed`
-- current schema validation baseline: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml` passes with `0` errors and benign enum-name warnings
-- current full-suite baseline: `pytest -q` passes with `169 passed`
-- pre-commit pytest hook runs `pytest -q`; use the current full-suite baseline above as the direct pytest result
+- auth tests: `pytest tests/authentication -q`
+- asset tests: `pytest tests/assets -q`
+- auction tests: `pytest tests/auctions -q`
+- order tests: `pytest tests/orders -q`
+- ratings tests: `pytest tests/ratings -q`
+- API docs tests: `pytest tests/test_api_docs.py -q`
+- full suite: `pytest -q`
+- schema validation: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml`
+- pre-commit pytest hook runs `pytest -q`
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior
 

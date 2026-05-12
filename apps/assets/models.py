@@ -44,6 +44,12 @@ class Asset(OwnerBaseModel):
     )
     is_market_listed = models.BooleanField(default=False)
     is_for_auction = models.BooleanField(default=False)
+    avg_rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+    ratings_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         indexes = [

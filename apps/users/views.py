@@ -18,19 +18,19 @@ from apps.users.serializers import (
 # We need to create API for adding a manager `is_staff = True`
 class SellerProfileAdminViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileAdminSerializer
-    queryset = SellerProfile.objects.all()
+    queryset = SellerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
 
 class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerProfileAdminSerializer
-    queryset = CustomerProfile.objects.all()
+    queryset = CustomerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
 
 class SellerProfileMobileViewSet(viewsets.ModelViewSet):
     serializer_class = SellerProfileMobileSerializer
-    queryset = SellerProfile.objects.all()
+    queryset = SellerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated]
 
     @transaction.atomic
@@ -57,7 +57,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
 
         return SellerProfile.objects.filter(
             user=self.request.user, deleted__isnull=True, is_active=True
-        )
+        ).order_by("-created")
 
     def get_object(self):
         if self.get_queryset():
@@ -79,13 +79,13 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
 
 class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerProfileMobileSerializer
-    queryset = CustomerProfile.objects.all()
+    queryset = CustomerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return CustomerProfile.objects.filter(
             user=self.request.user, deleted__isnull=True
-        )
+        ).order_by("-created")
 
     def perform_destroy(self, instance):
         if instance.is_active:

@@ -23,7 +23,10 @@ class UserAccount(AbstractUser, BaseModel):
     def active_profile(self):
         """Return the currently active profile for this user."""
         return self.profiles.filter(
-            is_active=True, is_valid=True, activated=True
+            is_active=True,
+            is_valid=True,
+            activated=True,
+            deleted__isnull=True,
         ).first()
 
     @property

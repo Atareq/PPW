@@ -34,6 +34,29 @@ SELLER_PERMISSIONS = {
         "approve",
         "reject",
     ],
+    "ASSET_COMMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_COMMENT": [
+        "list",
+        "create",
+    ],
+    "ASSET_RATING": [
+        "list",
+    ],
+    "SELLER_RATING": [
+        "list",
+    ],
+    "RACE": [
+        "list",
+        "retrieve",
+        "standings",
+    ],
+    "RACE_RESULT": [
+        "list",
+        "retrieve",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -67,5 +90,30 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
         "create",
+    ],
+    "ASSET_COMMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_COMMENT": [
+        "list",
+        "create",
+    ],
+    "ASSET_RATING": [
+        "list",
+        "create",
+    ],
+    "SELLER_RATING": [
+        "list",
+        "create",
+    ],
+    "RACE": [
+        "list",
+        "retrieve",
+        "standings",
+    ],
+    "RACE_RESULT": [
+        "list",
+        "retrieve",
     ],
 }

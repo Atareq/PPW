@@ -182,7 +182,7 @@ def test_customer_only_sees_market_listed_products(
     )
 
     list_response = authenticated_customer_client.get(product_url("supplies"))
-    listed_ids = {item["id"] for item in list_response.data}
+    listed_ids = {item["id"] for item in list_response.data["results"]}
     hidden_response = authenticated_customer_client.get(
         product_url("supplies", unlisted.pk)
     )
@@ -219,7 +219,7 @@ def test_seller_sees_own_unlisted_and_market_listed_products(
     )
 
     response = authenticated_seller_client.get(product_url("supplies"))
-    ids = {item["id"] for item in response.data}
+    ids = {item["id"] for item in response.data["results"]}
 
     assert response.status_code == status.HTTP_200_OK
     assert owned_unlisted.pk in ids
@@ -242,7 +242,7 @@ def test_manager_can_list_create_update_and_delete_all_products(
     )
 
     list_response = manager_client.get(product_url("supplies"))
-    ids = {item["id"] for item in list_response.data}
+    ids = {item["id"] for item in list_response.data["results"]}
     create_response = manager_client.post(
         product_url("supplies"),
         product_payload(title="Manager product"),
@@ -297,7 +297,7 @@ def test_product_endpoints_filter_by_status(
         product_url(route),
         {"status": "available"},
     )
-    ids = {item["id"] for item in response.data}
+    ids = {item["id"] for item in response.data["results"]}
 
     assert response.status_code == status.HTTP_200_OK
     assert available.pk in ids
@@ -349,7 +349,7 @@ def test_product_filters_support_ranges_search_owner_and_ordering(
             "ordering": "-price",
         },
     )
-    ids = [item["id"] for item in response.data]
+    ids = [item["id"] for item in response.data["results"]]
 
     assert response.status_code == status.HTTP_200_OK
     assert ids == [matching.pk]
@@ -380,7 +380,7 @@ def test_product_filters_support_boolean_values(
         product_url("supplies"),
         {"is_market_listed": "false"},
     )
-    ids = {item["id"] for item in response.data}
+    ids = {item["id"] for item in response.data["results"]}
 
     assert response.status_code == status.HTTP_200_OK
     assert unlisted.pk in ids

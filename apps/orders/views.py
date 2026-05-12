@@ -1,4 +1,5 @@
 from django.db.models import Prefetch
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -43,6 +44,8 @@ class OrderViewSet(
     permission_resource = "ORDER"
 
     queryset = Order.objects.all()
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["status"]
 
     def get_serializer_class(self):
         if self.action == "create":

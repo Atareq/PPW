@@ -101,7 +101,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     """
 
     permission_resource = "AUCTION"
-    queryset = Auction.objects.all()
+    queryset = Auction.objects.all().order_by("-created")
     permission_classes = [IsAuthenticated, HasAppAccess]
 
     def get_serializer_class(self):
@@ -123,7 +123,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter based on action"""
         if self.request.user.role == ProfileType.MANAGER:
-            return Auction.objects.all()
+            return Auction.objects.all().order_by("-created")
         else:
             if self.action in [
                 "my_auctions",
@@ -141,9 +141,9 @@ class AuctionViewSet(viewsets.ModelViewSet):
                     "-created"
                 )
             if self.action == "retrieve":
-                return Auction.objects.all()
+                return Auction.objects.all().order_by("-created")
 
-        return Auction.objects.all()
+        return Auction.objects.all().order_by("-created")
 
     def get_serializer_context(self):
         """Add request to context for serializers"""
