@@ -12,6 +12,8 @@ from apps.assets.models import (
     Supply,
 )
 from apps.authentication.services import build_token_for_user
+from apps.packages.models import PackageUsageLog, PackageUsageType
+from tests.factories import ActiveAssetSellerPackageFactory, PackageFactory
 
 PRODUCT_ENDPOINTS = [
     (Supply, "supplies", AssetCategory.SUPPLY),
@@ -63,6 +65,18 @@ def create_product(model, owner, **overrides):
     return model.objects.create(**data)
 
 
+def create_active_package(owner, remaining_points=50, product_cost=7):
+    return ActiveAssetSellerPackageFactory(
+        owner=owner,
+        package=PackageFactory(
+            points=50,
+            auction_cost=10,
+            product_cost=product_cost,
+        ),
+        remaining_points=remaining_points,
+    )
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize("model,route,category", PRODUCT_ENDPOINTS)
 def test_seller_can_create_product_type_with_owner_and_category(
@@ -72,6 +86,12 @@ def test_seller_can_create_product_type_with_owner_and_category(
     authenticated_seller_client,
     seller_user,
 ):
+    seller_package = create_active_package(
+        seller_user.active_profile,
+        remaining_points=50,
+        product_cost=7,
+    )
+
     response = authenticated_seller_client.post(
         product_url(route),
         product_payload(
@@ -88,6 +108,73 @@ def test_seller_can_create_product_type_with_owner_and_category(
     assert product.category == category
     assert response.data["owner"] == seller_user.active_profile.id
     assert response.data["category"] == category
+    seller_package.refresh_from_db()
+    assert seller_package.remaining_points == 43
+    log = PackageUsageLog.objects.get()
+    assert log.usage_type == PackageUsageType.PRODUCT_CREATED
+    assert log.points_used == 7
+    assert log.related_object_type == f"assets.{model.__name__}"
+    assert log.related_object_id == product.pk
+
+
+@pytest.mark.django_db
+def test_seller_product_creation_fails_without_active_package(
+    authenticated_seller_client,
+):
+    response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(title="No package product"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "No active package" in str(response.data)
+    assert not Supply.objects.filter(title="No package product").exists()
+    assert PackageUsageLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_seller_product_creation_fails_with_insufficient_points(
+    authenticated_seller_client,
+    seller_user,
+):
+    seller_package = create_active_package(
+        seller_user.active_profile,
+        remaining_points=2,
+        product_cost=7,
+    )
+
+    response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(title="Insufficient product"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Insufficient package points" in str(response.data)
+    seller_package.refresh_from_db()
+    assert seller_package.remaining_points == 2
+    assert not Supply.objects.filter(title="Insufficient product").exists()
+    assert PackageUsageLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_failed_product_validation_does_not_consume_points(
+    authenticated_seller_client,
+    seller_user,
+):
+    seller_package = create_active_package(seller_user.active_profile)
+
+    response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(title=""),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    seller_package.refresh_from_db()
+    assert seller_package.remaining_points == 50
+    assert PackageUsageLog.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -122,6 +209,7 @@ def test_seller_can_update_and_delete_own_product(
     seller_user,
 ):
     product = create_product(Supply, seller_user.active_profile)
+    seller_package = create_active_package(seller_user.active_profile)
 
     update_response = authenticated_seller_client.patch(
         product_url("supplies", product.pk),
@@ -139,6 +227,33 @@ def test_seller_can_update_and_delete_own_product(
 
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
     assert not Supply.objects.filter(pk=product.pk).exists()
+    seller_package.refresh_from_db()
+    assert seller_package.remaining_points == 50
+    assert PackageUsageLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_product_listing_change_does_not_consume_points(
+    authenticated_seller_client,
+    seller_user,
+):
+    product = create_product(
+        Supply,
+        seller_user.active_profile,
+        is_market_listed=False,
+    )
+    seller_package = create_active_package(seller_user.active_profile)
+
+    response = authenticated_seller_client.patch(
+        product_url("supplies", product.pk),
+        {"is_market_listed": True},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    seller_package.refresh_from_db()
+    assert seller_package.remaining_points == 50
+    assert PackageUsageLog.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -263,6 +378,7 @@ def test_manager_can_list_create_update_and_delete_all_products(
     assert create_response.status_code == status.HTTP_201_CREATED
     assert create_response.data["owner"] == manager_user.active_profile.id
     assert create_response.data["category"] == AssetCategory.SUPPLY
+    assert PackageUsageLog.objects.count() == 0
     assert update_response.status_code == status.HTTP_200_OK
     other_product.refresh_from_db()
     assert other_product.title == "Manager edit"

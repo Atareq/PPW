@@ -1,8 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, close_old_connections, connection
 from django.utils import timezone
 import pytest
 from rest_framework.test import APIClient
@@ -11,15 +12,19 @@ from apps.authentication.services import build_token_for_user
 from apps.packages.models import (
     AssetSellerPackage,
     Package,
+    PackageUsageLog,
+    PackageUsageType,
     SellerPackage,
     SellerPackageStatus,
 )
-from apps.packages.services import SellerPackageService
+from apps.packages.services import PackageService, SellerPackageService
 from apps.users.constants import ProfileType
 from apps.users.models import SellerProfile
 from tests.factories import (
+    ActiveAssetSellerPackageFactory,
     AssetSellerPackageFactory,
     PackageFactory,
+    SupplyFactory,
     UserAccountFactory,
 )
 
@@ -400,3 +405,242 @@ class TestManagerPackageEndpoints:
         assert response.status_code == 400
         seller_package.refresh_from_db()
         assert seller_package.status == SellerPackageStatus.ACTIVE
+
+
+class TestPackageConsumptionService:
+    def test_active_package_can_consume_auction_cost(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        package = PackageFactory(
+            points=100,
+            auction_cost=15,
+            product_cost=8,
+        )
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            package=package,
+            remaining_points=100,
+        )
+
+        updated = PackageService.consume_points(
+            seller_user.active_profile,
+            PackageUsageType.AUCTION_CREATED,
+            related_object=seller_package,
+        )
+
+        assert updated.remaining_points == 85
+        log = PackageUsageLog.objects.get()
+        assert log.seller_package_id == seller_package.pk
+        assert log.owner_id == seller_user.active_profile.pk
+        assert log.usage_type == PackageUsageType.AUCTION_CREATED
+        assert log.points_used == 15
+        assert log.related_object_type == "packages.AssetSellerPackage"
+        assert log.related_object_id == seller_package.pk
+
+    def test_active_package_can_consume_product_cost(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        package = PackageFactory(
+            points=100,
+            auction_cost=15,
+            product_cost=8,
+        )
+        ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            package=package,
+            remaining_points=100,
+        )
+        product = SupplyFactory(owner=seller_user.active_profile)
+
+        updated = PackageService.consume_points(
+            seller_user.active_profile,
+            PackageUsageType.PRODUCT_CREATED,
+            related_object=product,
+        )
+
+        assert updated.remaining_points == 92
+        log = PackageUsageLog.objects.get()
+        assert log.usage_type == PackageUsageType.PRODUCT_CREATED
+        assert log.points_used == 8
+        assert log.related_object_type == "assets.Supply"
+        assert log.related_object_id == product.pk
+
+    def test_package_becomes_exhausted_when_points_reach_zero(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        package = PackageFactory(points=10, auction_cost=10, product_cost=10)
+        ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            package=package,
+            remaining_points=10,
+        )
+
+        updated = PackageService.consume_points(
+            seller_user.active_profile,
+            PackageUsageType.AUCTION_CREATED,
+        )
+
+        assert updated.remaining_points == 0
+        assert updated.status == SellerPackageStatus.EXHAUSTED
+        assert updated.activated is False
+        assert updated.invalidated_at is not None
+        assert PackageUsageLog.objects.count() == 1
+
+    def test_package_becomes_exhausted_when_remaining_points_are_unusable(
+        self,
+    ):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        package = PackageFactory(points=20, auction_cost=10, product_cost=6)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            package=package,
+            remaining_points=11,
+        )
+
+        updated = PackageService.consume_points(
+            seller_user.active_profile,
+            PackageUsageType.PRODUCT_CREATED,
+        )
+
+        assert updated.remaining_points == 5
+        assert updated.status == SellerPackageStatus.EXHAUSTED
+        assert updated.activated is False
+        seller_package.refresh_from_db()
+        assert seller_package.invalidated_at is not None
+
+    def test_exhausted_package_cannot_be_consumed(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            status=SellerPackageStatus.EXHAUSTED,
+            activated=False,
+        )
+
+        with pytest.raises(Exception, match="No active package"):
+            PackageService.consume_points(
+                seller_user.active_profile,
+                PackageUsageType.AUCTION_CREATED,
+            )
+
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_no_active_package_blocks_consumption(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        with pytest.raises(Exception, match="No active package"):
+            PackageService.consume_points(
+                seller_user.active_profile,
+                PackageUsageType.PRODUCT_CREATED,
+            )
+
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_expired_package_is_exhausted_and_blocks_consumption(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        with pytest.raises(Exception, match="expired"):
+            PackageService.consume_points(
+                seller_user.active_profile,
+                PackageUsageType.PRODUCT_CREATED,
+            )
+
+        seller_package.refresh_from_db()
+        assert seller_package.status == SellerPackageStatus.EXHAUSTED
+        assert seller_package.activated is False
+        assert seller_package.invalidated_at is not None
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_remaining_points_cannot_go_negative(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        package = PackageFactory(points=100, auction_cost=50, product_cost=20)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            package=package,
+            remaining_points=10,
+        )
+
+        with pytest.raises(Exception, match="Insufficient package points"):
+            PackageService.consume_points(
+                seller_user.active_profile,
+                PackageUsageType.AUCTION_CREATED,
+            )
+
+        seller_package.refresh_from_db()
+        assert seller_package.remaining_points == 10
+        assert seller_package.status == SellerPackageStatus.ACTIVE
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_pedigree_consumption_is_not_supported_yet(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+        )
+
+        with pytest.raises(Exception, match="Unsupported package usage type"):
+            PackageService.consume_points(
+                seller_user.active_profile,
+                PackageUsageType.PEDIGREE_CREATED,
+            )
+
+        seller_package.refresh_from_db()
+        assert seller_package.status == SellerPackageStatus.ACTIVE
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_repeated_final_point_consumption_cannot_go_negative(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        package = PackageFactory(points=5, auction_cost=5, product_cost=5)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            package=package,
+            remaining_points=5,
+        )
+
+        PackageService.consume_points(
+            seller_user.active_profile,
+            PackageUsageType.PRODUCT_CREATED,
+        )
+        with pytest.raises(Exception, match="No active package"):
+            PackageService.consume_points(
+                seller_user.active_profile,
+                PackageUsageType.PRODUCT_CREATED,
+            )
+
+        seller_package.refresh_from_db()
+        assert seller_package.remaining_points == 0
+        assert seller_package.status == SellerPackageStatus.EXHAUSTED
+        assert PackageUsageLog.objects.count() == 1
+
+    @pytest.mark.django_db(transaction=True)
+    def test_concurrent_consumption_cannot_over_consume_final_points(self):
+        if connection.vendor == "sqlite":
+            pytest.skip("SQLite does not enforce select_for_update row locks.")
+
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller = concrete_seller_profile(seller_user)
+        package = PackageFactory(points=5, auction_cost=5, product_cost=5)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=seller,
+            package=package,
+            remaining_points=5,
+        )
+
+        def consume():
+            close_old_connections()
+            try:
+                return PackageService.consume_points(
+                    SellerProfile.objects.get(pk=seller.pk),
+                    PackageUsageType.AUCTION_CREATED,
+                ).pk
+            except Exception as exc:
+                return str(exc)
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: consume(), range(2)))
+
+        seller_package.refresh_from_db()
+        assert seller_package.remaining_points == 0
+        assert PackageUsageLog.objects.count() == 1
+        assert any(result == seller_package.pk for result in results)

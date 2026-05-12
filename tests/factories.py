@@ -62,7 +62,9 @@ class UserAccountFactory(factory.django.DjangoModelFactory):
         if not create or extracted is False:
             return
 
-        profile_type = ProfileType.CUSTOMER if extracted in (None, True) else extracted
+        profile_type = (
+            ProfileType.CUSTOMER if extracted in (None, True) else extracted
+        )
 
         if profile_type == ProfileType.CUSTOMER:
             CustomerProfileFactory(user=obj, is_active=True)
@@ -262,6 +264,26 @@ class AssetSellerPackageFactory(factory.django.DjangoModelFactory):
     invalidated_at = None
     status = SellerPackageStatus.PENDING
 
+    @classmethod
+    def _adjust_kwargs(cls, **kwargs):
+        owner = kwargs.get("owner")
+        if (
+            owner is not None
+            and not isinstance(owner, SellerProfile)
+            and getattr(owner, "type", None) == ProfileType.SELLER
+        ):
+            kwargs["owner"] = SellerProfile.objects.get(pk=owner.pk)
+        return super()._adjust_kwargs(**kwargs)
+
+
+class ActiveAssetSellerPackageFactory(AssetSellerPackageFactory):
+    status = SellerPackageStatus.ACTIVE
+    activated = True
+    activated_at = factory.LazyFunction(timezone.now)
+    expires_at = factory.LazyFunction(
+        lambda: timezone.now() + timedelta(days=30)
+    )
+
 
 # ============================================================================
 # RACE FACTORIES
@@ -314,7 +336,9 @@ class AuctionFactory(factory.django.DjangoModelFactory):
     title = factory.Faker("sentence", nb_words=5)
     description = factory.Faker("text", max_nb_chars=200)
     auction_type = AuctionType.SINGLE
-    start_time = factory.LazyFunction(lambda: timezone.now() - timedelta(hours=1))
+    start_time = factory.LazyFunction(
+        lambda: timezone.now() - timedelta(hours=1)
+    )
     end_time = factory.LazyFunction(lambda: timezone.now() + timedelta(days=7))
     status = AuctionStatus.ACTIVE
     is_visible = True

@@ -1,6 +1,9 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.packages.models import PackageUsageType
+from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
 from apps.users.models import Profile
 
@@ -95,3 +98,34 @@ class BirdValidator:
 
         if birthday and mother.birthday and mother.birthday >= birthday:
             errors["mother"] = "Mother must be older than the bird."
+
+
+class ProductAssetCreationService:
+    @staticmethod
+    def create_product(model_class, owner, validated_data):
+        if owner is None:
+            raise serializers.ValidationError("Active profile not found.")
+
+        if owner.type == ProfileType.MANAGER:
+            return model_class.objects.create(owner=owner, **validated_data)
+
+        if owner.type != ProfileType.SELLER:
+            raise serializers.ValidationError(
+                "Only seller profiles can create product assets."
+            )
+
+        PackageService.validate_can_consume(
+            owner,
+            PackageUsageType.PRODUCT_CREATED,
+        )
+        with transaction.atomic():
+            product = model_class.objects.create(
+                owner=owner,
+                **validated_data,
+            )
+            PackageService.consume_points(
+                owner,
+                PackageUsageType.PRODUCT_CREATED,
+                related_object=product,
+            )
+            return product

@@ -25,7 +25,7 @@ The platform currently supports and will continue to expand around:
 - ratings and comments as a simple trust and feedback layer
 - race records and race result rankings for pigeon/bird racing reports
 - planned admin-assisted post-auction and marketplace completion
-- future media, pedigree, QR, reviews, points, chat, and promotion modules
+- future media, pedigree, QR, reviews, reward points, chat, and promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
 
@@ -279,6 +279,11 @@ Current product asset API behavior:
 - product CRUD uses shared `ProductAssetSerializer`
 - `owner` and `category` are read-only in API input
 - create sets `owner` from `request.user.active_profile`
+- seller product creation goes through `ProductAssetCreationService.create_product()`
+- seller-created `Supply`, `Accessory`, `Feed`, and `Supplement` assets consume `Package.product_cost` from the seller's active `AssetSellerPackage`, even when `is_market_listed=False`
+- manager-created product assets bypass seller package consumption and create no `PackageUsageLog`
+- product edits, listing changes, price/count/status/title changes, and deletes do not consume package points
+- `BirdSerializer` and bird creation do not consume package points
 - subtype `save()` remains responsible for enforcing `category`
 - product serializer field constants live in `apps/assets/constants.py`
 - product filters live in `apps/assets/filters.py`
@@ -450,10 +455,15 @@ Current auction behavior:
 - auction type values are `single`, `multi`, `pair`, `breeding`, and `racing`
 - auction statuses are `active`, `ended`, `cancelled`, and `closed`
 - auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
+- `Auction.seller_package` is a nullable FK to `AssetSellerPackage`; existing rows and manager-created rows can be null
 - auction creation requires future `start_time`, later `end_time`, and nested item payloads
 - `AuctionBusinessValidator` enforces item counts by auction type, pair gender rules, duplicate bird rejection, overlapping active-auction bird rejection, auto-extend config, and deposit config
 - `AuctionBusinessValidator` currently does not enforce that every submitted bird belongs to the requesting seller
 - `AuctionService.create_auction()` writes a `created` event
+- seller auction creation pre-validates package availability, then creates the auction/items and consumes `Package.auction_cost` in the same DB transaction
+- seller-created auctions are linked to the consumed `AssetSellerPackage`
+- manager-created auctions bypass seller package consumption and keep `seller_package=NULL`
+- auction update, cancellation, close, bidding, and buy-now do not consume package points
 - `BidBusinessValidator` requires a customer profile, an active time window, an active item, starting-price compliance, and minimum increment compliance
 - bid placement revalidates under an `AuctionItem` row lock before creating the bid
 - bid placement updates `AuctionItem.current_price`, optionally auto-extends, and writes a `bid_placed` event
@@ -570,11 +580,12 @@ Current responsibilities:
 - seller-owned package request records
 - asset seller package and pedigree seller package model foundations
 - manager activation and cancellation of seller package requests
-- package usage log model foundation for future point consumption traceability
+- package point consumption for seller-created auctions and product assets
+- package usage log records for successful seller package point consumption
 
 Important note:
 
-This app is not a payment, wallet, invoice, recharge, or auto-renewal system. Managers manually activate seller packages. Package point consumption is not integrated into auction creation, product creation, or pedigree workflows yet.
+This app is not a payment, wallet, invoice, recharge, or auto-renewal system. Managers manually activate seller packages. Package point consumption is integrated for seller-created auctions and product assets. Pedigree package consumption remains planned and is not implemented yet.
 
 Current package API:
 
@@ -605,7 +616,16 @@ Current package behavior:
 - a seller can have many historical packages but only one active activated seller package, enforced by a partial unique constraint
 - manager cancellation is allowed only for pending seller packages and sets `cancelled`, `activated=False`, and `invalidated_at`
 - there is no standalone deactivate endpoint; deactivation currently happens only as part of activating a replacement package
-- `PackageUsageLog` stores future successful consumption traces using a seller package FK, seller FK, usage type, points used, and optional string/id related object reference
+- `PackageService.consume_points()` supports `auction_created` and `product_created` only; `pedigree_created` is rejected as unsupported for now
+- consumption uses `transaction.atomic()` and `select_for_update()` on the active `AssetSellerPackage`
+- only an active, activated, unexpired `AssetSellerPackage` can be consumed
+- package costs come from `Package.auction_cost` and `Package.product_cost`
+- successful consumption decrements `SellerPackage.remaining_points` and writes one `PackageUsageLog`
+- a package becomes `exhausted`, `activated=False`, and gets `invalidated_at` when remaining points reach `0` or are below both auction and product creation costs
+- expired active packages are marked exhausted/invalidated before the validation error is returned
+- missing active packages, insufficient points, and unsupported usage types do not write usage logs and do not decrement points
+- package consumption is internal only; there is no public consume, recharge, manual exhaust, or deactivate endpoint
+- `PackageUsageLog` stores successful consumption traces using a seller package FK, seller FK, usage type, points used, and optional string/id related object reference
 - no `GenericForeignKey` is used for package usage logs
 
 ### `apps.general`
@@ -711,18 +731,21 @@ Current design choice:
 - `AssetSellerPackage` and `PedigreeSellerPackage` are thin concrete subclasses
 - only one active activated seller package is allowed per seller
 - activation and cancellation happen through service methods, not direct serializer field updates
-- package point consumption is not connected to auctions, products, or pedigrees yet
+- package point consumption is connected to seller-created auctions and seller-created product assets
+- package point consumption is not connected to pedigrees yet
+- manager-created auctions and product assets bypass package point consumption
 
 #### PackageUsageLog
 
-PackageUsageLog is a future trace record for successful package point consumption.
+PackageUsageLog records successful package point consumption.
 
 Current design choice:
 
 - usage log owner is a concrete `SellerProfile`
 - usage logs point to `SellerPackage`
 - related objects are stored as optional `related_object_type` plus `related_object_id`
-- usage logs are not written by auction, product, or pedigree workflows yet
+- usage logs are written for seller auction and product creation
+- usage logs are not written by pedigree workflows yet
 
 #### Cart
 
@@ -1044,7 +1067,9 @@ Current product asset visibility:
 - manager activation of a new package deactivates the seller's previous active package
 - pending package requests can be cancelled by managers
 - active packages cannot be cancelled directly in the current API
-- package points are not consumed by auction, product, or pedigree workflows yet
+- active `AssetSellerPackage` points are consumed by seller auction creation and seller product asset creation
+- package points are not consumed by manager-created auctions/products, bird creation, product edits, auction updates, auction cancellation, auction close, bidding, buy-now, or pedigree workflows
+- package consumption creates `PackageUsageLog` records for successful seller auction/product creation only
 
 Planned direction:
 
@@ -1306,6 +1331,7 @@ The codebase currently provides:
 - bird entity, CRUD endpoint, and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
 - product asset filtering, search, and ordering
+- seller package point consumption for seller-created auctions and product assets
 - persistent customer cart and cart item API foundation for market flows
 - checkout and compatibility direct-order APIs for fixed-price order creation
 - order validators and services for stock-validating fixed-price order creation
@@ -1318,7 +1344,7 @@ The codebase currently provides:
 - lightweight order events for future notification hooks
 - auctions, auction items, bids, and events
 - auction creation, bidding, limited update locking, cancellation, buy-now, and close/winner-resolution flows
-- service / validator / factory-style pattern in auctions, although the create path currently constructs the auction in the view and uses the factory only for items
+- service / validator / factory-style pattern in auctions, although the view still constructs the unsaved `Auction` before delegating persistence to `AuctionService.create_auction()`
 - Dockerized local and production runtime configuration
 - Redis + Celery worker/beat infrastructure for background jobs
 - automatic scheduled auction closing through Celery Beat
@@ -1342,11 +1368,11 @@ The codebase does not yet fully implement:
 - pedigree reader
 - QR flow
 - race results
-- points / cashback / badges
+- reward points / cashback / badges
 - offers / promotions
 - chat
 - notification delivery beyond lightweight order event placeholders
-- seller package or quota enforcement as a finished business module
+- pedigree package/quota enforcement as a finished business module
 
 Important framing:
 
@@ -1387,6 +1413,14 @@ These risks are important and should be respected during future work.
 - `AuctionFactory.create_auction()` is currently stale/unused and references non-model `auto_extend_threshold`
 - permission constants include auction actions such as `publish` and `ended`, but no matching view actions currently exist
 - settlement must enforce end-time and state rules before post-auction completion is added
+
+### Package Consumption Risks
+
+- manager-created auctions and products intentionally bypass seller package consumption; preserve this unless product policy changes
+- package consumption is enforced only for `AssetSellerPackage`, not `PedigreeSellerPackage`
+- product assets do not store a seller package FK; product traceability currently depends on `PackageUsageLog`
+- `PackageService.validate_can_consume()` is a preflight check only; final point decrement must still call `PackageService.consume_points()` inside the object creation transaction
+- SQLite does not enforce `select_for_update()` row locks, so true package consumption concurrency behavior must be verified on PostgreSQL
 
 ### Business Flow Gap
 
@@ -1515,8 +1549,8 @@ Add growth and retention features.
 
 Includes:
 
-- points
-- cashback as points, not money
+- reward points
+- cashback as reward points, not money
 - badges
 - offers and promotions
 - notifications
@@ -1538,7 +1572,7 @@ Required tasks:
 6. add minimal dispute flag
 7. extend auction events for post-auction lifecycle
 
-Do not prioritize points, QR, chat, or promotions before this phase is complete.
+Do not prioritize reward points, QR, chat, or promotions before this phase is complete.
 
 ## Payment Approach
 

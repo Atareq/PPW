@@ -39,6 +39,8 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
+from apps.packages.models import PackageUsageType
+from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 
@@ -343,7 +345,6 @@ class AuctionService:
     """
 
     @staticmethod
-    @transaction.atomic
     def create_auction(
         owner,
         auction: Auction,
@@ -371,28 +372,44 @@ class AuctionService:
         Returns:
             Saved Auction with related items
         """
-        # Ensure owner is set
-        auction.owner = owner
+        if PackageService.should_consume_for_profile(owner):
+            PackageService.validate_can_consume(
+                owner,
+                PackageUsageType.AUCTION_CREATED,
+            )
 
-        # 1. Save auction
-        auction.save()
+        with transaction.atomic():
+            # Ensure owner is set
+            auction.owner = owner
 
-        # 2. Create items
-        items = AuctionFactory.create_items(auction, items_data)
+            # 1. Save auction
+            auction.save()
 
-        # 3. Bulk insert items
-        AuctionItem.objects.bulk_create(items)
+            # 2. Create items
+            items = AuctionFactory.create_items(auction, items_data)
 
-        # 4. Log event
-        AuctionService._log_event(
-            auction=auction,
-            event_type="created",
-            # we need to substitute this with a couces fields instead of strings
-            performer=owner,
-            item=None,
-            bid=None,
-            metadata={"item_count": len(items)},
-        )
+            # 3. Bulk insert items
+            AuctionItem.objects.bulk_create(items)
+
+            if PackageService.should_consume_for_profile(owner):
+                seller_package = PackageService.consume_points(
+                    owner,
+                    PackageUsageType.AUCTION_CREATED,
+                    related_object=auction,
+                )
+                auction.seller_package = seller_package
+                auction.save(update_fields=["seller_package", "modified"])
+
+            # 4. Log event
+            AuctionService._log_event(
+                auction=auction,
+                event_type="created",
+                # we need to substitute this with a couces fields instead of strings
+                performer=owner,
+                item=None,
+                bid=None,
+                metadata={"item_count": len(items)},
+            )
 
         return auction
 

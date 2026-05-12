@@ -117,6 +117,13 @@ class Auction(OwnerBaseModel):
 
     # Metadata
     tags = models.CharField(max_length=500, blank=True)
+    seller_package = models.ForeignKey(
+        "packages.AssetSellerPackage",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="created_auctions",
+    )
 
     class Meta:
         indexes = [

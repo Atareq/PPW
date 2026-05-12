@@ -7,6 +7,7 @@ Tests:
 - Settlement (winner determination)
 - Status transitions
 """
+
 from datetime import timedelta
 from decimal import Decimal
 
@@ -19,8 +20,10 @@ from apps.auctions.models import AuctionStatus
 from apps.authentication.services import build_token_for_user
 from apps.users.constants import ProfileType
 from tests.factories import (
+    ActiveAssetSellerPackageFactory,
     AuctionItemFactory,
     BirdFactory,
+    PackageFactory,
     UserAccountFactory,
     create_active_auction_with_item,
 )
@@ -36,6 +39,11 @@ class TestAuctionCreation:
         """Test creating a SINGLE auction with one item."""
         from tests.factories import BirdFactory
 
+        ActiveAssetSellerPackageFactory(
+            owner=seller_user.active_profile,
+            package=PackageFactory(points=100, auction_cost=10),
+            remaining_points=100,
+        )
         bird = BirdFactory(owner=seller_user.active_profile)
 
         data = {
@@ -66,6 +74,11 @@ class TestAuctionCreation:
         birds = [
             BirdFactory(owner=seller_user.active_profile) for _ in range(3)
         ]
+        ActiveAssetSellerPackageFactory(
+            owner=seller_user.active_profile,
+            package=PackageFactory(points=100, auction_cost=10),
+            remaining_points=100,
+        )
 
         data = {
             "title": "Multiple Birds",

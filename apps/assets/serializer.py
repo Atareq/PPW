@@ -5,7 +5,7 @@ from apps.assets.constants import (
     PRODUCT_ASSET_READ_ONLY_FIELDS,
 )
 from apps.assets.models import Accessory, Bird, Feed, Supplement, Supply
-from apps.assets.services import BirdValidator
+from apps.assets.services import BirdValidator, ProductAssetCreationService
 
 
 class BirdSerializer(serializers.ModelSerializer):
@@ -44,8 +44,11 @@ class ProductAssetSerializer(serializers.ModelSerializer):
         if owner is None:
             raise serializers.ValidationError("Active profile not found.")
 
-        validated_data["owner"] = owner
-        return super().create(validated_data)
+        return ProductAssetCreationService.create_product(
+            self.Meta.model,
+            owner,
+            validated_data,
+        )
 
 
 class SupplySerializer(ProductAssetSerializer):

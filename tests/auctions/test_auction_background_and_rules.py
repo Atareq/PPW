@@ -21,12 +21,15 @@ from apps.auctions.services import (
 )
 from apps.auctions.tasks import close_expired_auctions
 from apps.authentication.services import build_token_for_user
+from apps.packages.models import PackageUsageLog, PackageUsageType
 from apps.users.constants import ProfileType
 from tests.factories import (
+    ActiveAssetSellerPackageFactory,
     AuctionFactory,
     AuctionItemFactory,
     BidFactory,
     BirdFactory,
+    PackageFactory,
     SellerProfileFactory,
     UserAccountFactory,
     create_active_auction_with_item,
@@ -407,3 +410,218 @@ class TestAuctionOwnershipPermissions:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+class TestAuctionPackageConsumption:
+    @staticmethod
+    def _auth_client(user):
+        client = APIClient()
+        refresh = build_token_for_user(user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+        return client
+
+    @staticmethod
+    def _payload(bird, **overrides):
+        payload = {
+            "title": "Package-backed auction",
+            "description": "Consumes auction package points",
+            "auction_type": AuctionType.SINGLE,
+            "start_time": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            "end_time": (timezone.now() + timedelta(days=1)).isoformat(),
+            "items": [
+                {
+                    "bird_id": bird.pk,
+                    "starting_price": "100.00",
+                }
+            ],
+        }
+        payload.update(overrides)
+        return payload
+
+    @staticmethod
+    def _active_package(seller, remaining_points=50, auction_cost=10):
+        return ActiveAssetSellerPackageFactory(
+            owner=seller.active_profile,
+            package=PackageFactory(
+                points=50,
+                auction_cost=auction_cost,
+                product_cost=5,
+            ),
+            remaining_points=remaining_points,
+        )
+
+    def test_seller_auction_creation_consumes_points_and_links_package(
+        self,
+        authenticated_seller_client,
+        seller_user,
+    ):
+        seller_package = self._active_package(
+            seller_user,
+            remaining_points=50,
+            auction_cost=12,
+        )
+        bird = BirdFactory(owner=seller_user.active_profile)
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(bird),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        auction = Auction.objects.get(pk=response.data["id"])
+        seller_package.refresh_from_db()
+        assert auction.seller_package_id == seller_package.pk
+        assert seller_package.remaining_points == 38
+        log = PackageUsageLog.objects.get()
+        assert log.usage_type == PackageUsageType.AUCTION_CREATED
+        assert log.points_used == 12
+        assert log.related_object_type == "auctions.Auction"
+        assert log.related_object_id == auction.pk
+
+    def test_seller_auction_creation_fails_without_active_package(
+        self,
+        authenticated_seller_client,
+        seller_user,
+    ):
+        bird = BirdFactory(owner=seller_user.active_profile)
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(bird),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "No active package" in str(response.data)
+        assert not Auction.objects.filter(
+            title="Package-backed auction"
+        ).exists()
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_seller_auction_creation_fails_with_insufficient_points(
+        self,
+        authenticated_seller_client,
+        seller_user,
+    ):
+        seller_package = self._active_package(
+            seller_user,
+            remaining_points=3,
+            auction_cost=10,
+        )
+        bird = BirdFactory(owner=seller_user.active_profile)
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(bird),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Insufficient package points" in str(response.data)
+        seller_package.refresh_from_db()
+        assert seller_package.remaining_points == 3
+        assert PackageUsageLog.objects.count() == 0
+        assert not Auction.objects.filter(
+            title="Package-backed auction"
+        ).exists()
+
+    def test_failed_auction_validation_does_not_consume_points(
+        self,
+        authenticated_seller_client,
+        seller_user,
+    ):
+        seller_package = self._active_package(seller_user)
+        first_bird = BirdFactory(owner=seller_user.active_profile)
+        second_bird = BirdFactory(owner=seller_user.active_profile)
+        payload = self._payload(
+            first_bird,
+            items=[
+                {"bird_id": first_bird.pk, "starting_price": "100.00"},
+                {"bird_id": second_bird.pk, "starting_price": "100.00"},
+            ],
+        )
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            payload,
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        seller_package.refresh_from_db()
+        assert seller_package.remaining_points == 50
+        assert PackageUsageLog.objects.count() == 0
+
+    def test_auction_update_cancel_and_close_do_not_consume_points(
+        self,
+        authenticated_seller_client,
+        seller_user,
+        manager_user,
+    ):
+        seller_package = self._active_package(seller_user)
+        bird = BirdFactory(owner=seller_user.active_profile)
+        create_response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(bird),
+            format="json",
+        )
+        auction_id = create_response.data["id"]
+        seller_package.refresh_from_db()
+        remaining_after_create = seller_package.remaining_points
+        log_count_after_create = PackageUsageLog.objects.count()
+
+        update_response = authenticated_seller_client.patch(
+            f"/api/auctions/{auction_id}/",
+            {"title": "Updated without consumption"},
+            format="json",
+        )
+        cancel_response = authenticated_seller_client.post(
+            f"/api/auctions/{auction_id}/cancel/",
+            {},
+            format="json",
+        )
+        expired_auction = AuctionFactory(
+            owner=seller_user.active_profile,
+            seller_package=seller_package,
+            status=AuctionStatus.ACTIVE,
+            start_time=timezone.now() - timedelta(days=1),
+            end_time=timezone.now() - timedelta(minutes=1),
+        )
+        AuctionItemFactory(
+            auction=expired_auction,
+            bird=BirdFactory(owner=seller_user.active_profile),
+        )
+        manager_client = self._auth_client(manager_user)
+        close_response = manager_client.post(
+            f"/api/auctions/{expired_auction.pk}/close/",
+            {},
+            format="json",
+        )
+
+        seller_package.refresh_from_db()
+        assert update_response.status_code == status.HTTP_200_OK
+        assert cancel_response.status_code == status.HTTP_200_OK
+        assert close_response.status_code == status.HTTP_200_OK
+        assert seller_package.remaining_points == remaining_after_create
+        assert PackageUsageLog.objects.count() == log_count_after_create
+
+    def test_manager_auction_creation_bypasses_package_consumption(
+        self,
+        manager_user,
+        seller_user,
+    ):
+        manager_client = self._auth_client(manager_user)
+        bird = BirdFactory(owner=seller_user.active_profile)
+
+        response = manager_client.post(
+            "/api/auctions/",
+            self._payload(bird),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        auction = Auction.objects.get(pk=response.data["id"])
+        assert auction.seller_package_id is None
+        assert PackageUsageLog.objects.count() == 0
