@@ -51,11 +51,17 @@ SELLER_PERMISSIONS = {
     "RACE": [
         "list",
         "retrieve",
-        "standings",
     ],
     "RACE_RESULT": [
         "list",
         "retrieve",
+    ],
+    "PACKAGE": [
+        "list",
+    ],
+    "MY_SELLER_PACKAGE": [
+        "list",
+        "create",
     ],
 }
 
@@ -110,7 +116,6 @@ CUSTOMER_PERMISSIONS = {
     "RACE": [
         "list",
         "retrieve",
-        "standings",
     ],
     "RACE_RESULT": [
         "list",

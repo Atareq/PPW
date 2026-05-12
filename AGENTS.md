@@ -23,7 +23,7 @@ The platform currently supports and will continue to expand around:
 - scheduled auction closing with winner resolution
 - fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
 - ratings and comments as a simple trust and feedback layer
-- race records and race standings for pigeon/bird racing reports
+- race records and race result rankings for pigeon/bird racing reports
 - planned admin-assisted post-auction and marketplace completion
 - future media, pedigree, QR, reviews, points, chat, and promotion modules
 
@@ -70,6 +70,10 @@ General approach:
 - explicit business flows
 - no hidden magic
 - avoid fat views and serializer-heavy business logic
+- prefer DRF built-in viewset CRUD methods and standard hook names over custom CRUD wrappers
+- use `perform_create`, `perform_update`, `perform_destroy`, serializer `create`, serializer `update`, and serializer `to_representation` before overriding full `create`, `update`, or `destroy`
+- override full DRF CRUD methods only when the normal request / response flow itself must change
+- do not add custom action names for behavior that is really a resource collection `list` or `create`; expose a proper route and map it to standard DRF action names instead
 
 Current internal API documentation approach:
 
@@ -90,6 +94,7 @@ Current major apps:
 - `apps.auctions`
 - `apps.ratings`
 - `apps.races`
+- `apps.packages`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -519,7 +524,7 @@ Current responsibilities:
 
 - race/report records for pigeon or bird racing
 - race result records with denormalized competitor and bird ring details
-- automatic race standing rank recalculation
+- automatic race result rank recalculation
 - global race-result search
 
 Current race API:
@@ -530,10 +535,9 @@ Current race API:
 - `/api/races/<id>/`
   - `GET`: authenticated race detail with nested results
   - `PUT/PATCH/DELETE`: manager-only race updates and deletion
-- `/api/races/<id>/standings/`
+- `/api/races/<id>/results/`
   - `GET`: authenticated paginated results for one race ordered by rank
-- `/api/races/<id>/results/bulk/`
-  - `POST`: manager-only bulk result submission for one race
+  - `POST`: manager-only bulk result creation for one race
 - `/api/race-results/`
   - `GET`: authenticated paginated global result search
   - `POST`: manager-only individual result creation
@@ -549,14 +553,60 @@ Current race behavior:
 - `RaceResult.rank` is calculated by service code and is not trusted from request payloads
 - rank recalculation sorts by highest `speed`, then earliest `arrival_datetime`, then lowest `id`
 - `recalculate_race_ranks(race_id)` is the service-layer ranking entry point
-- creating, updating, deleting, or bulk-submitting results recalculates all ranks for the race inside transactions
+- creating, updating, deleting, or bulk-creating results recalculates all ranks for the race inside transactions
 - active `RaceResult` rows enforce unique `bird_ring_number` per race and unique `rank` per race
 - `speed` and `distance_km` must be greater than zero
 - `arrival_datetime` must be after the parent race `release_datetime`
 - global result search supports `bird_ring_number`, `competitor_name`, `q`, and `race_id`
 - `include_race=true` on race-result list/detail responses includes a nested race summary; false or omitted excludes it
 - race APIs use `HasAppAccess` with `allow_scoped_read_access=True`
-- managers can write races and results; authenticated sellers and customers can read races, standings, and race-result search
+- managers can write races and results; authenticated sellers and customers can read races, per-race results, and race-result search
+
+### `apps.packages`
+
+Current responsibilities:
+
+- manager-created seller package plans
+- seller-owned package request records
+- asset seller package and pedigree seller package model foundations
+- manager activation and cancellation of seller package requests
+- package usage log model foundation for future point consumption traceability
+
+Important note:
+
+This app is not a payment, wallet, invoice, recharge, or auto-renewal system. Managers manually activate seller packages. Package point consumption is not integrated into auction creation, product creation, or pedigree workflows yet.
+
+Current package API:
+
+- `/api/packages/`
+  - `GET`: sellers list available packages only; managers list all packages
+  - `POST`: manager creates a package plan
+- `/api/packages/manager/packages/<id>/`
+  - `PATCH`: manager updates package plan fields
+- `/api/packages/my-packages/`
+  - `GET`: seller lists own package history; supports `status` and `activated` filters
+  - `GET ?active=true`: seller retrieves current active package summary
+  - `POST`: seller requests a package by `package_id`
+- `/api/seller-packages/`
+  - `GET`: manager lists seller package requests/history
+- `/api/seller-packages/<id>/`
+  - `PATCH`: manager status transition endpoint; accepts `active` or `cancelled`
+
+Current package behavior:
+
+- `Package` is a plan/template and is not seller-owned
+- package numeric rules require positive points, activation period, auction cost, and product cost; non-negative price; and costs not exceeding package points
+- package serializer validation lives in `PackageSerializer.validate()`; do not add a separate serializer-validator wrapper for package fields
+- seller package requests create `AssetSellerPackage` rows by default
+- `PedigreeSellerPackage` exists as a thin concrete model foundation but has no request or consumption integration yet
+- requested seller packages start as `pending`, `activated=False`, with `remaining_points` copied from the referenced package
+- manager activation sets the new package to `active`, `activated=True`, `activated_at`, and `expires_at`
+- when manager activation replaces an existing active seller package for the same seller, the old package is deactivated by setting `activated=False` and `invalidated_at`
+- a seller can have many historical packages but only one active activated seller package, enforced by a partial unique constraint
+- manager cancellation is allowed only for pending seller packages and sets `cancelled`, `activated=False`, and `invalidated_at`
+- there is no standalone deactivate endpoint; deactivation currently happens only as part of activating a replacement package
+- `PackageUsageLog` stores future successful consumption traces using a seller package FK, seller FK, usage type, points used, and optional string/id related object reference
+- no `GenericForeignKey` is used for package usage logs
 
 ### `apps.general`
 
@@ -631,6 +681,48 @@ Current design choice:
 - `Asset` carries shared listing and pricing fields
 - non-bird product types currently exist as minimal subclasses for future extension
 - cart and checkout services enforce fixed-price market purchase rules on top of these fields
+
+#### Package
+
+Package is a manager-created seller plan/template.
+
+Current design choice:
+
+- `Package` inherits `BaseModel`, not `OwnerBaseModel`
+- packages define available points, price, activation duration, auction cost, product cost, and availability
+- sellers can list only available packages
+- managers can create and update packages
+
+#### SellerPackage
+
+SellerPackage is the seller-owned package instance and request record.
+
+Current seller package statuses:
+
+- `pending`
+- `active`
+- `exhausted`
+- `cancelled`
+
+Current design choice:
+
+- `SellerPackage.owner` is a concrete `SellerProfile`
+- seller requests create `AssetSellerPackage` rows by default
+- `AssetSellerPackage` and `PedigreeSellerPackage` are thin concrete subclasses
+- only one active activated seller package is allowed per seller
+- activation and cancellation happen through service methods, not direct serializer field updates
+- package point consumption is not connected to auctions, products, or pedigrees yet
+
+#### PackageUsageLog
+
+PackageUsageLog is a future trace record for successful package point consumption.
+
+Current design choice:
+
+- usage log owner is a concrete `SellerProfile`
+- usage logs point to `SellerPackage`
+- related objects are stored as optional `related_object_type` plus `related_object_id`
+- usage logs are not written by auction, product, or pedigree workflows yet
 
 #### Cart
 
@@ -756,7 +848,7 @@ Current design choice:
 - rank is recalculated by service logic from speed within the race
 - higher speed ranks better
 - ties are deterministically ordered by arrival datetime and id because rank remains unique per race
-- result writes must use the service layer so the race standings stay consistent
+- result writes must use the service layer so race result ranks stay consistent
 
 #### Auction
 
@@ -840,6 +932,8 @@ Mounted API roots:
 - `/api/seller-ratings/`
 - `/api/races/`
 - `/api/race-results/`
+- `/api/packages/`
+- `/api/seller-packages/`
 
 Current internal API docs endpoints:
 
@@ -940,6 +1034,17 @@ Current product asset visibility:
 - sellers can read their own product assets plus market-listed product assets
 - customers can read only market-listed product assets
 - product safe-read visibility is scoped before django-filter filters and ordering run
+
+### Seller Packages
+
+- package plans are created and updated by managers
+- sellers can request available package plans
+- package activation is manual and manager-driven
+- a seller can have only one active activated package at a time
+- manager activation of a new package deactivates the seller's previous active package
+- pending package requests can be cancelled by managers
+- active packages cannot be cancelled directly in the current API
+- package points are not consumed by auction, product, or pedigree workflows yet
 
 Planned direction:
 
@@ -1135,10 +1240,22 @@ Current race permission pattern:
 
 - `RaceViewSet` uses `HasAppAccess` with `permission_resource = "RACE"`
 - `RaceResultViewSet` uses `HasAppAccess` with `permission_resource = "RACE_RESULT"`
-- both race viewsets set `allow_scoped_read_access = True` because readable race data is intentionally available to any authenticated role
-- managers can create, update, delete, and bulk-submit race data through the global manager bypass
-- sellers and customers can list/retrieve races, list standings, and search race results only
+- `RaceResultListCreateViewSet` uses `HasAppAccess` with `permission_resource = "RACE_RESULT"`
+- race and race-result viewsets set `allow_scoped_read_access = True` because readable race data is intentionally available to any authenticated role
+- managers can create, update, delete, and bulk-create race data through the global manager bypass
+- sellers and customers can list/retrieve races, list per-race results, and search race results only
 - race write validation and rank recalculation live in serializers/services, not in permission classes
+
+Current package permission pattern:
+
+- `PackageViewSet` uses `HasAppAccess` with `permission_resource = "PACKAGE"`
+- sellers can list packages, but queryset scoping limits them to `is_available=True`
+- managers can list all packages and create/update package plans through the global manager bypass
+- `MySellerPackageViewSet` uses `HasAppAccess` with `permission_resource = "MY_SELLER_PACKAGE"`
+- sellers can list and create only their own seller package requests
+- `ManagerSellerPackageViewSet` uses `HasAppAccess` with `permission_resource = "SELLER_PACKAGE"`
+- manager seller-package updates are PATCH status transitions only, not arbitrary field updates
+- customers have no package permissions in `CUSTOMER_PERMISSIONS`
 
 Current auction permission pattern:
 

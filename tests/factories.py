@@ -27,6 +27,11 @@ from apps.orders.models import (
     OrderItemStatus,
     OrderStatus,
 )
+from apps.packages.models import (
+    AssetSellerPackage,
+    Package,
+    SellerPackageStatus,
+)
 from apps.races.models import Race, RaceResult
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
@@ -222,6 +227,43 @@ class OrderEventFactory(factory.django.DjangoModelFactory):
 
 
 # ============================================================================
+# PACKAGE FACTORIES
+# ============================================================================
+
+
+class PackageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Package
+
+    name = factory.Sequence(lambda n: f"Seller Package {n}")
+    description = ""
+    points = 100
+    price = Decimal("50.00")
+    activation_period_days = 30
+    auction_cost = 10
+    product_cost = 5
+    is_available = True
+
+
+class AssetSellerPackageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = AssetSellerPackage
+
+    owner = factory.SubFactory(SellerProfileFactory)
+    package = factory.SubFactory(PackageFactory)
+
+    @factory.lazy_attribute
+    def remaining_points(self):
+        return self.package.points
+
+    activated = False
+    activated_at = None
+    expires_at = None
+    invalidated_at = None
+    status = SellerPackageStatus.PENDING
+
+
+# ============================================================================
 # RACE FACTORIES
 # ============================================================================
 
@@ -250,10 +292,12 @@ class RaceResultFactory(factory.django.DjangoModelFactory):
     race = factory.SubFactory(RaceFactory)
     rank = factory.Sequence(lambda n: n + 1)
     competitor_name = factory.Sequence(lambda n: f"Competitor {n}")
-    bird_ring_number = factory.Sequence(lambda n: f"RING-{n:05d}")
+    bird_ring_number = factory.Sequence(lambda n: f"RING-{n:05d}")  # noqa
     distance_km = Decimal("490.832")
     speed = factory.Sequence(lambda n: Decimal("1400.000") + Decimal(n))
-    arrival_datetime = factory.LazyFunction(lambda: timezone.now() + timedelta(hours=1))
+    arrival_datetime = factory.LazyFunction(
+        lambda: timezone.now() + timedelta(hours=1)
+    )
     basket_number = None
 
 
