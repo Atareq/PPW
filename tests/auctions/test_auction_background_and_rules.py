@@ -554,6 +554,30 @@ class TestAuctionPackageConsumption:
         assert seller_package.remaining_points == 50
         assert PackageUsageLog.objects.count() == 0
 
+    def test_seller_auction_creation_rejects_unowned_bird_before_consumption(
+        self,
+        authenticated_seller_client,
+        seller_user,
+        seller_user_2,
+    ):
+        seller_package = self._active_package(seller_user)
+        other_seller_bird = BirdFactory(owner=seller_user_2.active_profile)
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(other_seller_bird),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Sellers can auction only birds they own" in str(response.data)
+        seller_package.refresh_from_db()
+        assert seller_package.remaining_points == 50
+        assert PackageUsageLog.objects.count() == 0
+        assert not Auction.objects.filter(
+            title="Package-backed auction"
+        ).exists()
+
     def test_auction_update_cancel_and_close_do_not_consume_points(
         self,
         authenticated_seller_client,

@@ -217,6 +217,26 @@ class TestSellerPackageEndpoints:
         assert response.data["product_cost"] == 7
         assert response.data["expires_at"] is not None
 
+    def test_expired_active_package_summary_is_invalidated(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        now = timezone.now()
+        seller_package = AssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            status=SellerPackageStatus.ACTIVE,
+            activated=True,
+            activated_at=now - timedelta(days=30),
+            expires_at=now - timedelta(days=1),
+        )
+        client = authenticated_client(seller_user)
+
+        response = client.get("/api/packages/my-packages/?active=true")
+
+        assert response.status_code == 404
+        seller_package.refresh_from_db()
+        assert seller_package.status == SellerPackageStatus.EXHAUSTED
+        assert seller_package.activated is False
+        assert seller_package.invalidated_at is not None
+
     def test_seller_cannot_activate_package(self):
         seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
         seller_package = AssetSellerPackageFactory(

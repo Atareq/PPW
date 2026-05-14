@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.assets.constants import (
@@ -5,10 +6,31 @@ from apps.assets.constants import (
     PRODUCT_ASSET_READ_ONLY_FIELDS,
 )
 from apps.assets.models import Accessory, Bird, Feed, Supplement, Supply
-from apps.assets.services import BirdValidator, ProductAssetCreationService
+from apps.assets.services import (
+    AssetImageWriteService,
+    BirdValidator,
+    ProductAssetCreationService,
+)
+from apps.general.serializers import AssetImageSerializer
 
 
-class BirdSerializer(serializers.ModelSerializer):
+class RemovedThumbnailUrlMixin:
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and "thumbnail_url" in data:
+            raise serializers.ValidationError(
+                {
+                    "thumbnail_url": (
+                        "thumbnail_url is no longer supported. "
+                        "Use images instead."
+                    )
+                }
+            )
+        return super().to_internal_value(data)
+
+
+class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
+    images = AssetImageSerializer(many=True, required=False)
+
     class Meta:
         model = Bird
         fields = "__all__"
@@ -27,16 +49,34 @@ class BirdSerializer(serializers.ModelSerializer):
         )
 
     def create(self, validated_data):
+        images_data = validated_data.pop("images", [])
         validated_data["owner"] = self.context["request"].user.active_profile
-        return super().create(validated_data)
+        with transaction.atomic():
+            bird = super().create(validated_data)
+            AssetImageWriteService.create_images(bird, images_data)
+            return bird
+
+    def update(self, instance, validated_data):
+        images_data = validated_data.pop("images", None)
+        with transaction.atomic():
+            bird = super().update(instance, validated_data)
+            if images_data is not None:
+                AssetImageWriteService.replace_images(bird, images_data)
+            return bird
 
 
-class ProductAssetSerializer(serializers.ModelSerializer):
+class ProductAssetSerializer(
+    RemovedThumbnailUrlMixin,
+    serializers.ModelSerializer,
+):
+    images = AssetImageSerializer(many=True, required=False)
+
     class Meta:
         fields = PRODUCT_ASSET_FIELDS
         read_only_fields = PRODUCT_ASSET_READ_ONLY_FIELDS
 
     def create(self, validated_data):
+        images_data = validated_data.pop("images", [])
         request = self.context.get("request")
         owner = (
             getattr(request.user, "active_profile", None) if request else None
@@ -48,7 +88,16 @@ class ProductAssetSerializer(serializers.ModelSerializer):
             self.Meta.model,
             owner,
             validated_data,
+            images_data=images_data,
         )
+
+    def update(self, instance, validated_data):
+        images_data = validated_data.pop("images", None)
+        with transaction.atomic():
+            product = super().update(instance, validated_data)
+            if images_data is not None:
+                AssetImageWriteService.replace_images(product, images_data)
+            return product
 
 
 class SupplySerializer(ProductAssetSerializer):

@@ -20,12 +20,18 @@ from apps.orders.models import (
     OrderStatus,
 )
 from apps.orders.serializers import OrderCreateSerializer
-from apps.orders.services import CartService, OrderItemService, OrderService
+from apps.orders.services import (
+    CartService,
+    OrderItemService,
+    OrderService,
+    order_item_queryset,
+)
 from apps.orders.tasks import cancel_expired_pending_order_items
 from apps.orders.validators import OrderCreationValidator
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 from tests.factories import (
+    AssetImageFactory,
     BirdFactory,
     CustomerProfileFactory,
     OrderFactory,
@@ -436,6 +442,38 @@ class TestCheckoutFlow:
         assert response.data["status"] == OrderStatus.PENDING
         asset.refresh_from_db()
         assert asset.count == 4
+
+    def test_order_detail_asset_summary_includes_images_not_thumbnail(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory(count=4)
+        AssetImageFactory(
+            asset=asset,
+            image_url="https://example.com/order-asset.jpg",
+            is_primary=True,
+        )
+        order = OrderService.create_order(
+            customer.active_profile,
+            [{"asset_id": asset.pk, "quantity": 1}],
+        )
+        client = authenticated_client(customer)
+
+        response = client.get(f"/api/orders/{order.pk}/")
+
+        assert response.status_code == 200
+        response_asset = response.data["items"][0]["asset"]
+        assert "thumbnail_url" not in response_asset
+        assert response_asset["images"] == [
+            {
+                "id": asset.images.get().pk,
+                "image_url": "https://example.com/order-asset.jpg",
+                "alt_text": "",
+                "is_primary": True,
+                "order": 0,
+            }
+        ]
+
+    def test_order_item_queryset_prefetches_asset_images(self):
+        assert "asset__images" in order_item_queryset()._prefetch_related_lookups
 
 
 class TestOrderServiceAndSellerDecisions:

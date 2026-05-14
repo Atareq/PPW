@@ -36,12 +36,16 @@ def cart_item_queryset():
 
 
 def order_item_queryset():
-    return OrderItem.objects.select_related(
-        "order",
-        "asset",
-        "seller",
-        "seller__user",
-    ).order_by("-created")
+    return (
+        OrderItem.objects.select_related(
+            "order",
+            "asset",
+            "seller",
+            "seller__user",
+        )
+        .prefetch_related("asset__images")
+        .order_by("-created")
+    )
 
 
 class CartService:

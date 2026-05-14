@@ -2,6 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.general.models import AssetImage
 from apps.packages.models import PackageUsageType
 from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
@@ -102,12 +103,18 @@ class BirdValidator:
 
 class ProductAssetCreationService:
     @staticmethod
-    def create_product(model_class, owner, validated_data):
+    def create_product(model_class, owner, validated_data, images_data=None):
         if owner is None:
             raise serializers.ValidationError("Active profile not found.")
 
         if owner.type == ProfileType.MANAGER:
-            return model_class.objects.create(owner=owner, **validated_data)
+            with transaction.atomic():
+                product = model_class.objects.create(
+                    owner=owner,
+                    **validated_data,
+                )
+                AssetImageWriteService.create_images(product, images_data)
+                return product
 
         if owner.type != ProfileType.SELLER:
             raise serializers.ValidationError(
@@ -123,9 +130,29 @@ class ProductAssetCreationService:
                 owner=owner,
                 **validated_data,
             )
+            AssetImageWriteService.create_images(product, images_data)
             PackageService.consume_points(
                 owner,
                 PackageUsageType.PRODUCT_CREATED,
                 related_object=product,
             )
             return product
+
+
+class AssetImageWriteService:
+    @staticmethod
+    def create_images(asset, images_data=None):
+        for image_data in images_data or []:
+            AssetImage.objects.create(asset=asset, **image_data)
+        AssetImageWriteService._clear_images_cache(asset)
+
+    @staticmethod
+    def replace_images(asset, images_data):
+        asset.images.all().delete()
+        AssetImageWriteService.create_images(asset, images_data)
+
+    @staticmethod
+    def _clear_images_cache(asset):
+        cache = getattr(asset, "_prefetched_objects_cache", None)
+        if cache:
+            cache.pop("images", None)

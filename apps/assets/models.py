@@ -34,8 +34,6 @@ class Asset(OwnerBaseModel):
         default=AssetStatus.AVAILABLE,
     )
     count = models.IntegerField()  # needs to be moved for product
-    # 'thumbnail_url' => picture preview about the asset
-    thumbnail_url = models.URLField(blank=True, null=True)
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,

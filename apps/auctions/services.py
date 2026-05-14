@@ -93,6 +93,7 @@ class AuctionBusinessValidator:
             ValidationError: If any business rule violated
         """
         self._retrieve_unique_unauctioned_items()
+        self._validate_seller_owns_submitted_birds()
         self._validate_item_count_for_type()
         self._validate_items()
         self._validate_auto_extend_config()
@@ -135,6 +136,26 @@ class AuctionBusinessValidator:
         ).exists():
             raise ValidationError(
                 "A bird or more is already placed in an active auction."
+            )
+
+    def _validate_seller_owns_submitted_birds(self):
+        owner = self.auction.owner
+        if not owner or owner.type != ProfileType.SELLER:
+            return
+
+        invalid_bird_ids = sorted(
+            bird.id
+            for bird in self.bird_map.values()
+            if bird.owner_id != owner.id
+        )
+        if invalid_bird_ids:
+            raise ValidationError(
+                {
+                    "items": (
+                        "Sellers can auction only birds they own. "
+                        f"Invalid bird ids: {invalid_bird_ids}."
+                    )
+                }
             )
 
     def _validate_item_count_for_type(self) -> None:

@@ -259,18 +259,30 @@ class SellerPackageService:
     @staticmethod
     def get_active_package(profile):
         seller = SellerPackageValidator.get_seller_profile(profile)
-        package = (
-            SellerPackage.objects.select_related("package", "owner")
-            .filter(
-                owner=seller,
-                status=SellerPackageStatus.ACTIVE,
-                activated=True,
+        expired_error = None
+        with transaction.atomic():
+            package = (
+                SellerPackage.objects.select_for_update()
+                .select_related("package", "owner")
+                .filter(
+                    owner=seller,
+                    status=SellerPackageStatus.ACTIVE,
+                    activated=True,
+                )
+                .first()
             )
-            .first()
-        )
-        if package is None:
-            raise NotFound("Active seller package was not found.")
-        return package
+            if package is None:
+                raise NotFound("Active seller package was not found.")
+            now = timezone.now()
+            if package.expires_at and package.expires_at <= now:
+                PackageService._mark_exhausted(package, now)
+                expired_error = NotFound(
+                    "Active seller package was not found."
+                )
+            else:
+                return package
+
+        raise expired_error
 
     @staticmethod
     @transaction.atomic

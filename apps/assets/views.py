@@ -23,7 +23,7 @@ from apps.users.constants import ProfileType
 
 
 class BirdViewSet(viewsets.ModelViewSet):
-    queryset = Bird.objects.all().order_by("-created")
+    queryset = Bird.objects.prefetch_related("images").order_by("-created")
     serializer_class = BirdSerializer
     permission_classes = [
         HasAppAccess,
@@ -46,7 +46,9 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
-        queryset = super().get_queryset().order_by("-created")
+        queryset = super().get_queryset().prefetch_related("images").order_by(
+            "-created"
+        )
         user = self.request.user
         role = getattr(user, "role", None)
 

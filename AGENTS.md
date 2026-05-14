@@ -227,11 +227,11 @@ Current responsibilities:
 Future home:
 
 - bird-related domain extensions
-- media/file reference entities that store file keys uploaded by the frontend to S3 or similar
+- fuller media/file handling around the existing simple image reference model
 
 Important note:
 
-This app currently models domain assets, not a full media pipeline.
+This app currently models domain assets and simple image references, not a full media pipeline.
 
 Current model shape:
 
@@ -248,11 +248,15 @@ Current model shape:
   - `price`
   - `is_market_listed`
   - `is_for_auction`
+- `Asset.thumbnail_url` has been removed; asset images are represented by related `AssetImage` rows
 - current asset statuses are:
   - `available`
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
+- `apps.general.models.Image` is a concrete base image-reference model with `image_url` and optional `alt_text`
+- `apps.general.models.AssetImage` is a concrete `Image` subclass linked to `Asset` through `asset.images`
+- `AssetImage` adds `is_primary` and `order`; ordering is by `order`, then `created`
 
 Current bird API:
 
@@ -263,6 +267,9 @@ Current bird API behavior:
 - `BirdViewSet` is a DRF `ModelViewSet`
 - `BirdSerializer` sets `owner` from `request.user.active_profile` on create
 - `owner` is read-only in API input
+- `BirdSerializer` returns nested `images` and accepts nested `images` on create
+- `BirdSerializer` replaces the full image set when `images` is supplied on update; omitted `images` preserves existing image rows and `images: []` clears them
+- `thumbnail_url` is no longer accepted in bird API payloads
 - `BirdValidator` enforces seller ownership, future birthday rejection, non-negative flying speed, parent gender, parent age, and no self-parent
 - `Bird.save()` forces `count=1`
 - `Bird.save()` also inherits subtype category enforcement, so `Bird.category` is always `bird`
@@ -278,6 +285,9 @@ Current product asset API behavior:
 
 - product CRUD uses shared `ProductAssetSerializer`
 - `owner` and `category` are read-only in API input
+- product asset serializers return nested `images` and accept nested `images` on create
+- product asset serializers replace the full image set when `images` is supplied on update; omitted `images` preserves existing image rows and `images: []` clears them
+- `thumbnail_url` is no longer accepted in product asset API payloads
 - create sets `owner` from `request.user.active_profile`
 - seller product creation goes through `ProductAssetCreationService.create_product()`
 - seller-created `Supply`, `Accessory`, `Feed`, and `Supplement` assets consume `Package.product_cost` from the seller's active `AssetSellerPackage`, even when `is_market_listed=False`
@@ -370,6 +380,7 @@ Current order behavior:
 - checkout revalidates cart items under lock and uses latest `Asset.price`, not stale cart price snapshots
 - checkout converts the active cart to `converted`; a later `GET /api/orders/cart/` lazily creates a new active cart
 - order creation stores `total_price` on `Order`, plus `unit_price_snapshot` and `total_price` on each item
+- order item detail asset summaries use nested `images` from `AssetImage`; they no longer expose `thumbnail_url`
 - checkout and direct `POST /api/orders/` validate stock but do not decrement `Asset.count`
 - checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
 - new order items start as `pending_seller`
@@ -457,8 +468,8 @@ Current auction behavior:
 - auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
 - `Auction.seller_package` is a nullable FK to `AssetSellerPackage`; existing rows and manager-created rows can be null
 - auction creation requires future `start_time`, later `end_time`, and nested item payloads
-- `AuctionBusinessValidator` enforces item counts by auction type, pair gender rules, duplicate bird rejection, overlapping active-auction bird rejection, auto-extend config, and deposit config
-- `AuctionBusinessValidator` currently does not enforce that every submitted bird belongs to the requesting seller
+- `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, pair gender rules, duplicate bird rejection, overlapping active-auction bird rejection, auto-extend config, and deposit config
+- manager-created auctions bypass seller bird ownership validation because managers are using the administrative auction creation path
 - `AuctionService.create_auction()` writes a `created` event
 - seller auction creation pre-validates package availability, then creates the auction/items and consumes `Package.auction_cost` in the same DB transaction
 - seller-created auctions are linked to the consumed `AssetSellerPackage`
@@ -616,6 +627,7 @@ Current package behavior:
 - a seller can have many historical packages but only one active activated seller package, enforced by a partial unique constraint
 - manager cancellation is allowed only for pending seller packages and sets `cancelled`, `activated=False`, and `invalidated_at`
 - there is no standalone deactivate endpoint; deactivation currently happens only as part of activating a replacement package
+- `SellerPackageService.get_active_package()` validates `expires_at`; expired active packages are marked `exhausted`, `activated=False`, and invalidated before returning a not-found response
 - `PackageService.consume_points()` supports `auction_created` and `product_created` only; `pedigree_created` is rejected as unsupported for now
 - consumption uses `transaction.atomic()` and `select_for_update()` on the active `AssetSellerPackage`
 - only an active, activated, unexpired `AssetSellerPackage` can be consumed
@@ -1029,7 +1041,7 @@ Current short-term approach:
 
 ### Assets / Media
 
-Current assets app is domain modeling, not file/media handling.
+Current assets app is domain modeling plus simple asset image URL references, not full file/media handling.
 
 Current e-commerce foundation:
 
@@ -1073,7 +1085,7 @@ Current product asset visibility:
 
 Planned direction:
 
-- bird images
+- fuller media handling around existing asset image references
 - bird video
 - pedigree attachments
 - race result attachments
@@ -1328,6 +1340,7 @@ The codebase currently provides:
 - auth, profile switching, and JWT profile-claim synchronization
 - internal OpenAPI schema generation and Swagger UI for development teams
 - asset base model with shared market/listing fields
+- simple asset image reference models through `Image` and `AssetImage`
 - bird entity, CRUD endpoint, and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
 - product asset filtering, search, and ordering
@@ -1357,7 +1370,7 @@ Current API documentation coverage:
 
 The codebase does not yet fully implement:
 
-- media/file subsystem
+- media/file upload, storage, processing, or moderation subsystem beyond simple asset image URL references
 - payment-backed market completion workflow
 - payment review workflow
 - handoff flow
@@ -1404,7 +1417,7 @@ These risks are important and should be respected during future work.
 - event types must be consistent
 - auction editing restrictions are partially enforced for `PATCH`, but default destroy still uses the base `ModelViewSet` path
 - birds must not be reusable in conflicting active auctions
-- auction creation currently checks overlapping active auctions but does not verify submitted bird ownership against the requesting seller
+- seller-created auction validation now verifies submitted bird ownership; manager-created auctions still bypass that seller ownership rule through the administrative path
 - regular bids require a customer profile, but buy-now currently lacks the same customer-profile type check
 - same-user customer/seller profile bidding against that user's own seller auction is not explicitly blocked
 - `Auction.is_active()` currently checks time only and does not include `Auction.status`
@@ -1436,7 +1449,7 @@ Important related gap:
 
 ### Media Gap
 
-Current assets app is domain modeling, not file/media handling.
+Current assets app supports simple asset image URL references through `AssetImage`, but not file upload, storage, processing, validation, or moderation.
 
 ### Repo Cautions
 

@@ -1,5 +1,7 @@
+from datetime import timedelta
 from decimal import Decimal
 
+from django.utils import timezone
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -7,13 +9,19 @@ from rest_framework.test import APIClient
 from apps.assets.models import (
     Accessory,
     AssetCategory,
+    Bird,
     Feed,
     Supplement,
     Supply,
 )
 from apps.authentication.services import build_token_for_user
+from apps.general.models import AssetImage, Image
 from apps.packages.models import PackageUsageLog, PackageUsageType
-from tests.factories import ActiveAssetSellerPackageFactory, PackageFactory
+from tests.factories import (
+    ActiveAssetSellerPackageFactory,
+    AssetImageFactory,
+    PackageFactory,
+)
 
 PRODUCT_ENDPOINTS = [
     (Supply, "supplies", AssetCategory.SUPPLY),
@@ -41,11 +49,46 @@ def product_payload(**overrides):
         "title": "Premium product",
         "description": "Shared asset product",
         "count": 5,
-        "thumbnail_url": "https://example.com/product.jpg",
         "price": "25.50",
         "status": "available",
         "is_market_listed": False,
         "is_for_auction": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def image_payload(image_url="https://example.com/product.jpg", **overrides):
+    payload = {
+        "image_url": image_url,
+        "alt_text": "",
+        "is_primary": False,
+        "order": 0,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def bird_payload(**overrides):
+    payload = {
+        "title": "Image backed bird",
+        "description": "Bird with images",
+        "category": AssetCategory.BIRD,
+        "status": "available",
+        "count": 1,
+        "price": "100.00",
+        "is_market_listed": True,
+        "is_for_auction": False,
+        "name": "Fast bird",
+        "ring_number": "IMG-BIRD-001",
+        "gender": "male",
+        "colour": "Blue",
+        "birthday": None,
+        "father": None,
+        "mother": None,
+        "achievements": "Fast training result",
+        "flying_speed": "10.00",
+        "stamina_ability": "good",
     }
     payload.update(overrides)
     return payload
@@ -75,6 +118,244 @@ def create_active_package(owner, remaining_points=50, product_cost=7):
         ),
         remaining_points=remaining_points,
     )
+
+
+@pytest.mark.django_db
+def test_asset_can_have_multiple_images_and_primary_image(seller_user):
+    product = create_product(Supply, seller_user.active_profile)
+
+    first = AssetImageFactory(asset=product)
+    primary = AssetImageFactory(
+        asset=product,
+        image_url="https://example.com/primary.jpg",
+        is_primary=True,
+    )
+
+    assert list(product.images.values_list("id", flat=True)) == [
+        first.id,
+        primary.id,
+    ]
+    assert primary.is_primary is True
+
+
+@pytest.mark.django_db
+def test_asset_image_ordering_uses_order_then_created(seller_user):
+    product = create_product(Supply, seller_user.active_profile)
+    now = timezone.now()
+    first_same_order = AssetImageFactory(asset=product, order=1)
+    second_same_order = AssetImageFactory(asset=product, order=1)
+    lower_order = AssetImageFactory(asset=product, order=0)
+    Image.objects.filter(pk=first_same_order.pk).update(created=now)
+    Image.objects.filter(pk=second_same_order.pk).update(
+        created=now + timedelta(seconds=1)
+    )
+    Image.objects.filter(pk=lower_order.pk).update(
+        created=now + timedelta(seconds=2)
+    )
+
+    assert list(product.images.values_list("id", flat=True)) == [
+        lower_order.id,
+        first_same_order.id,
+        second_same_order.id,
+    ]
+
+
+@pytest.mark.django_db
+def test_bird_create_retrieve_and_list_include_images(
+    authenticated_seller_client,
+):
+    create_response = authenticated_seller_client.post(
+        "/api/assets/birds/",
+        bird_payload(
+            images=[
+                image_payload(
+                    "https://example.com/bird-primary.jpg",
+                    is_primary=True,
+                    order=0,
+                ),
+                image_payload(
+                    "https://example.com/bird-secondary.jpg",
+                    order=1,
+                ),
+            ]
+        ),
+        format="json",
+    )
+
+    assert (
+        create_response.status_code == status.HTTP_201_CREATED
+    ), create_response.data
+    assert "thumbnail_url" not in create_response.data
+    assert [image["image_url"] for image in create_response.data["images"]] == [
+        "https://example.com/bird-primary.jpg",
+        "https://example.com/bird-secondary.jpg",
+    ]
+
+    bird = Bird.objects.get(pk=create_response.data["id"])
+    assert bird.images.count() == 2
+
+    retrieve_response = authenticated_seller_client.get(
+        f"/api/assets/birds/{bird.pk}/"
+    )
+    list_response = authenticated_seller_client.get("/api/assets/birds/")
+    list_item = next(
+        item for item in list_response.data["results"] if item["id"] == bird.pk
+    )
+
+    assert retrieve_response.status_code == status.HTTP_200_OK
+    assert len(retrieve_response.data["images"]) == 2
+    assert "thumbnail_url" not in retrieve_response.data
+    assert len(list_item["images"]) == 2
+
+    replace_response = authenticated_seller_client.patch(
+        f"/api/assets/birds/{bird.pk}/",
+        {
+            "images": [
+                image_payload(
+                    "https://example.com/bird-replacement.jpg",
+                    is_primary=True,
+                )
+            ]
+        },
+        format="json",
+    )
+    clear_response = authenticated_seller_client.patch(
+        f"/api/assets/birds/{bird.pk}/",
+        {"images": []},
+        format="json",
+    )
+
+    assert replace_response.status_code == status.HTTP_200_OK
+    assert [
+        image["image_url"] for image in replace_response.data["images"]
+    ] == ["https://example.com/bird-replacement.jpg"]
+    assert clear_response.status_code == status.HTTP_200_OK
+    assert clear_response.data["images"] == []
+    assert AssetImage.objects.filter(asset=bird).count() == 0
+
+
+@pytest.mark.django_db
+def test_product_images_create_replace_preserve_and_clear(
+    authenticated_seller_client,
+    seller_user,
+):
+    seller_package = create_active_package(
+        seller_user.active_profile,
+        remaining_points=50,
+        product_cost=7,
+    )
+
+    create_response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(
+            images=[
+                image_payload(
+                    "https://example.com/product-primary.jpg",
+                    is_primary=True,
+                    order=0,
+                ),
+                image_payload(
+                    "https://example.com/product-secondary.jpg",
+                    order=1,
+                ),
+            ]
+        ),
+        format="json",
+    )
+
+    assert create_response.status_code == status.HTTP_201_CREATED
+    assert "thumbnail_url" not in create_response.data
+    assert len(create_response.data["images"]) == 2
+    product = Supply.objects.get(pk=create_response.data["id"])
+    assert product.images.count() == 2
+    seller_package.refresh_from_db()
+    assert seller_package.remaining_points == 43
+    assert PackageUsageLog.objects.count() == 1
+
+    retrieve_response = authenticated_seller_client.get(
+        product_url("supplies", product.pk)
+    )
+    list_response = authenticated_seller_client.get(product_url("supplies"))
+    list_item = next(
+        item
+        for item in list_response.data["results"]
+        if item["id"] == product.pk
+    )
+
+    assert retrieve_response.status_code == status.HTTP_200_OK
+    assert len(retrieve_response.data["images"]) == 2
+    assert len(list_item["images"]) == 2
+
+    preserve_response = authenticated_seller_client.patch(
+        product_url("supplies", product.pk),
+        {"title": "Images preserved"},
+        format="json",
+    )
+
+    assert preserve_response.status_code == status.HTTP_200_OK
+    assert len(preserve_response.data["images"]) == 2
+    assert product.images.count() == 2
+
+    replace_response = authenticated_seller_client.patch(
+        product_url("supplies", product.pk),
+        {
+            "images": [
+                image_payload(
+                    "https://example.com/replacement.jpg",
+                    is_primary=True,
+                )
+            ]
+        },
+        format="json",
+    )
+
+    assert replace_response.status_code == status.HTTP_200_OK
+    assert [image["image_url"] for image in replace_response.data["images"]] == [
+        "https://example.com/replacement.jpg"
+    ]
+    assert AssetImage.objects.filter(asset=product).count() == 1
+
+    clear_response = authenticated_seller_client.patch(
+        product_url("supplies", product.pk),
+        {"images": []},
+        format="json",
+    )
+
+    seller_package.refresh_from_db()
+    assert clear_response.status_code == status.HTTP_200_OK
+    assert clear_response.data["images"] == []
+    assert AssetImage.objects.filter(asset=product).count() == 0
+    assert seller_package.remaining_points == 43
+    assert PackageUsageLog.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_thumbnail_url_is_rejected_for_asset_api_payloads(
+    authenticated_seller_client,
+    seller_user,
+):
+    create_active_package(seller_user.active_profile)
+
+    product_response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(thumbnail_url="https://example.com/old.jpg"),
+        format="json",
+    )
+    bird_response = authenticated_seller_client.post(
+        "/api/assets/birds/",
+        bird_payload(
+            ring_number="IMG-BIRD-THUMB",
+            thumbnail_url="https://example.com/old.jpg",
+        ),
+        format="json",
+    )
+
+    assert product_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert bird_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "thumbnail_url" in product_response.data
+    assert "thumbnail_url" in bird_response.data
+    assert not Supply.objects.filter(title="Premium product").exists()
+    assert not Bird.objects.filter(ring_number="IMG-BIRD-THUMB").exists()
 
 
 @pytest.mark.django_db

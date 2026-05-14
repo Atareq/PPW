@@ -16,6 +16,7 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
+from apps.general.models import AssetImage
 from apps.orders.models import (
     Cart,
     CartItem,
@@ -153,6 +154,17 @@ class SupplyFactory(factory.django.DjangoModelFactory):
     is_market_listed = True
     is_for_auction = False
     created = factory.LazyFunction(timezone.now)
+
+
+class AssetImageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = AssetImage
+
+    asset = factory.SubFactory(SupplyFactory)
+    image_url = factory.Sequence(lambda n: f"https://example.com/image-{n}.jpg")
+    alt_text = ""
+    is_primary = False
+    order = 0
 
 
 # ============================================================================
