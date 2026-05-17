@@ -6,6 +6,7 @@ Tests:
 - Permission management
 - Profile activation
 """
+from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError
 import pytest
 
@@ -21,7 +22,7 @@ class TestUserModel:
         """Test creating a user."""
         assert user.id is not None
         assert user.phone_number is not None
-        assert user.active_profile is not None
+        assert user.active_profile.type == ProfileType.CUSTOMER
 
     def test_user_phone_number_unique(self):
         """Test that phone numbers are unique."""
@@ -38,8 +39,18 @@ class TestUserModel:
         """Test active_profile property returns correct profile."""
 
         profile = user.active_profile
-        assert profile is not None
         assert profile.is_active is True
+
+    def test_active_profile_raises_when_missing(self):
+        """Test active_profile raises when no valid active profile exists."""
+
+        user = UserAccountFactory(with_profile=False)
+
+        with pytest.raises(
+            PermissionDenied,
+            match="No active profile found for this user.",
+        ):
+            user.active_profile
 
     def test_role_property(self, seller_user):
         """Test role property returns profile type."""

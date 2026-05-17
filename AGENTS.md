@@ -95,6 +95,7 @@ Current major apps:
 - `apps.ratings`
 - `apps.races`
 - `apps.packages`
+- `apps.loyalty`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -160,7 +161,7 @@ Current auth behavior:
   - `profile`
   - `user_id`
   - `is_activated`
-- `build_token_for_user()` reads the first `Profile` row with `is_active=True`; it does not call the stricter `user.active_profile` property
+- `build_token_for_user()` uses the stricter `user.active_profile` property
 - a token without `profile` is rejected with authentication failure
 - if token `profile` differs from `request.user.role`, authentication attempts `switch_user_profile(user, new_profile_type=token_profile)`
 - if profile switching fails, authentication continues with the current active profile
@@ -197,7 +198,8 @@ Current user/profile API:
 
 Current profile behavior:
 
-- `active_profile` requires `is_active=True`, `is_valid=True`, and `activated=True`
+- `active_profile` requires `is_active=True`, `is_valid=True`, `activated=True`, and a non-deleted profile
+- `active_profile` raises `PermissionDenied` when no current valid active profile exists
 - `Profile.is_valid` is the current punishment / disabled-profile flag
 - exactly one `is_active=True` profile per user is enforced through the active-profile uniqueness constraint
 - persisted profile type values are title-case strings: `Seller`, `Customer`, and `Manager`
@@ -640,6 +642,71 @@ Current package behavior:
 - `PackageUsageLog` stores successful consumption traces using a seller package FK, seller FK, usage type, points used, and optional string/id related object reference
 - no `GenericForeignKey` is used for package usage logs
 
+### `apps.loyalty`
+
+Current responsibilities:
+
+- user-level point wallets
+- immutable point transaction ledger records
+- optional profile context on point transactions
+- profile-level badge awards
+- static badge definitions represented by code choices and constants, not database rows
+
+Important note:
+
+This app is a rewards foundation only. It does not implement automatic reward earning, reward schedules, point purchase, cashback conversion, withdrawal, payment gateway behavior, notifications, offers, promotions, leaderboards, or referral rewards.
+
+Current loyalty API:
+
+- `/api/loyalty/points/`
+  - `GET`: authenticated user retrieves their user-level point balance
+- `/api/loyalty/points/transactions/`
+  - `GET`: authenticated users list their own account point transactions; managers list all transactions by default
+- `/api/loyalty/badges/`
+  - `GET`: without `profile_id`, returns the static badge choice catalog
+  - `GET ?profile_id=<id>`: manager-only badge award list for a specific profile
+  - `POST`: manager-only badge award creation for a specific profile and badge type
+- `/api/loyalty/badges/my/`
+  - `GET`: authenticated user retrieves badge awards for the current active profile
+
+Current point behavior:
+
+- `PointWallet` belongs to `UserAccount`, not `Profile`
+- each user can have one wallet
+- wallets are created lazily by `PointService.get_or_create_wallet()`
+- wallet balance is a non-negative integer
+- `PointTransaction` belongs to both `PointWallet` and `UserAccount`
+- `PointTransaction.profile` is optional and stores the active profile context that caused the transaction when applicable
+- point transaction types are `earn`, `spend`, and `expire`
+- point transactions require positive points, non-negative `balance_after`, and a non-empty reason
+- `PointService.earn_points()`, `spend_points()`, and `expire_points()` run in DB transactions and lock the wallet row before changing balance
+- spending and expiring points cannot make wallet balance negative
+- optional nonblank `idempotency_key` values are unique across point transactions
+- reusing an idempotency key for the same logical transaction returns the existing transaction without changing balance again
+- reusing an idempotency key for a different logical transaction raises a validation error
+- non-manager transaction lists are always scoped to `request.user`
+- manager transaction lists are unscoped by default and support `user_id`, `profile_id`, `transaction_type`, and `source_type` filters
+
+Current badge behavior:
+
+- there is no `Badge` model
+- `BadgeAward` belongs to `Profile`, not `UserAccount`
+- `BadgeAward.badge_type` is a fixed choice field
+- current badge types are:
+  - `first_order`
+  - `points_starter`
+  - `seller_starter`
+- badge metadata, names, descriptions, eligibility, criteria type, criteria value, and icon URL live in `apps.loyalty.constants`
+- badge eligibility is enforced by `BadgeService.award_badge()`
+- `first_order` is eligible for `Customer` profiles
+- `seller_starter` is eligible for `Seller` profiles
+- `points_starter` is eligible for any profile type
+- a profile can receive the same badge type once
+- different profiles under the same user can receive the same badge type independently
+- badge awards are idempotent per profile and badge type
+- `/api/loyalty/badges/my/` returns only the current active profile's badge awards
+- automatic badge criteria evaluation is stubbed only and does not award badges yet
+
 ### `apps.general`
 
 Current responsibilities:
@@ -685,7 +752,9 @@ Use `active_profile` as the operational actor in business flows.
 DRY active-profile rule:
 
 - `user.active_profile` is the source of truth for the current valid active profile
+- do not add `active_profile` presence checks such as `if not active_profile`, `getattr(user, "active_profile", None)`, or `hasattr(user, "active_profile")`
 - do not duplicate `active_profile` validity checks for `is_active`, `is_valid`, `activated`, or `deleted` after retrieving `user.active_profile`
+- rely on `user.active_profile` to raise when the authenticated user has no current valid active profile
 - keep role/type checks such as `Customer`, `Seller`, or `Manager` when they are business rules for the action
 - keep validation for other profiles or objects, such as asset owners, when they are not the current user's `active_profile`
 - `user.active_profile` returns the base `Profile`; fetch the concrete subtype only when assigning to a concrete FK such as `CustomerProfile` on ratings or orders
@@ -1223,7 +1292,10 @@ Current permission resources:
 
 Permission implementation rule:
 
+- all custom DRF permission classes must live in `apps.general.authorizations`
+- app-local custom permission classes are not allowed
 - do not introduce any new permission class without explicit user approval
+- do not introduce a new authorization approach unless the user explicitly asks for it, or after asking under necessary conditions
 - new endpoint authorization must use `apps.general.authorizations.HasAppAccess` plus `CUSTOMER_PERMISSIONS` / `SELLER_PERMISSIONS` unless the user explicitly approves another approach
 - viewsets using `HasAppAccess` must define both `queryset` and `permission_resource`
 - keep profile-specific business validation in serializers, validators, or services when `HasAppAccess` is only the endpoint gate
@@ -1402,7 +1474,6 @@ These risks are important and should be respected during future work.
 - manager registration must not remain publicly open
 - profile switching must respect activation and business constraints
 - current `switch_user_profile()` can set an inactive/invalid/deleted target type active because it does not filter target profile validity before assignment
-- current `build_token_for_user()` reads the first `is_active=True` profile row instead of the stricter `active_profile` property
 - token `profile` claim and active profile behavior must stay aligned
 - test JWTs must include `profile` unless testing missing-claim behavior
 - permission constants and object-level rules need tightening

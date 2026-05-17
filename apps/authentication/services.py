@@ -1,5 +1,4 @@
 from django.db import transaction
-from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.constants import ProfileType
@@ -28,11 +27,7 @@ def switch_user_profile(user, new_profile_type: str) -> tuple[bool, str]:
 
 
 def build_token_for_user(user):
-    profile = Profile.objects.filter(user=user, is_active=True).first()
-    if not profile:
-        raise ValidationError("No active profile found for this user.")
-
-    return build_token_for_user_role(user, profile)
+    return build_token_for_user_role(user, user.active_profile)
 
 
 def build_token_for_user_role(user, profile):

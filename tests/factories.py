@@ -17,6 +17,8 @@ from apps.auctions.models import (
 )
 from apps.authentication.models import UserAccount
 from apps.general.models import AssetImage
+from apps.loyalty.constants import BadgeType, PointTransactionType
+from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
 from apps.orders.models import (
     Cart,
     CartItem,
@@ -165,6 +167,51 @@ class AssetImageFactory(factory.django.DjangoModelFactory):
     alt_text = ""
     is_primary = False
     order = 0
+
+
+# ============================================================================
+# LOYALTY FACTORIES
+# ============================================================================
+
+
+class PointWalletFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PointWallet
+
+    user = factory.SubFactory(UserAccountFactory)
+    balance = 0
+
+
+class PointTransactionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PointTransaction
+
+    wallet = factory.SubFactory(PointWalletFactory)
+
+    @factory.lazy_attribute
+    def user(self):
+        return self.wallet.user
+
+    profile = None
+    transaction_type = PointTransactionType.EARN
+    points = 10
+    balance_after = 10
+    reason = "Test transaction"
+    source_type = ""
+    source_id = ""
+    idempotency_key = None
+    metadata = factory.LazyFunction(dict)
+
+
+class BadgeAwardFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = BadgeAward
+
+    profile = factory.SubFactory(CustomerProfileFactory)
+    badge_type = BadgeType.FIRST_ORDER
+    source_type = ""
+    source_id = ""
+    metadata = factory.LazyFunction(dict)
 
 
 # ============================================================================

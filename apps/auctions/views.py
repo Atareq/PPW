@@ -152,12 +152,6 @@ class AuctionViewSet(viewsets.ModelViewSet):
         return context
 
     def create(self, request, *args, **kwargs):
-
-        if not self.request or not hasattr(
-            self.request.user, "active_profile"
-        ):
-            raise ValidationError("Seller profile not found")
-
         serializer = self.get_serializer(data=self.request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
@@ -318,7 +312,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         try:
             auction = AuctionService.close_auction(
                 auction,
-                performer=getattr(self.request.user, "active_profile", None),
+                performer=self.request.user.active_profile,
             )
 
             return Response(

@@ -824,7 +824,7 @@ class SettlementService:
         """
         return AuctionService.close_auction(
             auction=auction,
-            performer=getattr(user, "active_profile", None),
+            performer=user.active_profile,
         )
 
     @staticmethod

@@ -104,9 +104,6 @@ class BirdValidator:
 class ProductAssetCreationService:
     @staticmethod
     def create_product(model_class, owner, validated_data, images_data=None):
-        if owner is None:
-            raise serializers.ValidationError("Active profile not found.")
-
         if owner.type == ProfileType.MANAGER:
             with transaction.atomic():
                 product = model_class.objects.create(

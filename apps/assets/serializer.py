@@ -38,9 +38,7 @@ class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context.get("request")
-        owner = (
-            getattr(request.user, "active_profile", None) if request else None
-        )
+        owner = request.user.active_profile if request else None
 
         return BirdValidator.validate(
             attrs=attrs,
@@ -78,11 +76,7 @@ class ProductAssetSerializer(
     def create(self, validated_data):
         images_data = validated_data.pop("images", [])
         request = self.context.get("request")
-        owner = (
-            getattr(request.user, "active_profile", None) if request else None
-        )
-        if owner is None:
-            raise serializers.ValidationError("Active profile not found.")
+        owner = request.user.active_profile
 
         return ProductAssetCreationService.create_product(
             self.Meta.model,

@@ -49,7 +49,6 @@ class TestCustomerRegistration:
         assert response.status_code == status.HTTP_201_CREATED
 
         user = UserAccount.objects.get(phone_number="+201001234567")
-        assert user.active_profile is not None
         assert user.active_profile.type == ProfileType.CUSTOMER
         assert user.active_profile.is_active is True
 
@@ -244,7 +243,6 @@ class TestManagerRegistration:
         assert response.status_code == status.HTTP_201_CREATED
 
         user = UserAccount.objects.get(phone_number="+201001234567")
-        assert user.active_profile is not None
         assert user.active_profile.type == ProfileType.MANAGER
         assert user.active_profile.is_active is True
         assert user.active_profile.activated is True

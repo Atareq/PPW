@@ -50,18 +50,18 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
             "-created"
         )
         user = self.request.user
-        role = getattr(user, "role", None)
+        role = user.role
 
         if role == ProfileType.MANAGER:
             return queryset
 
-        active_profile = getattr(user, "active_profile", None)
+        active_profile = user.active_profile
 
         if self.request.method in SAFE_METHODS:
             if role == ProfileType.CUSTOMER:
                 return queryset.filter(is_market_listed=True)
 
-            if role == ProfileType.SELLER and active_profile is not None:
+            if role == ProfileType.SELLER:
                 return queryset.filter(
                     Q(owner=active_profile) | Q(is_market_listed=True)
                 )

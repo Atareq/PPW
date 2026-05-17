@@ -17,9 +17,7 @@ class AuthorizationService:
         owner_field: str = "owner_id",
     ) -> bool:
 
-        role = getattr(user, "role", None)
-        if not role:
-            return False
+        role = user.role
 
         if role == ProfileType.MANAGER:
             return True

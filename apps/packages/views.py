@@ -50,7 +50,7 @@ class PackageViewSet(
 
     def get_queryset(self):
         queryset = Package.objects.all().order_by("-created")
-        role = getattr(self.request.user, "role", None)
+        role = self.request.user.role
 
         if role == ProfileType.MANAGER:
             return queryset
@@ -95,7 +95,7 @@ class MySellerPackageViewSet(
     def get_queryset(self):
         queryset = seller_package_queryset()
         active_profile = self.request.user.active_profile
-        if not active_profile or active_profile.type != ProfileType.SELLER:
+        if active_profile.type != ProfileType.SELLER:
             return queryset.none()
         return queryset.filter(owner_id=active_profile.pk)
 
@@ -151,7 +151,7 @@ class ManagerSellerPackageViewSet(
 
     def partial_update(self, request, *args, **kwargs):
         active_profile = request.user.active_profile
-        if not active_profile or active_profile.type != ProfileType.MANAGER:
+        if active_profile.type != ProfileType.MANAGER:
             raise PermissionDenied(
                 "Only manager profiles can update seller packages."
             )

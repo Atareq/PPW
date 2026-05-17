@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import PermissionDenied
 from django.db import models
 from phonenumber_field.modelfields import PhoneNumberField
 
@@ -22,24 +23,25 @@ class UserAccount(AbstractUser, BaseModel):
     @property
     def active_profile(self):
         """Return the currently active profile for this user."""
-        return self.profiles.filter(
+        profile = self.profiles.filter(
             is_active=True,
             is_valid=True,
             activated=True,
             deleted__isnull=True,
         ).first()
+        if profile is None:
+            raise PermissionDenied("No active profile found for this user.")
+        return profile
 
     @property
     def role(self):
         """Return the type of the active profile."""
-        profile = self.active_profile
-        return profile.type if profile else None
+        return self.active_profile.type
 
     @property
     def is_activated(self):
         """Check if the active profile is activated."""
-        profile = self.active_profile
-        return profile.activated if profile else False
+        return self.active_profile.activated
 
     # --------- Permission API -------------
 

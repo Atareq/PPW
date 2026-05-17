@@ -64,9 +64,6 @@ class OrderViewSet(
         )
         active_profile = self.request.user.active_profile
 
-        if not active_profile:
-            return queryset.none()
-
         if active_profile.type == ProfileType.MANAGER:
             return queryset
 
@@ -202,12 +199,12 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def get_queryset(self):
         queryset = order_item_queryset()
         user = self.request.user
-        active_profile = getattr(user, "active_profile", None)
+        active_profile = user.active_profile
 
         if user.role == ProfileType.MANAGER:
             return queryset
 
-        if active_profile and active_profile.type == ProfileType.SELLER:
+        if active_profile.type == ProfileType.SELLER:
             return queryset.filter(seller_id=active_profile.pk)
 
         return queryset.none()
@@ -242,7 +239,7 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     def _get_active_seller_profile(self):
         active_profile = self.request.user.active_profile
-        if not active_profile or active_profile.type != ProfileType.SELLER:
+        if active_profile.type != ProfileType.SELLER:
             raise PermissionDenied(
                 "Only seller profiles can manage order items."
             )
