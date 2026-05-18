@@ -33,6 +33,7 @@ TODO.txt
 # AI helpers
 .codex
 .codex
+!AGENTS.md
 
 # Celery beat
 celerybeat-schedule
