@@ -34,6 +34,10 @@ SELLER_PERMISSIONS = {
         "approve",
         "reject",
     ],
+    "PAYMENT_REQUEST": [
+        "list",
+        "create",
+    ],
     "ASSET_COMMENT": [
         "list",
         "create",
@@ -96,6 +100,11 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
         "create",
+    ],
+    "PAYMENT_REQUEST": [
+        "create",
+        "list",
+        "partial_update",
     ],
     "ASSET_COMMENT": [
         "list",

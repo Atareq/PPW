@@ -109,3 +109,24 @@ def test_cart_and_checkout_paths_are_documented(
     assert {"BearerAuth": []} in schema["paths"]["/api/orders/checkout/"][
         "post"
     ]["security"]
+
+
+def test_payment_request_paths_are_documented(
+    authenticated_client,
+    settings,
+):
+    settings.DEBUG = False
+
+    schema = load_schema(authenticated_client.get("/api/schema/"))
+
+    assert "/api/payments/requests/" in schema["paths"]
+    assert "/api/payments/requests/auction-item/" in schema["paths"]
+    assert "/api/payments/requests/order-item/" in schema["paths"]
+    assert "/api/payments/requests/{id}/approve/" in schema["paths"]
+    assert "/api/payments/requests/{id}/reject/" in schema["paths"]
+    assert schema["paths"]["/api/payments/requests/"]["get"]["tags"] == [
+        "Payments"
+    ]
+    assert {"BearerAuth": []} in schema["paths"][
+        "/api/payments/requests/order-item/"
+    ]["post"]["security"]

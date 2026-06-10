@@ -516,7 +516,7 @@ class TestOrderServiceAndSellerDecisions:
         assert asset_one.count == 5
         assert asset_two.count == 3
 
-    def test_seller_approve_decrements_stock_once(self):
+    def test_seller_approve_does_not_mutate_stock(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         asset = SupplyFactory(owner=seller.active_profile, count=5)
@@ -539,7 +539,9 @@ class TestOrderServiceAndSellerDecisions:
         asset.refresh_from_db()
         order.refresh_from_db()
         assert item.status == OrderItemStatus.APPROVED
-        assert asset.count == 3
+        assert asset.count == 5
+        assert asset.status == AssetStatus.AVAILABLE
+        assert asset.is_market_listed is True
         assert order.status == OrderStatus.PROCESSING
         assert (
             OrderEvent.objects.filter(
@@ -732,7 +734,9 @@ class TestOrderServiceAndSellerDecisions:
         assert cancelled_count == 1
         assert item.status == OrderItemStatus.CANCELLED
 
-    def test_seller_approval_marks_sold_out_asset_sold_and_unlisted(self):
+    def test_seller_approval_does_not_mark_sold_out_asset_sold_or_unlisted(
+        self,
+    ):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         asset = SupplyFactory(owner=seller.active_profile, count=1)
@@ -747,11 +751,11 @@ class TestOrderServiceAndSellerDecisions:
 
         assert response.status_code == 200
         asset.refresh_from_db()
-        assert asset.count == 0
-        assert asset.status == AssetStatus.SOLD
-        assert asset.is_market_listed is False
+        assert asset.count == 1
+        assert asset.status == AssetStatus.AVAILABLE
+        assert asset.is_market_listed is True
 
-    def test_seller_approval_revalidates_stock_under_lock(self):
+    def test_seller_approval_does_not_revalidate_stock_under_lock(self):
         first_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         second_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
@@ -776,12 +780,13 @@ class TestOrderServiceAndSellerDecisions:
         )
 
         assert first_response.status_code == 200
-        assert second_response.status_code == 400
-        assert "not available" in str(second_response.data)
+        assert second_response.status_code == 200
+        first_item.refresh_from_db()
         second_item.refresh_from_db()
         asset.refresh_from_db()
-        assert second_item.status == OrderItemStatus.PENDING_SELLER
-        assert asset.count == 0
+        assert first_item.status == OrderItemStatus.APPROVED
+        assert second_item.status == OrderItemStatus.APPROVED
+        assert asset.count == 1
 
     def test_partial_rejection_updates_parent_status(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

@@ -24,7 +24,7 @@ The platform currently supports and will continue to expand around:
 - fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
 - ratings and comments as a simple trust and feedback layer
 - race records and race result rankings for pigeon/bird racing reports
-- planned admin-assisted post-auction and marketplace completion
+- manual PaymentRequest-based auction and marketplace sale completion
 - future media, pedigree, QR, reviews, reward points, chat, and promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
@@ -33,13 +33,16 @@ Core business reality and intended product policy:
 
 - no in-app payment gateway
 - no automated shipping or logistics integration
-- payment is manual and confirmed by admin
-- handoff or delivery is manually confirmed by seller
-- ownership transfer happens only after the required manual confirmations
+- payment is manual between buyer and seller outside the system
+- buyer creates a `PaymentRequest` after a won auction item or approved market order item
+- seller approves or rejects the `PaymentRequest`
+- seller approval finalizes the sale inside the system
+- bird ownership transfers on seller approval; non-bird product ownership does not transfer
+- market product stock is reduced only when a seller approves a market `PaymentRequest`
 
 Current implementation caveat:
 
-- manual payment review, seller handoff confirmation, and ownership transfer workflows are not implemented yet
+- there is no payment gateway, proof upload, admin payment approval, handoff model, shipping integration, complaint/dispute workflow, wallet, refund engine, or ownership history table
 
 The project must remain a modular monolith. Simplicity and correctness are preferred over feature richness and abstractions.
 
@@ -74,6 +77,19 @@ General approach:
 - use `perform_create`, `perform_update`, `perform_destroy`, serializer `create`, serializer `update`, and serializer `to_representation` before overriding full `create`, `update`, or `destroy`
 - override full DRF CRUD methods only when the normal request / response flow itself must change
 - do not add custom action names for behavior that is really a resource collection `list` or `create`; expose a proper route and map it to standard DRF action names instead
+- declare endpoints in `urls.py`; do not declare endpoint paths through `@action`
+- do not use `@action` for new work; use explicit `as_view({...})` mappings in the app URLconf
+- do not use router-generated custom workflow endpoints for new work
+- keep URLconfs readable: define small reusable action-map constants such as `LIST_ACTION`, `CREATE_ACTION`, and `PARTIAL_UPDATE_ACTION`, then declare each endpoint directly in `urlpatterns`
+- avoid one-off view variables for every endpoint unless they are genuinely reused or improve clarity
+- do not declare `head` or `options` as request methods in viewsets
+- use standard DRF action method names only: `list`, `retrieve`, `create`, `update`, `partial_update`, and `destroy`
+- prefer one focused viewset when endpoints share the same model/resource and action shape
+- handle role-scoped list behavior in `get_queryset()` when manager/seller/customer filtering can stay clear there
+- split one model/resource across multiple focused viewsets or view classes only when actors, serializers, source flows, or command behavior are meaningfully different
+- do not create many tiny view classes for the same model when serializer selection and `get_queryset()` can keep one class readable
+- command-style endpoints such as approval or rejection should use a dedicated URL-bound view mapped to `create`
+- use `apps.payments.views` and `apps.payments.urls` as the current reference style for DRF viewset and URL organization
 
 Current internal API documentation approach:
 
@@ -96,6 +112,7 @@ Current major apps:
 - `apps.races`
 - `apps.packages`
 - `apps.loyalty`
+- `apps.payments`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -336,13 +353,12 @@ Current responsibilities:
 - price snapshot storage for future settlement flows
 - cart, checkout, and compatibility direct-order API / serializer / validator / service flow
 - seller approval and rejection of individual order items
-- seller-approval-time stock decrement for fixed-price market order items
 - seller-decision timeout auto-cancellation for stale pending order items
 - lightweight order event records for future notification hooks
 
 Important note:
 
-This app currently provides the first cart and fixed-price checkout workflow layer. It does not yet implement payment review, handoff confirmation, settlement workflow, or ownership transfer workflow.
+This app provides the cart, checkout, and seller item-decision layer. Manual sale completion after seller approval is owned by `apps.payments`.
 
 Current order API:
 
@@ -386,11 +402,8 @@ Current order behavior:
 - checkout and direct `POST /api/orders/` validate stock but do not decrement `Asset.count`
 - checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
 - new order items start as `pending_seller`
-- seller approval is the stock mutation point and revalidates the locked asset before decrementing `Asset.count`
-- seller approval revalidation checks that the asset is not soft-deleted, has status `available`, and has enough count
-- seller approval does not require the asset to still be market-listed
-- seller approval changes `pending_seller` to `approved` after successful stock decrement
-- when seller approval decrements stock to zero, the asset is marked `sold` and unlisted from the market
+- seller approval changes `pending_seller` to `approved` without decrementing stock, marking assets sold, or unlisting assets
+- seller approval does not revalidate stock at approval time
 - seller approval is idempotent when the item is already `approved`
 - seller rejection changes `pending_seller` to `rejected` only; it does not change stock, asset status, or market listing
 - seller rejection is idempotent when the item is already `rejected`
@@ -403,14 +416,70 @@ Current order behavior:
 - any rejected item plus any non-rejected item makes the aggregate order status `partial_rejected`
 - lightweight `OrderEvent` records are created for order creation, seller pending item notifications, seller approval, and seller timeout auto-cancellation
 - seller rejection currently does not create an `OrderEvent`
-- ownership transfer is not implemented yet
+- approved marketplace order items can be finalized by buyer-created `PaymentRequest` records in `apps.payments`
 
 Current order service implementation names:
 
 - `OrderCheckoutService._create_pending_order()` creates the order and pending seller items for cart checkout and direct order creation
 - `OrderCheckoutService._ensure_stock_available()` validates count during checkout/order creation without mutating assets; purchase validators enforce listed/status/seller/customer rules before this helper runs
-- `OrderItemService._apply_stock_deduction()` decrements stock on seller approval and marks zero-count assets sold/unlisted
+- `OrderItemService.approve_item()` approves seller-side order items without stock mutation
 - `OrderItemService.cancel_expired_pending_items()` cancels stale `pending_seller` order items whose `created` timestamp is outside the configured seller decision window
+
+### `apps.payments`
+
+Current responsibilities:
+
+- shared manual `PaymentRequest` base records for won auction items and approved marketplace order items
+- concrete `AuctionPaymentRequest` and `MarketPaymentRequest` submodels for source-specific relations
+- buyer-created manual sale confirmation requests
+- seller approval or rejection of pending payment requests
+- seller approval finalization for marketplace order items
+- market stock reduction when a market payment request is approved
+- bird ownership transfer on seller-approved payment requests
+- lightweight `PaymentRequestEvent` trace records
+
+Important note:
+
+This app is not a payment gateway, wallet, refund system, proof-upload flow, handoff model, shipping integration, or complaint/dispute system. It records manual buyer/seller confirmation state only.
+
+Current payment API:
+
+- `/api/payments/requests/`
+  - `GET`: manager lists all payment requests; seller lists assigned requests; customer lists own requests
+- `/api/payments/requests/auction-item/`
+  - `POST`: customer creates a payment request for a sold auction item they won
+- `/api/payments/requests/order-item/`
+  - `POST`: customer creates a payment request for their approved marketplace order item
+- `/api/payments/requests/<id>/`
+  - `PATCH`: buyer updates `buyer_note` while the request is pending or rejected
+- `/api/payments/requests/<id>/approve/`
+  - `POST`: seller approves their own pending payment request
+- `/api/payments/requests/<id>/reject/`
+  - `POST`: seller rejects their own pending payment request with optional `seller_note`
+
+Current payment behavior:
+
+- payment request statuses are `pending`, `approved`, `rejected`, and `cancelled`
+- payment request types are `auction` and `market`
+- `PaymentRequest` is a concrete shared base model
+- `AuctionPaymentRequest` stores the required one-to-one `auction_item`
+- `MarketPaymentRequest` stores the required one-to-one `order_item`
+- auction payment requests require a sold `AuctionItem`, the active customer profile must be the winner, and the auction owner must be a seller profile
+- auction payment request amount comes from `AuctionItem.current_price`
+- marketplace payment requests require an approved `OrderItem` owned by the active customer profile
+- marketplace payment request amount comes from `OrderItem.total_price`
+- only one pending or rejected request per buyer and asset is allowed at a time
+- buyers can update pending or rejected requests only; updating a rejected request resubmits it as pending
+- approved and cancelled payment requests cannot be updated through the service
+- sellers can approve or reject only their own pending payment requests
+- seller approval marks the request approved and immutable
+- seller approval completes the source marketplace `OrderItem` and refreshes the parent order status
+- seller approval for market requests locks the source asset, requires enough current stock, decrements `Asset.count`, and marks zero-count assets `sold` and unlisted
+- seller approval transfers ownership only for bird assets
+- seller approval transfers an auction item's `paired_bird` when present
+- seller approval does not transfer ownership for supply, accessory, feed, or supplement assets
+- seller rejection marks the request rejected and does not transfer ownership, complete order items, or mutate stock
+- `PaymentRequestEvent` records are written only for created, updated, approved, and rejected events
 
 ### `apps.auctions`
 
@@ -429,7 +498,7 @@ This app currently has the clearest service / validator / factory layering in th
 
 Important note:
 
-Auction closing currently resolves winners and marks items sold or unsold. It does not implement payment review, handoff confirmation, ownership transfer, dispute handling, or post-auction market completion.
+Auction closing resolves winners and marks items sold or unsold. It does not auto-create payment requests. A winning customer manually creates an `AuctionPaymentRequest`, and seller approval in `apps.payments` transfers bird ownership.
 
 Current auction API:
 
@@ -486,6 +555,8 @@ Current auction behavior:
 - `AuctionService.close_expired_auctions()` selects active auctions with `end_time <= now`
 - `AuctionService.close_auction()` is idempotent for already closed auctions
 - closing an auction marks each item `sold` with winner data when bids exist, otherwise `unsold`, sets the auction to `closed`, and writes an `auction_ended` event
+- closing an auction does not create `PaymentRequest` records automatically
+- sold seller-owned auction items can be finalized through buyer-created payment requests
 - buy-now creates a bid at `auction.buy_now_price`, marks the item sold, sets winner fields, updates current price, and writes a `buy_now_triggered` event
 
 ### `apps.ratings`
@@ -888,7 +959,7 @@ Current order-item statuses:
 
 Important rule:
 
-Future settlement and approval logic should operate at the order-item level, not only at the order level.
+Manual market sale completion operates at the order-item level through `MarketPaymentRequest`.
 
 #### OrderEvent
 
@@ -979,7 +1050,7 @@ Each item has:
 Current design choice:
 
 - `AuctionItem.status`, `winner`, and `winner_bid` are resolved when an auction is closed
-- sold auction items do not yet trigger payment, handoff, or ownership-transfer workflow
+- sold auction items do not auto-create payment records; the winner manually creates an `AuctionPaymentRequest`
 
 #### Bid
 
@@ -1076,28 +1147,29 @@ Current schema/auth documentation behavior:
 - birds should not be placed in overlapping active auctions
 - auction state transitions must be explicit and safe
 - scheduled auction expiry transitions auctions to `closed` and resolves item winner fields
-- full post-auction completion remains planned, not implemented
+- post-auction sale completion starts only when the buyer creates an `AuctionPaymentRequest`
 
 ### Payments
 
 There is no gateway payment integration.
 
-Planned approach:
+Current approach:
 
-- winner submits manual payment proof or payment intent evidence
-- admin confirms or rejects payment manually
-- system tracks payment review state
+- buyer creates a manual `PaymentRequest` for a won auction item or approved market order item
+- seller approves or rejects the request manually
+- seller approval finalizes the sale inside the system
 - no automated settlement, no capture, no refund engine
+- no admin payment review, no proof upload, no handoff model
 
 ### Handoff / Delivery
 
 There is no shipping integration.
 
-Planned approach:
+Current approach:
 
-- seller confirms handoff or delivery manually
-- optional buyer acknowledgment may be added later
-- ownership transfer happens after payment approval and handoff confirmation
+- no handoff or delivery model exists
+- no logistics provider integration exists
+- seller approval of a `PaymentRequest` is the MVP completion confirmation
 
 ### Ownership
 
@@ -1105,7 +1177,9 @@ Current short-term approach:
 
 - only current owner is stored now
 - full ownership history is intentionally deferred
-- ownership transfer must happen only via service layer
+- ownership transfer must happen only via payment service approval logic
+- seller-approved payment requests transfer ownership only for bird assets
+- non-bird product assets keep seller ownership even after market stock is reduced
 - do not mutate ownership casually from serializers or views
 
 ### Assets / Media
@@ -1124,11 +1198,11 @@ Current e-commerce foundation:
 - direct `POST /api/orders/` remains available as a compatibility alias with the same stock-validation semantics
 - sellers can approve or reject their own order items
 - checkout-time stock validation does not decrement stock or change listing state
-- seller approval updates stock and can mark sold-out assets unavailable
+- seller order-item approval does not update stock or listing state
+- seller approval of a market `PaymentRequest` updates stock and can mark zero-count assets unavailable
 - seller rejection updates item/order statuses but does not change stock
 - lightweight order events exist as notification placeholders
-- this does not mean market workflows are complete yet
-- payment review, handoff, settlement, and ownership transfer are still not implemented
+- manual PaymentRequest records complete approved market order items
 
 Current product asset visibility:
 
@@ -1158,7 +1232,6 @@ Planned direction:
 - bird video
 - pedigree attachments
 - race result attachments
-- optional payment proof attachments
 
 Keep initial implementation simple:
 
@@ -1185,9 +1258,10 @@ Examples:
 - checkout cart
 - create pending seller decision market order
 - cancel auction
-- approve payment
-- confirm handoff
-- transfer ownership
+- create payment request
+- approve payment request
+- reject payment request
+- complete market sale from payment request
 
 ### Validators For Business Rules
 
@@ -1207,19 +1281,21 @@ Use `transaction.atomic()` for critical write flows:
 
 - bid placement
 - cart checkout and direct market order creation
-- seller approval stock decrement
-- settlement
-- payment approval
-- ownership transfer
+- seller order-item approval/rejection
+- payment request creation/update
+- seller payment request approval/rejection
+- market stock reduction during payment request approval
+- bird ownership transfer during payment request approval
+- auction settlement
 
 ### Idempotent Critical Actions
 
 Actions like these must be protected from duplicate execution:
 
-- approve payment
-- reject payment
-- confirm handoff
-- transfer ownership
+- create payment request
+- approve payment request
+- reject payment request
+- transfer bird ownership during payment request approval
 
 ### No Hidden Side Effects
 
@@ -1421,8 +1497,10 @@ The codebase currently provides:
 - checkout and compatibility direct-order APIs for fixed-price order creation
 - order validators and services for stock-validating fixed-price order creation
 - seller item approval/rejection foundation
-- seller-approval-time stock decrement for market order items
 - seller-decision timeout auto-cancellation for stale pending market order items
+- manual PaymentRequest flow for won auction items and approved marketplace order items
+- market stock reduction during seller-approved market PaymentRequests
+- bird ownership transfer during seller-approved PaymentRequests
 - split asset/seller comments and customer asset/seller ratings as a simple trust layer
 - nested rating comment creation with `is_rating_comment=True`
 - cached rating aggregates on assets and seller profiles
@@ -1443,10 +1521,9 @@ Current API documentation coverage:
 The codebase does not yet fully implement:
 
 - media/file upload, storage, processing, or moderation subsystem beyond simple asset image URL references
-- payment-backed market completion workflow
-- payment review workflow
-- handoff flow
-- ownership transfer workflow as a formal process
+- payment proof upload or admin payment review
+- handoff or shipping workflow
+- ownership history workflow
 - dispute flow
 - rating/comment moderation, replies, reports, likes, notifications, or analytics
 - pedigree system
@@ -1508,15 +1585,16 @@ These risks are important and should be respected during future work.
 
 ### Business Flow Gap
 
-Biggest current missing layer:
+Current completion MVP:
 
-- post-auction completion workflow
+- buyer-created `PaymentRequest` records complete won auction items and approved market order items after seller approval
 
-Without this, auctions can end technically but not complete business-wise.
+Important remaining gaps:
 
-Important related gap:
-
-- marketplace cart, checkout, order creation, and seller approval now exist, but payment review, handoff, settlement, and ownership transfer do not
+- no complaint/dispute resolution workflow exists yet
+- no payment proof upload or admin payment review exists
+- no handoff, shipping, or logistics workflow exists
+- no ownership history table exists
 
 ### Media Gap
 
@@ -1546,20 +1624,19 @@ The product direction below is planned and not fully implemented yet.
 
 ## Planned Phases
 
-### Phase A - Core Auction Completion
+### Phase A - PaymentRequest Completion Hardening
 
 Goal:
 
-Make auctions complete end-to-end in business terms.
+Harden the manual sale completion MVP already implemented through `apps.payments`.
 
 Includes:
 
 - fix current correctness and security issues
-- manual payment review
-- seller handoff confirmation
-- ownership transfer service
-- minimal dispute flag
-- extend auction event coverage
+- improve observability around PaymentRequest completion
+- add complaint/dispute workflow when explicitly prioritized
+- add administrative review tools around disputes, not payment approval
+- keep payment gateway, wallet, proof upload, handoff, and shipping out of scope unless product policy changes
 
 Priority:
 
@@ -1593,10 +1670,8 @@ Includes:
 
 - listing and market activation workflow beyond the current listing flag
 - expansion of the current cart, checkout, and direct-order compatibility flow
-- manual completion workflow similar to auctions
-- payment review and seller handoff flow
-- ownership transfer after manual confirmations
-- stock adjustment rules for resolved order items
+- refinements to the shared PaymentRequest completion flow
+- stock adjustment rules beyond the current market payment approval behavior if product policy changes
 - stronger stock and quantity handling around completion
 
 ### Phase D - Trust Layer
@@ -1644,17 +1719,16 @@ Includes:
 
 Current next sprint priority:
 
-### Post-Auction Completion + Core Fixes
+### PaymentRequest Completion + Core Fixes
 
 Required tasks:
 
 1. fix critical auction/auth bugs already present
 2. enforce auction locking/edit restrictions
-3. add manual payment review entity and flow
-4. add seller handoff confirmation flow
-5. add ownership transfer service
-6. add minimal dispute flag
-7. extend auction events for post-auction lifecycle
+3. harden the existing PaymentRequest flow
+4. add dispute/complaint handling only when product scope requires it
+5. improve audit/reporting around payment request lifecycle
+6. keep seller order-item approval separate from sale completion
 
 Do not prioritize reward points, QR, chat, or promotions before this phase is complete.
 
@@ -1665,16 +1739,16 @@ Important project decision:
 - no gateway integration
 - no automated charge or capture
 - no in-app financial processing
-- admin manually confirms payment status
+- no admin payment approval in the current MVP
 
-Planned expected flow:
+Current expected flow:
 
-1. auction winner is determined
-2. buyer submits payment proof or info manually
-3. admin approves or rejects payment
-4. if approved, auction item moves forward in completion flow
-5. seller confirms handoff
-6. ownership is transferred
+1. auction winner is determined or market order item is approved by seller
+2. buyer creates a `PaymentRequest`
+3. seller approves or rejects the request
+4. seller approval finalizes the sale inside the system
+5. market stock is reduced for market requests
+6. bird ownership transfers for bird assets
 
 This project should behave as a marketplace coordination system, not a payment processor.
 
