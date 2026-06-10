@@ -2,7 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.general.models import AssetImage
+from apps.general.models import AssetMedia
 from apps.packages.models import PackageUsageType
 from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
@@ -103,14 +103,14 @@ class BirdValidator:
 
 class ProductAssetCreationService:
     @staticmethod
-    def create_product(model_class, owner, validated_data, images_data=None):
+    def create_product(model_class, owner, validated_data, media_data=None):
         if owner.type == ProfileType.MANAGER:
             with transaction.atomic():
                 product = model_class.objects.create(
                     owner=owner,
                     **validated_data,
                 )
-                AssetImageWriteService.create_images(product, images_data)
+                AssetMediaWriteService.create_media(product, media_data)
                 return product
 
         if owner.type != ProfileType.SELLER:
@@ -127,7 +127,7 @@ class ProductAssetCreationService:
                 owner=owner,
                 **validated_data,
             )
-            AssetImageWriteService.create_images(product, images_data)
+            AssetMediaWriteService.create_media(product, media_data)
             PackageService.consume_points(
                 owner,
                 PackageUsageType.PRODUCT_CREATED,
@@ -136,20 +136,20 @@ class ProductAssetCreationService:
             return product
 
 
-class AssetImageWriteService:
+class AssetMediaWriteService:
     @staticmethod
-    def create_images(asset, images_data=None):
-        for image_data in images_data or []:
-            AssetImage.objects.create(asset=asset, **image_data)
-        AssetImageWriteService._clear_images_cache(asset)
+    def create_media(asset, media_data=None):
+        for media_item_data in media_data or []:
+            AssetMedia.objects.create(asset=asset, **media_item_data)
+        AssetMediaWriteService._clear_media_cache(asset)
 
     @staticmethod
-    def replace_images(asset, images_data):
-        asset.images.all().delete()
-        AssetImageWriteService.create_images(asset, images_data)
+    def replace_media(asset, media_data):
+        asset.media.all().delete()
+        AssetMediaWriteService.create_media(asset, media_data)
 
     @staticmethod
-    def _clear_images_cache(asset):
+    def _clear_media_cache(asset):
         cache = getattr(asset, "_prefetched_objects_cache", None)
         if cache:
-            cache.pop("images", None)
+            cache.pop("media", None)

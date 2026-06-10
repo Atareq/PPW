@@ -15,11 +15,11 @@ from apps.assets.models import (
     Supply,
 )
 from apps.authentication.services import build_token_for_user
-from apps.general.models import AssetImage, Image
+from apps.general.models import AssetMedia, Media, MediaType
 from apps.packages.models import PackageUsageLog, PackageUsageType
 from tests.factories import (
     ActiveAssetSellerPackageFactory,
-    AssetImageFactory,
+    AssetMediaFactory,
     PackageFactory,
 )
 
@@ -58,9 +58,14 @@ def product_payload(**overrides):
     return payload
 
 
-def image_payload(image_url="https://example.com/product.jpg", **overrides):
+def media_payload(
+    media_url="https://example.com/product.jpg",
+    media_type=MediaType.IMAGE,
+    **overrides,
+):
     payload = {
-        "image_url": image_url,
+        "media_url": media_url,
+        "media_type": media_type,
         "alt_text": "",
         "is_primary": False,
         "order": 0,
@@ -71,8 +76,8 @@ def image_payload(image_url="https://example.com/product.jpg", **overrides):
 
 def bird_payload(**overrides):
     payload = {
-        "title": "Image backed bird",
-        "description": "Bird with images",
+        "title": "Media backed bird",
+        "description": "Bird with media",
         "category": AssetCategory.BIRD,
         "status": "available",
         "count": 1,
@@ -121,39 +126,60 @@ def create_active_package(owner, remaining_points=50, product_cost=7):
 
 
 @pytest.mark.django_db
-def test_asset_can_have_multiple_images_and_primary_image(seller_user):
+def test_asset_can_have_image_and_video_media_with_primary_media(seller_user):
     product = create_product(Supply, seller_user.active_profile)
 
-    first = AssetImageFactory(asset=product)
-    primary = AssetImageFactory(
+    first = AssetMediaFactory(asset=product)
+    primary = AssetMediaFactory(
         asset=product,
-        image_url="https://example.com/primary.jpg",
+        media_url="https://example.com/primary.jpg",
         is_primary=True,
     )
+    video = AssetMediaFactory(
+        asset=product,
+        media_url="https://example.com/product-video.mp4",
+        media_type=MediaType.VIDEO,
+        order=2,
+    )
 
-    assert list(product.images.values_list("id", flat=True)) == [
+    assert list(product.media.values_list("id", flat=True)) == [
         first.id,
         primary.id,
+        video.id,
     ]
     assert primary.is_primary is True
+    assert first.media_type == MediaType.IMAGE
+    assert video.media_type == MediaType.VIDEO
 
 
 @pytest.mark.django_db
-def test_asset_image_ordering_uses_order_then_created(seller_user):
+def test_asset_media_defaults_to_image(seller_user):
+    product = create_product(Supply, seller_user.active_profile)
+
+    media = AssetMedia.objects.create(
+        asset=product,
+        media_url="https://example.com/default-media.jpg",
+    )
+
+    assert media.media_type == MediaType.IMAGE
+
+
+@pytest.mark.django_db
+def test_asset_media_ordering_uses_order_then_created(seller_user):
     product = create_product(Supply, seller_user.active_profile)
     now = timezone.now()
-    first_same_order = AssetImageFactory(asset=product, order=1)
-    second_same_order = AssetImageFactory(asset=product, order=1)
-    lower_order = AssetImageFactory(asset=product, order=0)
-    Image.objects.filter(pk=first_same_order.pk).update(created=now)
-    Image.objects.filter(pk=second_same_order.pk).update(
+    first_same_order = AssetMediaFactory(asset=product, order=1)
+    second_same_order = AssetMediaFactory(asset=product, order=1)
+    lower_order = AssetMediaFactory(asset=product, order=0)
+    Media.objects.filter(pk=first_same_order.pk).update(created=now)
+    Media.objects.filter(pk=second_same_order.pk).update(
         created=now + timedelta(seconds=1)
     )
-    Image.objects.filter(pk=lower_order.pk).update(
+    Media.objects.filter(pk=lower_order.pk).update(
         created=now + timedelta(seconds=2)
     )
 
-    assert list(product.images.values_list("id", flat=True)) == [
+    assert list(product.media.values_list("id", flat=True)) == [
         lower_order.id,
         first_same_order.id,
         second_same_order.id,
@@ -161,19 +187,19 @@ def test_asset_image_ordering_uses_order_then_created(seller_user):
 
 
 @pytest.mark.django_db
-def test_bird_create_retrieve_and_list_include_images(
+def test_bird_create_retrieve_and_list_include_media(
     authenticated_seller_client,
 ):
     create_response = authenticated_seller_client.post(
         "/api/assets/birds/",
         bird_payload(
-            images=[
-                image_payload(
+            media=[
+                media_payload(
                     "https://example.com/bird-primary.jpg",
                     is_primary=True,
                     order=0,
                 ),
-                image_payload(
+                media_payload(
                     "https://example.com/bird-secondary.jpg",
                     order=1,
                 ),
@@ -186,13 +212,17 @@ def test_bird_create_retrieve_and_list_include_images(
         create_response.status_code == status.HTTP_201_CREATED
     ), create_response.data
     assert "thumbnail_url" not in create_response.data
-    assert [image["image_url"] for image in create_response.data["images"]] == [
+    assert [item["media_url"] for item in create_response.data["media"]] == [
         "https://example.com/bird-primary.jpg",
         "https://example.com/bird-secondary.jpg",
     ]
+    assert [item["media_type"] for item in create_response.data["media"]] == [
+        MediaType.IMAGE,
+        MediaType.IMAGE,
+    ]
 
     bird = Bird.objects.get(pk=create_response.data["id"])
-    assert bird.images.count() == 2
+    assert bird.media.count() == 2
 
     retrieve_response = authenticated_seller_client.get(
         f"/api/assets/birds/{bird.pk}/"
@@ -203,15 +233,15 @@ def test_bird_create_retrieve_and_list_include_images(
     )
 
     assert retrieve_response.status_code == status.HTTP_200_OK
-    assert len(retrieve_response.data["images"]) == 2
+    assert len(retrieve_response.data["media"]) == 2
     assert "thumbnail_url" not in retrieve_response.data
-    assert len(list_item["images"]) == 2
+    assert len(list_item["media"]) == 2
 
     replace_response = authenticated_seller_client.patch(
         f"/api/assets/birds/{bird.pk}/",
         {
-            "images": [
-                image_payload(
+            "media": [
+                media_payload(
                     "https://example.com/bird-replacement.jpg",
                     is_primary=True,
                 )
@@ -221,21 +251,21 @@ def test_bird_create_retrieve_and_list_include_images(
     )
     clear_response = authenticated_seller_client.patch(
         f"/api/assets/birds/{bird.pk}/",
-        {"images": []},
+        {"media": []},
         format="json",
     )
 
     assert replace_response.status_code == status.HTTP_200_OK
     assert [
-        image["image_url"] for image in replace_response.data["images"]
+        item["media_url"] for item in replace_response.data["media"]
     ] == ["https://example.com/bird-replacement.jpg"]
     assert clear_response.status_code == status.HTTP_200_OK
-    assert clear_response.data["images"] == []
-    assert AssetImage.objects.filter(asset=bird).count() == 0
+    assert clear_response.data["media"] == []
+    assert AssetMedia.objects.filter(asset=bird).count() == 0
 
 
 @pytest.mark.django_db
-def test_product_images_create_replace_preserve_and_clear(
+def test_product_media_create_replace_preserve_and_clear(
     authenticated_seller_client,
     seller_user,
 ):
@@ -248,14 +278,15 @@ def test_product_images_create_replace_preserve_and_clear(
     create_response = authenticated_seller_client.post(
         product_url("supplies"),
         product_payload(
-            images=[
-                image_payload(
+            media=[
+                media_payload(
                     "https://example.com/product-primary.jpg",
                     is_primary=True,
                     order=0,
                 ),
-                image_payload(
-                    "https://example.com/product-secondary.jpg",
+                media_payload(
+                    "https://example.com/product-video.mp4",
+                    media_type=MediaType.VIDEO,
                     order=1,
                 ),
             ]
@@ -265,9 +296,10 @@ def test_product_images_create_replace_preserve_and_clear(
 
     assert create_response.status_code == status.HTTP_201_CREATED
     assert "thumbnail_url" not in create_response.data
-    assert len(create_response.data["images"]) == 2
+    assert len(create_response.data["media"]) == 2
+    assert create_response.data["media"][1]["media_type"] == MediaType.VIDEO
     product = Supply.objects.get(pk=create_response.data["id"])
-    assert product.images.count() == 2
+    assert product.media.count() == 2
     seller_package.refresh_from_db()
     assert seller_package.remaining_points == 43
     assert PackageUsageLog.objects.count() == 1
@@ -283,24 +315,24 @@ def test_product_images_create_replace_preserve_and_clear(
     )
 
     assert retrieve_response.status_code == status.HTTP_200_OK
-    assert len(retrieve_response.data["images"]) == 2
-    assert len(list_item["images"]) == 2
+    assert len(retrieve_response.data["media"]) == 2
+    assert len(list_item["media"]) == 2
 
     preserve_response = authenticated_seller_client.patch(
         product_url("supplies", product.pk),
-        {"title": "Images preserved"},
+        {"title": "Media preserved"},
         format="json",
     )
 
     assert preserve_response.status_code == status.HTTP_200_OK
-    assert len(preserve_response.data["images"]) == 2
-    assert product.images.count() == 2
+    assert len(preserve_response.data["media"]) == 2
+    assert product.media.count() == 2
 
     replace_response = authenticated_seller_client.patch(
         product_url("supplies", product.pk),
         {
-            "images": [
-                image_payload(
+            "media": [
+                media_payload(
                     "https://example.com/replacement.jpg",
                     is_primary=True,
                 )
@@ -310,23 +342,65 @@ def test_product_images_create_replace_preserve_and_clear(
     )
 
     assert replace_response.status_code == status.HTTP_200_OK
-    assert [image["image_url"] for image in replace_response.data["images"]] == [
+    assert [item["media_url"] for item in replace_response.data["media"]] == [
         "https://example.com/replacement.jpg"
     ]
-    assert AssetImage.objects.filter(asset=product).count() == 1
+    assert AssetMedia.objects.filter(asset=product).count() == 1
 
     clear_response = authenticated_seller_client.patch(
         product_url("supplies", product.pk),
-        {"images": []},
+        {"media": []},
         format="json",
     )
 
     seller_package.refresh_from_db()
     assert clear_response.status_code == status.HTTP_200_OK
-    assert clear_response.data["images"] == []
-    assert AssetImage.objects.filter(asset=product).count() == 0
+    assert clear_response.data["media"] == []
+    assert AssetMedia.objects.filter(asset=product).count() == 0
     assert seller_package.remaining_points == 43
     assert PackageUsageLog.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_old_asset_media_field_names_are_rejected(
+    authenticated_seller_client,
+    seller_user,
+):
+    create_active_package(seller_user.active_profile)
+
+    images_response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(
+            images=[
+                {
+                    "image_url": "https://example.com/old-image.jpg",
+                    "alt_text": "",
+                    "is_primary": True,
+                    "order": 0,
+                }
+            ]
+        ),
+        format="json",
+    )
+    image_url_response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(
+            media=[
+                {
+                    "image_url": "https://example.com/old-image.jpg",
+                    "alt_text": "",
+                    "is_primary": True,
+                    "order": 0,
+                }
+            ]
+        ),
+        format="json",
+    )
+
+    assert images_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert image_url_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "images" in images_response.data
+    assert "media_url" in image_url_response.data["media"][0]
 
 
 @pytest.mark.django_db

@@ -5,7 +5,7 @@ from drf_writable_nested import WritableNestedModelSerializer
 from rest_framework import serializers
 
 from apps.assets.models import Asset
-from apps.general.serializers import AssetImageSerializer
+from apps.general.serializers import AssetMediaSerializer
 from apps.orders.models import Cart, CartItem, Order, OrderItem
 from apps.orders.services import OrderCheckoutService
 
@@ -65,7 +65,7 @@ class CartItemUpdateSerializer(serializers.Serializer):
 
 
 class AssetOrderSerializer(serializers.ModelSerializer):
-    images = AssetImageSerializer(many=True, read_only=True)
+    media = AssetMediaSerializer(many=True, read_only=True)
 
     class Meta:
         model = Asset
@@ -74,7 +74,7 @@ class AssetOrderSerializer(serializers.ModelSerializer):
             "title",
             "category",
             "status",
-            "images",
+            "media",
             "price",
             "is_market_listed",
             "count",

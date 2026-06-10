@@ -267,15 +267,16 @@ Current model shape:
   - `price`
   - `is_market_listed`
   - `is_for_auction`
-- `Asset.thumbnail_url` has been removed; asset images are represented by related `AssetImage` rows
+- `Asset.thumbnail_url` has been removed; asset media are represented by related `AssetMedia` rows
 - current asset statuses are:
   - `available`
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
-- `apps.general.models.Image` is a concrete base image-reference model with `image_url` and optional `alt_text`
-- `apps.general.models.AssetImage` is a concrete `Image` subclass linked to `Asset` through `asset.images`
-- `AssetImage` adds `is_primary` and `order`; ordering is by `order`, then `created`
+- `apps.general.models.Media` is a concrete base media-reference model with `media_url`, `media_type`, and optional `alt_text`
+- `Media.media_type` currently supports `image` and `video`; existing and omitted media types default to `image`
+- `apps.general.models.AssetMedia` is a concrete `Media` subclass linked to `Asset` through `asset.media`
+- `AssetMedia` adds `is_primary` and `order`; ordering is by `order`, then `created`
 
 Current bird API:
 
@@ -286,8 +287,9 @@ Current bird API behavior:
 - `BirdViewSet` is a DRF `ModelViewSet`
 - `BirdSerializer` sets `owner` from `request.user.active_profile` on create
 - `owner` is read-only in API input
-- `BirdSerializer` returns nested `images` and accepts nested `images` on create
-- `BirdSerializer` replaces the full image set when `images` is supplied on update; omitted `images` preserves existing image rows and `images: []` clears them
+- `BirdSerializer` returns nested `media` and accepts nested `media` on create
+- `BirdSerializer` replaces the full media set when `media` is supplied on update; omitted `media` preserves existing media rows and `media: []` clears them
+- `images` and `image_url` are no longer accepted asset media API field names
 - `thumbnail_url` is no longer accepted in bird API payloads
 - `BirdValidator` enforces seller ownership, future birthday rejection, non-negative flying speed, parent gender, parent age, and no self-parent
 - `Bird.save()` forces `count=1`
@@ -304,8 +306,9 @@ Current product asset API behavior:
 
 - product CRUD uses shared `ProductAssetSerializer`
 - `owner` and `category` are read-only in API input
-- product asset serializers return nested `images` and accept nested `images` on create
-- product asset serializers replace the full image set when `images` is supplied on update; omitted `images` preserves existing image rows and `images: []` clears them
+- product asset serializers return nested `media` and accept nested `media` on create
+- product asset serializers replace the full media set when `media` is supplied on update; omitted `media` preserves existing media rows and `media: []` clears them
+- `images` and `image_url` are no longer accepted product media API field names
 - `thumbnail_url` is no longer accepted in product asset API payloads
 - create sets `owner` from `request.user.active_profile`
 - seller product creation goes through `ProductAssetCreationService.create_product()`
@@ -398,7 +401,7 @@ Current order behavior:
 - checkout revalidates cart items under lock and uses latest `Asset.price`, not stale cart price snapshots
 - checkout converts the active cart to `converted`; a later `GET /api/orders/cart/` lazily creates a new active cart
 - order creation stores `total_price` on `Order`, plus `unit_price_snapshot` and `total_price` on each item
-- order item detail asset summaries use nested `images` from `AssetImage`; they no longer expose `thumbnail_url`
+- order item detail asset summaries use nested `media` from `AssetMedia`; they no longer expose `thumbnail_url`
 - checkout and direct `POST /api/orders/` validate stock but do not decrement `Asset.count`
 - checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
 - new order items start as `pending_seller`
@@ -1488,7 +1491,7 @@ The codebase currently provides:
 - auth, profile switching, and JWT profile-claim synchronization
 - internal OpenAPI schema generation and Swagger UI for development teams
 - asset base model with shared market/listing fields
-- simple asset image reference models through `Image` and `AssetImage`
+- simple asset media URL reference models through `Media` and `AssetMedia`
 - bird entity, CRUD endpoint, and validation
 - product asset CRUD for supplies, accessories, feeds, and supplements
 - product asset filtering, search, and ordering
@@ -1598,7 +1601,7 @@ Important remaining gaps:
 
 ### Media Gap
 
-Current assets app supports simple asset image URL references through `AssetImage`, but not file upload, storage, processing, validation, or moderation.
+Current assets app supports simple asset media URL references through `AssetMedia`, but not file upload, storage, processing, validation, or moderation.
 
 ### Repo Cautions
 

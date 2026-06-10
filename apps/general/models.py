@@ -20,19 +20,29 @@ class OwnerBaseModel(BaseModel):
         abstract = True
 
 
-class Image(BaseModel):
-    image_url = models.CharField(max_length=2048)
+class MediaType(models.TextChoices):
+    IMAGE = "image", "Image"
+    VIDEO = "video", "Video"
+
+
+class Media(BaseModel):
+    media_url = models.CharField(max_length=2048)
+    media_type = models.CharField(
+        max_length=10,
+        choices=MediaType.choices,
+        default=MediaType.IMAGE,
+    )
     alt_text = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
-        return self.image_url
+        return self.media_url
 
 
-class AssetImage(Image):
+class AssetMedia(Media):
     asset = models.ForeignKey(
         "assets.Asset",
         on_delete=models.CASCADE,
-        related_name="images",
+        related_name="media",
         db_index=False,
     )
     is_primary = models.BooleanField(default=False)

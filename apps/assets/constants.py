@@ -3,7 +3,7 @@ PRODUCT_ASSET_FIELDS = [
     "title",
     "description",
     "count",
-    "images",
+    "media",
     "price",
     "status",
     "is_market_listed",

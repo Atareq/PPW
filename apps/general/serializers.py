@@ -1,14 +1,15 @@
 from rest_framework import serializers
 
-from apps.general.models import AssetImage
+from apps.general.models import AssetMedia
 
 
-class AssetImageSerializer(serializers.ModelSerializer):
+class AssetMediaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = AssetImage
+        model = AssetMedia
         fields = [
             "id",
-            "image_url",
+            "media_url",
+            "media_type",
             "alt_text",
             "is_primary",
             "order",
@@ -20,7 +21,7 @@ class AssetImageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {
                     "id": (
-                        "Image ids are not accepted for nested asset image "
+                        "Media ids are not accepted for nested asset media "
                         "writes."
                     )
                 }

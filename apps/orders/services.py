@@ -43,7 +43,7 @@ def order_item_queryset():
             "seller",
             "seller__user",
         )
-        .prefetch_related("asset__images")
+        .prefetch_related("asset__media")
         .order_by("-created")
     )
 

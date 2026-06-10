@@ -16,7 +16,7 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
-from apps.general.models import AssetImage
+from apps.general.models import AssetMedia
 from apps.loyalty.constants import BadgeType, PointTransactionType
 from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
 from apps.orders.models import (
@@ -158,12 +158,12 @@ class SupplyFactory(factory.django.DjangoModelFactory):
     created = factory.LazyFunction(timezone.now)
 
 
-class AssetImageFactory(factory.django.DjangoModelFactory):
+class AssetMediaFactory(factory.django.DjangoModelFactory):
     class Meta:
-        model = AssetImage
+        model = AssetMedia
 
     asset = factory.SubFactory(SupplyFactory)
-    image_url = factory.Sequence(lambda n: f"https://example.com/image-{n}.jpg")
+    media_url = factory.Sequence(lambda n: f"https://example.com/media-{n}.jpg")
     alt_text = ""
     is_primary = False
     order = 0

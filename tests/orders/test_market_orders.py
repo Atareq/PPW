@@ -31,7 +31,7 @@ from apps.orders.validators import OrderCreationValidator
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 from tests.factories import (
-    AssetImageFactory,
+    AssetMediaFactory,
     BirdFactory,
     CustomerProfileFactory,
     OrderFactory,
@@ -443,12 +443,12 @@ class TestCheckoutFlow:
         asset.refresh_from_db()
         assert asset.count == 4
 
-    def test_order_detail_asset_summary_includes_images_not_thumbnail(self):
+    def test_order_detail_asset_summary_includes_media_not_thumbnail(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         asset = SupplyFactory(count=4)
-        AssetImageFactory(
+        AssetMediaFactory(
             asset=asset,
-            image_url="https://example.com/order-asset.jpg",
+            media_url="https://example.com/order-asset.jpg",
             is_primary=True,
         )
         order = OrderService.create_order(
@@ -462,18 +462,19 @@ class TestCheckoutFlow:
         assert response.status_code == 200
         response_asset = response.data["items"][0]["asset"]
         assert "thumbnail_url" not in response_asset
-        assert response_asset["images"] == [
+        assert response_asset["media"] == [
             {
-                "id": asset.images.get().pk,
-                "image_url": "https://example.com/order-asset.jpg",
+                "id": asset.media.get().pk,
+                "media_url": "https://example.com/order-asset.jpg",
+                "media_type": "image",
                 "alt_text": "",
                 "is_primary": True,
                 "order": 0,
             }
         ]
 
-    def test_order_item_queryset_prefetches_asset_images(self):
-        assert "asset__images" in order_item_queryset()._prefetch_related_lookups
+    def test_order_item_queryset_prefetches_asset_media(self):
+        assert "asset__media" in order_item_queryset()._prefetch_related_lookups
 
 
 class TestOrderServiceAndSellerDecisions:
