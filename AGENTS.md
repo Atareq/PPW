@@ -96,6 +96,12 @@ Current internal API documentation approach:
 - OpenAPI schema generation via drf-spectacular
 - Swagger UI for local development
 - targeted `@extend_schema` annotations only where automatic schema generation is weak
+- document APIs and services close to the code with concise docstrings only when they clarify business intent, permissions, side effects, transactions, or non-obvious error cases
+- do not add standalone API documentation files unless explicitly requested; `AGENTS.md` remains the living project guide
+- avoid noisy comments that restate normal Django, DRF, serializer, queryset, or CRUD behavior
+- when documenting endpoints, prefer the existing URLconf/OpenAPI annotations plus short view docstrings over large inline route inventories
+- service docstrings should call out business rules, stock/ownership/payment side effects, idempotency, and locking only where those details affect safe maintenance
+- suspected bugs or unclear business rules found during documentation work should be reported rather than silently fixed unless the task explicitly includes the fix
 
 ## Current Backend Architecture
 
@@ -1609,7 +1615,7 @@ Current assets app supports simple asset media URL references through `AssetMedi
 - naming/style drift exists and should not be fixed opportunistically:
   - `apps/assets/serializer.py` is singular
   - `ManagerProfileadminSerializer` casing is inconsistent
-  - several files contain TODOs or mixed comment quality
+  - preserve existing public names unless a task explicitly asks for renames
 - auction service drift exists and should be fixed intentionally, not casually:
   - `AuctionFactory.create_auction()` references `auto_extend_threshold`, which is not a field on `Auction`
   - the live auction create endpoint constructs the `Auction` object in the view instead of using `AuctionFactory.create_auction()`

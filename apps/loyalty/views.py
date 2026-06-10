@@ -21,6 +21,8 @@ from apps.users.constants import ProfileType
 
 
 class PointBalanceAPIView(APIView):
+    """Return the authenticated user's current point balance."""
+
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -41,6 +43,8 @@ class PointBalanceAPIView(APIView):
 
 
 class PointTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Managers see all point transactions; users see their own history."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = PointTransactionSerializer
     queryset = PointTransaction.objects.all()
@@ -67,6 +71,8 @@ class PointTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 
 class BadgeViewSet(viewsets.GenericViewSet):
+    """Badge catalog, manager awards, and current-profile earned badges."""
+
     permission_classes = [IsAuthenticated]
     queryset = BadgeAward.objects.all()
 

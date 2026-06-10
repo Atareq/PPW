@@ -33,7 +33,7 @@ class Asset(OwnerBaseModel):
         choices=AssetStatus.choices,
         default=AssetStatus.AVAILABLE,
     )
-    count = models.IntegerField()  # needs to be moved for product
+    count = models.IntegerField()
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,

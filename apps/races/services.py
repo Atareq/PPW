@@ -15,6 +15,8 @@ def _next_placeholder_rank(race_id: int) -> int:
 
 
 def recalculate_race_ranks(race_id: int):
+    """Re-rank locked results by speed, arrival time, then id."""
+
     with transaction.atomic():
         results = list(
             RaceResult.objects.select_for_update()
@@ -30,6 +32,7 @@ def recalculate_race_ranks(race_id: int):
         if not changed:
             return results
 
+        # Move changed rows away from final ranks before enforcing uniqueness.
         max_rank = max((result.rank for result in results), default=0)
         temporary_rank = max_rank + len(results) + 1
         for result in changed:

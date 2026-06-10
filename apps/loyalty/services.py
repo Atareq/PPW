@@ -26,6 +26,8 @@ def normalize_idempotency_key(value):
 
 
 class PointService:
+    """Ledger-style point wallet mutations with optional idempotency keys."""
+
     @staticmethod
     def get_or_create_wallet(user):
         user = UserAccount.objects.get(pk=user.pk)
@@ -122,6 +124,8 @@ class PointService:
         idempotency_key=None,
         metadata=None,
     ):
+        """Create one transaction and update the wallet balance atomically."""
+
         user = UserAccount.objects.get(pk=user.pk)
         profile = PointValidator.validate_profile_belongs_to_user(
             profile,
@@ -222,6 +226,8 @@ class PointService:
         source_id,
         metadata,
     ):
+        """Reject key reuse when the requested transaction payload differs."""
+
         profile_id = profile.pk if profile else None
         matches = (
             transaction.user_id == user.pk
@@ -245,6 +251,8 @@ class PointService:
 
 
 class BadgeService:
+    """Badge catalog and explicit manager-award helpers."""
+
     @staticmethod
     def get_badge_catalog():
         return [
@@ -261,6 +269,8 @@ class BadgeService:
         source_id=None,
         metadata=None,
     ):
+        """Award a badge once per profile/type, preserving the first award."""
+
         profile = Profile.objects.get(pk=profile.pk)
         badge_type = BadgeValidator.validate_badge_type(badge_type)
         BadgeValidator.validate_badge_eligibility(profile, badge_type)

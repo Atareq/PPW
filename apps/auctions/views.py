@@ -570,8 +570,6 @@ class AuctionEventViewSet(viewsets.ReadOnlyModelViewSet):
     - retrieve: GET /auctions/events/{id}/
     """
 
-    # Needs T save more data as meta data for this class
-
     serializer_class = AuctionEventSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
