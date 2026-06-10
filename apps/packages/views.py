@@ -43,6 +43,8 @@ class PackageViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Manager package plan management and seller-visible package catalog."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "PACKAGE"
     queryset = Package.objects.all()
@@ -81,6 +83,8 @@ class MySellerPackageViewSet(
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Seller package requests and active-package lookup for the current seller."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "MY_SELLER_PACKAGE"
     queryset = SellerPackage.objects.all()
@@ -141,6 +145,8 @@ class ManagerSellerPackageViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Manager review flow for seller package activation or cancellation."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "SELLER_PACKAGE"
     queryset = SellerPackage.objects.all()

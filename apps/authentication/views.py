@@ -59,6 +59,8 @@ switch_profile_response_schema = inline_serializer(
     )
 )
 class CustomerRegisterAPIView(APIView):
+    """Public customer registration; creates the user and first active profile."""
+
     permission_classes = []
 
     def post(self, request):
@@ -86,7 +88,9 @@ class CustomerRegisterAPIView(APIView):
     )
 )
 class ManagerRegisterAPIView(APIView):
-    permission_classes = []  # Needs to be for admin users only
+    """Public manager registration endpoint; intentionally documents a known gap."""
+
+    permission_classes = []
 
     def post(self, request):
         with transaction.atomic():
@@ -128,6 +132,8 @@ class LoginAPIView(TokenObtainPairView):
     )
 )
 class SwitchProfileAPIView(APIView):
+    """Switch the authenticated user's active profile and issue fresh JWTs."""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

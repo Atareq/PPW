@@ -23,6 +23,8 @@ from apps.users.constants import ProfileType
 
 
 class BirdViewSet(viewsets.ModelViewSet):
+    """Bird asset CRUD gated by BIRD app permissions and seller validation."""
+
     queryset = Bird.objects.prefetch_related("media").order_by("-created")
     serializer_class = BirdSerializer
     permission_classes = [
@@ -32,6 +34,8 @@ class BirdViewSet(viewsets.ModelViewSet):
 
 
 class ProductAssetViewSet(viewsets.ModelViewSet):
+    """Shared product asset API with role-scoped market visibility."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "PRODUCT_ASSET"
     allow_scoped_read_access = True
@@ -46,6 +50,8 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
+        """Managers see all; customers see listed; sellers see own plus listed."""
+
         queryset = super().get_queryset().prefetch_related("media").order_by(
             "-created"
         )

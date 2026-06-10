@@ -11,6 +11,8 @@ from apps.users.models import CustomerProfile, SellerProfile
 
 
 class RatingValidator:
+    """Business eligibility checks for customer asset and seller ratings."""
+
     @staticmethod
     def get_customer_profile(profile):
         if profile.type != ProfileType.CUSTOMER:
@@ -91,6 +93,8 @@ class RatingValidator:
 
 
 class CommentValidator:
+    """Protect comment endpoints from rapid repeated comments per target."""
+
     @staticmethod
     def validate_comment_throttle(model, owner, target_field, target):
         cutoff = timezone.now() - timedelta(minutes=2)

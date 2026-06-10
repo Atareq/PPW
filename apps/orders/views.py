@@ -40,6 +40,8 @@ class OrderViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Customer order history and manager order search; create is direct order."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "ORDER"
 
@@ -88,6 +90,8 @@ class OrderViewSet(
 
 
 class ActiveCartViewSet(viewsets.GenericViewSet):
+    """Current customer's persistent active cart and cart-item commands."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "CART"
     serializer_class = CartSerializer
@@ -166,6 +170,8 @@ class ActiveCartViewSet(viewsets.GenericViewSet):
 
 
 class CheckoutViewSet(viewsets.GenericViewSet):
+    """Convert the active cart into pending seller-decision order items."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "CHECKOUT"
     serializer_class = CheckoutSerializer
@@ -190,6 +196,8 @@ class CheckoutViewSet(viewsets.GenericViewSet):
 
 
 class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Seller/manager order-item work queue and seller decision commands."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "ORDER_ITEM"
     permission_owner_field = "seller_id"

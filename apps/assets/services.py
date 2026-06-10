@@ -102,6 +102,8 @@ class BirdValidator:
 
 
 class ProductAssetCreationService:
+    """Create product assets and consume seller package points when required."""
+
     @staticmethod
     def create_product(model_class, owner, validated_data, media_data=None):
         if owner.type == ProfileType.MANAGER:
@@ -137,6 +139,8 @@ class ProductAssetCreationService:
 
 
 class AssetMediaWriteService:
+    """Maintain nested asset media as replace-all serializer children."""
+
     @staticmethod
     def create_media(asset, media_data=None):
         for media_item_data in media_data or []:
@@ -145,6 +149,8 @@ class AssetMediaWriteService:
 
     @staticmethod
     def replace_media(asset, media_data):
+        """Replace the full media set; omitted serializer field preserves it."""
+
         asset.media.all().delete()
         AssetMediaWriteService.create_media(asset, media_data)
 

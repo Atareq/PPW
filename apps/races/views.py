@@ -31,6 +31,8 @@ def include_race_from_request(request) -> bool:
     ),
 )
 class RaceViewSet(viewsets.ModelViewSet):
+    """Race CRUD; managers write while authenticated profiles can read."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "RACE"
     allow_scoped_read_access = True
@@ -72,6 +74,8 @@ class RaceViewSet(viewsets.ModelViewSet):
     ),
 )
 class RaceResultViewSet(viewsets.ModelViewSet):
+    """Global race-result search and single-result management."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "RACE_RESULT"
     allow_scoped_read_access = True
@@ -124,6 +128,8 @@ class RaceResultListCreateViewSet(
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Nested race-result list and bulk create endpoint for one race."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "RACE_RESULT"
     allow_scoped_read_access = True

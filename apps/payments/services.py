@@ -20,6 +20,8 @@ from apps.users.constants import ProfileType
 
 
 def payment_request_queryset():
+    """Optimized queryset for list/detail responses across both submodels."""
+
     return (
         PaymentRequest.objects.select_related(
             "buyer",
@@ -40,6 +42,8 @@ def payment_request_queryset():
 
 
 class PaymentRequestService:
+    """Manual sale-completion workflow shared by auction and market sales."""
+
     NON_FINAL_STATUSES = [
         PaymentRequestStatus.PENDING,
         PaymentRequestStatus.REJECTED,
@@ -52,6 +56,8 @@ class PaymentRequestService:
         buyer_profile,
         buyer_note=None,
     ):
+        """Create the winner's pending request for a sold auction item."""
+
         PaymentRequestValidator.ensure_customer(buyer_profile)
         item = (
             AuctionItem.objects.select_for_update()
@@ -104,6 +110,8 @@ class PaymentRequestService:
         buyer_profile,
         buyer_note=None,
     ):
+        """Create the order owner's pending request for an approved order item."""
+
         PaymentRequestValidator.ensure_customer(buyer_profile)
         item = (
             OrderItem.objects.select_for_update()
@@ -141,6 +149,8 @@ class PaymentRequestService:
     @staticmethod
     @transaction.atomic
     def update_by_buyer(payment_request_id, buyer_profile, buyer_note=None):
+        """Update buyer note; rejected requests are resubmitted as pending."""
+
         PaymentRequestValidator.ensure_customer(buyer_profile)
         payment_request = PaymentRequestService._get_locked_request(
             payment_request_id
@@ -182,6 +192,8 @@ class PaymentRequestService:
     @staticmethod
     @transaction.atomic
     def approve(payment_request_id, seller_profile):
+        """Finalize a pending request; market and auction sources differ."""
+
         PaymentRequestValidator.ensure_seller(seller_profile)
         payment_request = PaymentRequestService._get_locked_request(
             payment_request_id
@@ -221,6 +233,8 @@ class PaymentRequestService:
     @staticmethod
     @transaction.atomic
     def reject(payment_request_id, seller_profile, seller_note=None):
+        """Reject a pending request without mutating stock, ownership, or order state."""
+
         PaymentRequestValidator.ensure_seller(seller_profile)
         payment_request = PaymentRequestService._get_locked_request(
             payment_request_id
@@ -279,6 +293,8 @@ class PaymentRequestService:
 
     @staticmethod
     def _approve_market_request(payment_request):
+        """Reduce stock and complete the order item after seller approval."""
+
         market_request = (
             MarketPaymentRequest.objects.select_for_update()
             .select_related("order_item", "order_item__order", "order_item__asset")
@@ -318,6 +334,8 @@ class PaymentRequestService:
 
     @staticmethod
     def _approve_auction_request(payment_request):
+        """Transfer the sold auction bird pair, if any, after seller approval."""
+
         auction_request = (
             AuctionPaymentRequest.objects.select_for_update()
             .select_related(
@@ -374,6 +392,8 @@ class PaymentRequestService:
 
     @staticmethod
     def _reduce_market_stock(asset, quantity):
+        """Apply market stock mutation at payment approval time only."""
+
         if asset.count < quantity:
             raise ValidationError({"detail": "Insufficient stock"})
 
@@ -388,6 +408,8 @@ class PaymentRequestService:
 
     @staticmethod
     def _transfer_asset_owner(asset, *, from_profile_id, to_profile_id):
+        """Move bird ownership, treating an already-transferred asset as idempotent."""
+
         if asset.owner_id == to_profile_id:
             return
 

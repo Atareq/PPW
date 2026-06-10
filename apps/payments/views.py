@@ -21,6 +21,8 @@ from apps.users.constants import ProfileType
 
 
 def active_profile_or_denied(request, expected_type):
+    """Return the active profile only when it matches the endpoint actor."""
+
     active_profile = request.user.active_profile
     if active_profile.type != expected_type:
         raise PermissionDenied("Active profile is not allowed for this action.")
@@ -43,6 +45,8 @@ class PaymentRequestViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Role-scoped payment request list plus buyer note resubmission."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
     queryset = PaymentRequest.objects.all()
@@ -54,6 +58,8 @@ class PaymentRequestViewSet(
         return PaymentRequestListSerializer
 
     def get_queryset(self):
+        """Managers see all, sellers see assigned requests, buyers see theirs."""
+
         queryset = payment_request_queryset()
         active_profile = self.request.user.active_profile
 
@@ -90,6 +96,8 @@ class PaymentRequestViewSet(
     ),
 )
 class PaymentRequestCreateViewSet(viewsets.GenericViewSet):
+    """Create buyer payment requests for either auction or market sources."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
     queryset = PaymentRequest.objects.all()
@@ -132,6 +140,8 @@ class PaymentRequestCreateViewSet(viewsets.GenericViewSet):
     ),
 )
 class PaymentRequestDecisionViewSet(viewsets.GenericViewSet):
+    """Seller approve/reject commands for pending manual payment requests."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
     queryset = PaymentRequest.objects.all()

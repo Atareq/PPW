@@ -87,6 +87,8 @@ def create_seller_comment(owner, seller_id, text, *, is_rating_comment=False):
 
 @transaction.atomic
 def create_asset_rating(customer_profile, asset_id, stars, comment_data=None):
+    """Create a rating only after a completed order item for the asset."""
+
     customer_profile = RatingValidator.get_customer_profile(customer_profile)
     asset = RatingValidator.get_asset(asset_id)
     RatingValidator.validate_asset_completed_order(customer_profile, asset)
@@ -115,6 +117,8 @@ def create_asset_rating(customer_profile, asset_id, stars, comment_data=None):
 def create_seller_rating(
     customer_profile, seller_id, stars, comment_data=None
 ):
+    """Create a rating only after a completed order item for the seller."""
+
     customer_profile = RatingValidator.get_customer_profile(customer_profile)
     seller = RatingValidator.get_seller(seller_id)
     RatingValidator.validate_seller_completed_order(customer_profile, seller)

@@ -14,21 +14,25 @@ from apps.users.serializers import (
 )
 
 
-# still needs the approve of what the user can update and do
-# We need to create API for adding a manager `is_staff = True`
 class SellerProfileAdminViewSet(viewsets.ModelViewSet):
+    """Admin/staff CRUD for seller profile moderation and correction."""
+
     serializer_class = SellerProfileAdminSerializer
     queryset = SellerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
 
 class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
+    """Admin/staff CRUD for customer profile moderation and correction."""
+
     serializer_class = CustomerProfileAdminSerializer
     queryset = CustomerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
 
 class SellerProfileMobileViewSet(viewsets.ModelViewSet):
+    """User-facing seller profile flow; creation starts inactive for review."""
+
     serializer_class = SellerProfileMobileSerializer
     queryset = SellerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated]
@@ -65,6 +69,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
         raise Http404
 
     def perform_destroy(self, instance):
+        """Soft-delete the profile and move the user away from it when active."""
 
         if instance.is_active:
             other_profile = instance.user.profiles.exclude(
@@ -78,6 +83,8 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
 
 
 class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
+    """User-facing customer profile flow scoped to the authenticated account."""
+
     serializer_class = CustomerProfileMobileSerializer
     queryset = CustomerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated]
@@ -88,6 +95,8 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
         ).order_by("-created")
 
     def perform_destroy(self, instance):
+        """Soft-delete the profile and move the user away from it when active."""
+
         if instance.is_active:
             other_profile = instance.user.profiles.exclude(
                 id=instance.id

@@ -7,6 +7,8 @@ from apps.users.constants import ProfileType
 
 
 class AuthorizationService:
+    """Central role/action permission matrix used by HasAppAccess."""
+
     @staticmethod
     def can_access_app(
         user,
@@ -40,7 +42,7 @@ class AuthorizationService:
                 return False
 
             if obj:
-                # Because resources are tied with the profiles not with the users.
+                # Ownership checks are profile-scoped, not account-scoped.
                 return (
                     getattr(obj, owner_field, None) == user.active_profile.id
                 )
@@ -51,6 +53,8 @@ class AuthorizationService:
 
 
 class HasAppAccess(BasePermission):
+    """DRF permission that maps view actions to profile-level resources."""
+
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:

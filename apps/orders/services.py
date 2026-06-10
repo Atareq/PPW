@@ -36,6 +36,8 @@ def cart_item_queryset():
 
 
 def order_item_queryset():
+    """Shared optimized order-item queryset for seller lists and order detail."""
+
     return (
         OrderItem.objects.select_related(
             "order",
@@ -211,6 +213,8 @@ class OrderService:
 
     @staticmethod
     def refresh_order_status(order_id):
+        """Derive aggregate order status from current item statuses."""
+
         order = (
             Order.objects.select_for_update()
             .prefetch_related("items")
@@ -252,7 +256,7 @@ class OrderService:
 
 
 class OrderCheckoutService:
-    """Convert cart/direct payloads into pending seller decision orders."""
+    """Convert cart/direct payloads into stock-validated pending orders."""
 
     @staticmethod
     @transaction.atomic
@@ -329,6 +333,8 @@ class OrderCheckoutService:
         asset_map,
         seller_map,
     ):
+        """Snapshot current prices without reducing stock at order creation."""
+
         order = Order.objects.create(
             owner=customer_profile,
             status=OrderStatus.PENDING,
@@ -395,10 +401,12 @@ class OrderCheckoutService:
 
 
 class OrderItemService:
-    """Orchestrate seller decisions for individual order items."""
+    """Orchestrate seller decisions before buyer-created payment requests."""
 
     @staticmethod
     def cancel_expired_pending_items(now=None, timeout_days=None):
+        """Cancel stale pending seller decisions without touching stock."""
+
         now = now or timezone.now()
         timeout_days = (
             settings.ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS
@@ -429,6 +437,8 @@ class OrderItemService:
     @staticmethod
     @transaction.atomic
     def approve_item(order_item, seller):
+        """Seller approval only allows payment-request creation; stock is unchanged."""
+
         seller_profile = PurchaseRuleValidator.get_seller_profile(seller)
         item = OrderItemService._get_locked_item(order_item.pk)
         OrderItemService._validate_seller_owns_item(item, seller_profile)
@@ -449,6 +459,8 @@ class OrderItemService:
     @staticmethod
     @transaction.atomic
     def reject_item(order_item, seller):
+        """Seller rejection ends this item path without stock or asset mutation."""
+
         seller_profile = PurchaseRuleValidator.get_seller_profile(seller)
         item = OrderItemService._get_locked_item(order_item.pk)
         OrderItemService._validate_seller_owns_item(item, seller_profile)

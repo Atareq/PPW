@@ -25,8 +25,12 @@ def seller_package_queryset():
 
 
 class PackageService:
+    """Consume seller package points for paid seller-side platform actions."""
+
     @staticmethod
     def validate_can_consume(seller_profile, usage_type):
+        """Preflight package availability without writing a usage log."""
+
         seller = SellerPackageValidator.get_seller_profile(seller_profile)
         PackageService._validate_usage_type(usage_type)
 
@@ -67,6 +71,8 @@ class PackageService:
 
     @staticmethod
     def consume_points(seller_profile, usage_type, related_object=None):
+        """Atomically spend package points and record the usage log."""
+
         seller = SellerPackageValidator.get_seller_profile(seller_profile)
         PackageService._validate_usage_type(usage_type)
 
@@ -215,9 +221,13 @@ class PackageService:
 
 
 class SellerPackageService:
+    """Seller package request and manager activation lifecycle."""
+
     @staticmethod
     @transaction.atomic
     def request_package(profile, package_id):
+        """Create one pending package request per seller/package pair."""
+
         seller = SellerPackageValidator.get_seller_profile(profile)
 
         try:
@@ -258,6 +268,8 @@ class SellerPackageService:
 
     @staticmethod
     def get_active_package(profile):
+        """Return the seller's active package, expiring it first when needed."""
+
         seller = SellerPackageValidator.get_seller_profile(profile)
         expired_error = None
         with transaction.atomic():
@@ -287,6 +299,8 @@ class SellerPackageService:
     @staticmethod
     @transaction.atomic
     def activate_package(seller_package):
+        """Activate one seller package and invalidate any previous active package."""
+
         locked_package = (
             SellerPackage.objects.select_for_update()
             .select_related("package", "owner")
@@ -351,6 +365,8 @@ class SellerPackageService:
     @staticmethod
     @transaction.atomic
     def cancel_package(seller_package):
+        """Managers may cancel only pending seller package requests."""
+
         locked_package = (
             SellerPackage.objects.select_for_update()
             .select_related("package", "owner")

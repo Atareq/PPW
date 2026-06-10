@@ -100,7 +100,8 @@ class AuctionBusinessValidator:
         self._validate_deposit_config()
 
     def _retrieve_unique_unauctioned_items(self):
-        """"""
+        """Load submitted birds once and reject duplicate or active-auction use."""
+
         bird_ids = set()
         bird_counter = 0
         for lot_number, item_data in enumerate(self.items_data):
@@ -425,7 +426,6 @@ class AuctionService:
             AuctionService._log_event(
                 auction=auction,
                 event_type="created",
-                # we need to substitute this with a couces fields instead of strings
                 performer=owner,
                 item=None,
                 bid=None,
@@ -464,10 +464,9 @@ class AuctionService:
         auction.status = AuctionStatus.CANCELLED
         auction.save()
 
-        # Needs to handle the items data
         auction.items.all().update(status=AuctionItemStatus.CANCELLED)
 
-        # Invalidate all bids (refund will be handled elsewhere)
+        # Bid refund/payment handling is outside the current auction flow.
         Bid.objects.filter(item__auction=auction)
 
         AuctionService._log_event(
@@ -801,13 +800,12 @@ class BiddingService:
 
 class SettlementService:
     """
-    Handles auction completion and winner settlement.
+    Handles auction item winner resolution.
 
     Responsibilities:
     - Determine winners (highest bidder per item)
     - Mark items as SOLD/UNSOLD
-    - Update auction status to ENDED
-    - Handle refunds and payments
+    - Leave payment requests and ownership transfer to apps.payments
     """
 
     @staticmethod
