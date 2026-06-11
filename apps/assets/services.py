@@ -39,10 +39,6 @@ class BirdValidator:
 
     @staticmethod
     def _validate_owner_profile(errors, owner):
-        if not owner:
-            errors["owner"] = "Owner profile is required."
-            return
-
         if owner.type != ProfileType.SELLER:
             errors["owner"] = "Only SELLER profiles can own birds."
 

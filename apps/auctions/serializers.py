@@ -406,6 +406,21 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
                     {"buy_now_price": "Required when buy_now_enabled=True"}
                 )
 
+        if data.get("auction_type") in ["pair", "breeding"]:
+            for index, item in enumerate(data.get("items", [])):
+                if not item.get("paired_bird_id"):
+                    raise serializers.ValidationError(
+                        {
+                            "items": {
+                                index: {
+                                    "paired_bird_id": (
+                                        "Required for pair and breeding auctions."
+                                    )
+                                }
+                            }
+                        }
+                    )
+
         return data
 
 

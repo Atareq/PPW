@@ -6,8 +6,6 @@ Tests:
 - SINGLE has exactly 1 item
 - PAIR has male + female
 - MULTI has 2-10 items
-- Auto-extend configuration
-- Deposit configuration
 """
 
 from datetime import timedelta
@@ -18,6 +16,7 @@ import pytest
 from rest_framework.exceptions import ValidationError
 
 from apps.auctions.models import Auction, AuctionType
+from apps.auctions.serializers import AuctionCreateSerializer
 from apps.auctions.services import AuctionBusinessValidator
 from apps.users.models import ProfileType
 from tests.factories import BirdFactory, SellerProfileFactory
@@ -154,56 +153,58 @@ class TestAuctionBusinessValidator:
         with pytest.raises(ValidationError):
             validator.validate()
 
+
+class TestAuctionCreateSerializer:
+    def _valid_payload(self):
+        return {
+            "title": "Test Auction",
+            "description": "Test",
+            "auction_type": AuctionType.SINGLE,
+            "start_time": timezone.now() + timedelta(days=1),
+            "end_time": timezone.now() + timedelta(days=2),
+            "items": [
+                {
+                    "bird_id": 1,
+                    "starting_price": Decimal("100.00"),
+                }
+            ],
+        }
+
     def test_auto_extend_requires_minutes_value(self):
         """Test that auto_extend_enabled requires auto_extend_minutes."""
-        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
-        bird = BirdFactory(owner=seller_profile)
-
-        auction = Auction(
-            owner=seller_profile,
-            title="Test Auction",
-            description="Test",
-            auction_type=AuctionType.SINGLE,
-            start_time=timezone.now(),
-            end_time=timezone.now() + timedelta(days=7),
-            auto_extend_enabled=True,
-            auto_extend_minutes=0,  # Invalid: 0
+        payload = self._valid_payload()
+        payload.update(
+            {
+                "auto_extend_enabled": True,
+                "auto_extend_minutes": 0,
+            }
         )
 
-        items_data = [
-            {"bird_id": bird.id, "starting_price": Decimal("100.00")}
-        ]
+        serializer = AuctionCreateSerializer(data=payload)
 
-        validator = AuctionBusinessValidator(
-            auction=auction, items_data=items_data
-        )
-
-        with pytest.raises(ValidationError):
-            validator.validate()
+        assert not serializer.is_valid()
+        assert "auto_extend_minutes" in serializer.errors
 
     def test_deposit_requires_payment_deadline(self):
         """Test that deposit_required needs payment_deadline_days."""
-        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
-        bird = BirdFactory(owner=seller_profile)
-
-        auction = Auction(
-            owner=seller_profile,
-            title="Test Auction",
-            description="Test",
-            auction_type=AuctionType.SINGLE,
-            start_time=timezone.now(),
-            end_time=timezone.now() + timedelta(days=7),
-            deposit_required=True,
-            payment_deadline_days=None,  # Invalid
+        payload = self._valid_payload()
+        payload.update(
+            {
+                "deposit_required": True,
+                "payment_deadline_days": None,
+            }
         )
 
-        items_data = [
-            {"bird_id": bird.id, "starting_price": Decimal("100.00")}
-        ]
+        serializer = AuctionCreateSerializer(data=payload)
 
-        validator = AuctionBusinessValidator(
-            auction=auction, items_data=items_data
-        )
+        assert not serializer.is_valid()
+        assert "payment_deadline_days" in serializer.errors
 
-        with pytest.raises(ValidationError):
-            validator.validate()
+    def test_pair_auction_requires_paired_bird_id(self):
+        payload = self._valid_payload()
+        payload["auction_type"] = AuctionType.PAIR
+
+        serializer = AuctionCreateSerializer(data=payload)
+
+        assert not serializer.is_valid()
+        assert "items" in serializer.errors

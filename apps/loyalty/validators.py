@@ -1,8 +1,6 @@
 from rest_framework.exceptions import ValidationError
 
-from apps.authentication.models import UserAccount
 from apps.loyalty.constants import BADGE_DEFINITIONS, BADGE_ELIGIBLE_ANY
-from apps.users.models import Profile
 
 
 class PointValidator:
@@ -36,12 +34,6 @@ class PointValidator:
 
 class BadgeValidator:
     @staticmethod
-    def validate_badge_type(badge_type):
-        if badge_type not in BADGE_DEFINITIONS:
-            raise ValidationError({"badge_type": "Unsupported badge type."})
-        return badge_type
-
-    @staticmethod
     def validate_badge_eligibility(profile, badge_type):
         definition = BADGE_DEFINITIONS[badge_type]
         eligible_type = definition["eligible_profile_type"]
@@ -50,4 +42,3 @@ class BadgeValidator:
                 {"badge_type": "Badge is not eligible for this profile type."}
             )
         return True
-

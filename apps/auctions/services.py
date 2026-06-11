@@ -4,7 +4,7 @@ Production-Grade Auction Services
 Architecture: 4-Layer Validation & Orchestration
 
 Layer 1: Input Validation (Serializer)
-  - Validates REQUEST FORMAT (types, existence, constraints)
+  - Validates REQUEST FORMAT (types, required fields, primitive choices)
   - Examples: bird_id is int, start_time is datetime
 
 Layer 2: Business Validation (AuctionBusinessValidator)
@@ -65,8 +65,6 @@ class AuctionBusinessValidator:
     - SINGLE auction must have exactly 1 item
     - PAIR auction must have 1 male + 1 female
     - MULTI auction must have 2-10 items
-    - Auto-extend requires auto_extend_minutes
-    - Deposit requires payment_deadline_days
     """
 
     def __init__(
@@ -96,8 +94,6 @@ class AuctionBusinessValidator:
         self._validate_seller_owns_submitted_birds()
         self._validate_item_count_for_type()
         self._validate_items()
-        self._validate_auto_extend_config()
-        self._validate_deposit_config()
 
     def _retrieve_unique_unauctioned_items(self):
         """Load submitted birds once and reject duplicate or active-auction use."""
@@ -204,18 +200,11 @@ class AuctionBusinessValidator:
         Validate PAIR/BREEDING auctions have compatible birds.
 
         Rules:
-        - Must have paired_bird_id in first item
         - One must be male, one must be female
         """
         item_data = self.items_data[0]
         bird_id = item_data.get("bird_id")
         paired_bird_id = item_data.get("paired_bird_id")
-
-        # Check paired bird exists
-        if not paired_bird_id:
-            raise ValidationError(
-                f"{self.auction.auction_type.upper()} auction requires paired_bird_id"
-            )
 
         # Validate gender pairing
         self._validate_pair_gender(
@@ -238,22 +227,6 @@ class AuctionBusinessValidator:
     @staticmethod
     def _normalize_gender(gender: str) -> str:
         return str(gender).strip().lower()
-
-    def _validate_auto_extend_config(self) -> None:
-        """Validate auto-extend configuration consistency"""
-        if self.auction.auto_extend_enabled:
-            if not self.auction.auto_extend_minutes:
-                raise ValidationError(
-                    "auto_extend_minutes required when auto_extend_enabled=True"
-                )
-
-    def _validate_deposit_config(self) -> None:
-        """Validate deposit configuration consistency"""
-        if self.auction.deposit_required:
-            if not self.auction.payment_deadline_days:
-                raise ValidationError(
-                    "payment_deadline_days required when deposit_required=True"
-                )
 
 
 # ============================================================================

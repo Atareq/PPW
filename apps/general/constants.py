@@ -38,6 +38,11 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "COMPLAINT": [
+        "list",
+        "retrieve",
+        "create",
+    ],
     "ASSET_COMMENT": [
         "list",
         "create",
@@ -105,6 +110,11 @@ CUSTOMER_PERMISSIONS = {
         "create",
         "list",
         "partial_update",
+    ],
+    "COMPLAINT": [
+        "list",
+        "retrieve",
+        "create",
     ],
     "ASSET_COMMENT": [
         "list",

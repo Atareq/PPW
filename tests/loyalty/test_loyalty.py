@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from apps.authentication.services import build_token_for_user
 from apps.loyalty.constants import BadgeType, PointTransactionType
 from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
+from apps.loyalty.serializers import BadgeAwardCreateSerializer
 from apps.loyalty.services import BadgeService, PointService
 from apps.users.constants import ProfileType
 from tests.factories import (
@@ -289,6 +290,18 @@ class TestBadgeService:
                 user.active_profile,
                 BadgeType.SELLER_STARTER,
             )
+
+    def test_unsupported_badge_type_is_serializer_validated(self):
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        serializer = BadgeAwardCreateSerializer(
+            data={
+                "profile_id": user.active_profile.pk,
+                "badge_type": "unsupported",
+            }
+        )
+
+        assert not serializer.is_valid()
+        assert "badge_type" in serializer.errors
 
     def test_any_badge_can_be_awarded_to_any_profile(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

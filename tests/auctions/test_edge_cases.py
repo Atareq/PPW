@@ -16,6 +16,7 @@ from django.utils import timezone
 import pytest
 
 from apps.auctions.models import Auction, Bid
+from apps.auctions.serializers import AuctionCreateSerializer
 from apps.auctions.services import AuctionBusinessValidator
 from apps.users.constants import ProfileType
 from tests.factories import (
@@ -155,6 +156,32 @@ class TestAutoExtend:
         seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
         bird = BirdFactory(owner=seller_profile)
 
+        serializer = AuctionCreateSerializer(
+            data={
+                "title": "Test",
+                "description": "Test",
+                "auction_type": "single",
+                "start_time": timezone.now() + timedelta(days=1),
+                "end_time": timezone.now() + timedelta(days=7),
+                "auto_extend_enabled": True,
+                "auto_extend_minutes": 0,
+                "items": [
+                    {
+                        "bird_id": bird.id,
+                        "starting_price": "100.00",
+                    }
+                ],
+            }
+        )
+
+        assert not serializer.is_valid()
+        assert "auto_extend_minutes" in serializer.errors
+
+    def test_auto_extend_business_validator_accepts_serializer_valid_config(self):
+        """Business validation does not own simple required-field checks."""
+        seller_profile = SellerProfileFactory(type=ProfileType.SELLER)
+        bird = BirdFactory(owner=seller_profile)
+
         auction = Auction(
             owner=seller_profile,
             title="Test",
@@ -163,17 +190,14 @@ class TestAutoExtend:
             start_time=timezone.now(),
             end_time=timezone.now() + timedelta(days=7),
             auto_extend_enabled=True,
-            auto_extend_minutes=0,  # Invalid
+            auto_extend_minutes=5,
         )
 
         items_data = [{"bird_id": bird.id, "starting_price": "100.00"}]
 
-        validator = AuctionBusinessValidator(
-            auction=auction, items_data=items_data
-        )
+        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
 
-        with pytest.raises(Exception):
-            validator.validate()
+        validator.validate()
 
 
 @pytest.mark.django_db

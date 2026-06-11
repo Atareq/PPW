@@ -26,6 +26,7 @@ The platform currently supports and will continue to expand around:
 - ratings and comments as a simple trust and feedback layer
 - race records and race result rankings for pigeon/bird racing reports
 - manual PaymentRequest-based auction and marketplace sale completion
+- simple complaint/dispute records tied to approved or rejected payment requests
 - future media, pedigree, QR, reviews, reward point automation, chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
@@ -44,7 +45,7 @@ Core business reality and intended product policy:
 
 Current implementation caveat:
 
-- there is no payment gateway, proof upload, admin payment approval, handoff model, shipping integration, complaint/dispute workflow, wallet, refund engine, or ownership history table
+- there is no payment gateway, proof upload, admin payment approval, handoff model, shipping integration, wallet, refund engine, ownership history table, complaint chat, complaint attachments, automatic refund, ownership rollback, or cashback reversal workflow
 
 The project must remain a modular monolith. Simplicity and correctness are preferred over feature richness and abstractions.
 
@@ -92,6 +93,10 @@ General approach:
 - do not create many tiny view classes for the same model when serializer selection and `get_queryset()` can keep one class readable
 - command-style endpoints such as approval or rejection should use a dedicated URL-bound view mapped to `create`
 - use `apps.payments.views` and `apps.payments.urls` as the current reference style for DRF viewset and URL organization
+- API serializers own request payload field presence, blank-text handling, primitive choice validation, and conditional required-field validation
+- services and validator classes should assume serializer-valid primitive API fields and should focus on business rules, persistence state, ownership, permissions, idempotency, locking, and side effects
+- relation lookups and domain validity checks such as missing assets, missing packages, stock availability, seller ownership, and status transitions can remain in services or validators when they depend on current database state
+- internal-only service safeguards can remain in services when no public serializer boundary exists, such as package usage-type support and point ledger invariants
 
 Current internal API documentation approach:
 
@@ -122,6 +127,7 @@ Current major apps:
 - `apps.loyalty`
 - `apps.payments`
 - `apps.promotions`
+- `apps.complaints`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -456,7 +462,7 @@ Current responsibilities:
 
 Important note:
 
-This app is not a payment gateway, wallet, refund system, proof-upload flow, handoff model, shipping integration, or complaint/dispute system. It records manual buyer/seller confirmation state only.
+This app is not a payment gateway, wallet, refund system, proof-upload flow, handoff model, shipping integration, or complaint/dispute system. It records manual buyer/seller confirmation state only. Complaint/dispute records are owned by `apps.complaints`.
 
 Current payment API:
 
@@ -497,6 +503,63 @@ Current payment behavior:
 - seller approval does not transfer ownership for supply, accessory, feed, or supplement assets
 - seller rejection marks the request rejected and does not transfer ownership, complete order items, or mutate stock
 - `PaymentRequestEvent` records are written only for created, updated, approved, and rejected events
+
+### `apps.complaints`
+
+Current responsibilities:
+
+- simple complaint/dispute records tied to `PaymentRequest`
+- buyer/seller complaint creation after a payment request is approved or rejected
+- manager review transitions for open complaints
+- creator cancellation of open complaints
+- lightweight `ComplaintEvent` trace records
+
+Important note:
+
+This app is not a refund system, ownership rollback system, cashback reversal system, complaint chat, attachment upload flow, legal arbitration workflow, notification system, seller penalty system, or payment approval tool. It records manual dispute state only.
+
+Current complaint API:
+
+- `/api/complaints/`
+  - `GET`: manager lists all complaints
+  - `POST`: related buyer or seller creates a complaint for an approved or rejected payment request
+- `/api/complaints/my/`
+  - `GET`: buyer or seller lists complaints related to their active profile
+- `/api/complaints/<id>/`
+  - `GET`: manager retrieves any complaint; buyer or seller retrieves related complaints only
+- `/api/complaints/<id>/cancel/`
+  - `POST`: complaint creator cancels an open complaint
+- `/api/complaints/<id>/mark-in-review/`
+  - `POST`: manager moves an open complaint to review
+- `/api/complaints/<id>/resolve/`
+  - `POST`: manager resolves an open or in-review complaint with optional `admin_note`
+- `/api/complaints/<id>/reject/`
+  - `POST`: manager rejects an open or in-review complaint with optional `admin_note`
+
+Current complaint behavior:
+
+- complaints can be created only for `PaymentRequest.status` values `approved` and `rejected`
+- complaints cannot be created for `pending` or `cancelled` payment requests
+- only the payment request buyer or seller can create a complaint
+- `Complaint.buyer` and `Complaint.seller` are copied from the payment request at creation time
+- default complaint type is `post_sale` for approved payment requests and `payment_rejected` for rejected payment requests
+- complaint `title`, `description`, and `complaint_type` API field validation is owned by `ComplaintCreateSerializer`
+- complaint status values are `open`, `in_review`, `resolved`, `rejected`, and `cancelled`
+- one active complaint per payment request is enforced by service validation and a partial DB unique constraint over `open` and `in_review`
+- closed complaints do not block a later new active complaint for the same payment request
+- managers can mark open complaints `in_review`
+- managers can resolve or reject open and in-review complaints
+- only the complaint creator can cancel, and only while the complaint is `open`
+- complaint actions do not mutate `PaymentRequest`, asset ownership, product stock, orders, cashback, or ratings
+- `ComplaintEvent` records are written for created, in-review, resolved, rejected, and cancelled transitions
+
+Current complaint service implementation names:
+
+- `ComplaintService.create_complaint()` creates an open complaint after locking and validating the payment request
+- `ComplaintService.mark_in_review()` moves an open complaint into manager review
+- `ComplaintService.resolve()` resolves an open or in-review complaint
+- `ComplaintService.reject()` rejects an open or in-review complaint
+- `ComplaintService.cancel()` cancels an open complaint created by the active profile
 
 ### `apps.promotions`
 
@@ -632,7 +695,8 @@ Current auction behavior:
 - auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
 - `Auction.seller_package` is a nullable FK to `AssetSellerPackage`; existing rows and manager-created rows can be null
 - auction creation requires future `start_time`, later `end_time`, and nested item payloads
-- `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, pair gender rules, duplicate bird rejection, overlapping active-auction bird rejection, auto-extend config, and deposit config
+- `AuctionCreateSerializer` owns auction creation field-shape checks such as future/later times, auto-extend minutes, deposit payment deadline, buy-now price, and required `paired_bird_id` for pair-style auctions
+- `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, pair gender rules, duplicate bird rejection, and overlapping active-auction bird rejection
 - manager-created auctions bypass seller bird ownership validation because managers are using the administrative auction creation path
 - `AuctionService.create_auction()` writes a `created` event
 - seller auction creation pre-validates package availability, then creates the auction/items and consumes `Package.auction_cost` in the same DB transaction
@@ -861,6 +925,7 @@ Current badge behavior:
   - `points_starter`
   - `seller_starter`
 - badge metadata, names, descriptions, eligibility, criteria type, criteria value, and icon URL live in `apps.loyalty.constants`
+- `BadgeAwardCreateSerializer` owns submitted `badge_type` choice validation for the manager award API
 - badge eligibility is enforced by `BadgeService.award_badge()`
 - `first_order` is eligible for `Customer` profiles
 - `seller_starter` is eligible for `Seller` profiles
@@ -1764,13 +1829,14 @@ These risks are important and should be respected during future work.
 Current completion MVP:
 
 - buyer-created `PaymentRequest` records complete won auction items and approved market order items after seller approval
+- related buyers and sellers can create simple complaints for approved or rejected payment requests; managers resolve or reject them manually
 
 Important remaining gaps:
 
-- no complaint/dispute resolution workflow exists yet
 - no payment proof upload or admin payment review exists
 - no handoff, shipping, or logistics workflow exists
 - no ownership history table exists
+- no automatic refund, ownership rollback, cashback reversal, complaint chat, complaint attachments, notifications, or seller penalty workflow exists
 
 ### Media Gap
 
@@ -1810,7 +1876,7 @@ Includes:
 
 - fix current correctness and security issues
 - improve observability around PaymentRequest completion
-- add complaint/dispute workflow when explicitly prioritized
+- extend the current complaint/dispute MVP only when explicitly prioritized
 - add administrative review tools around disputes, not payment approval
 - keep payment gateway, wallet, proof upload, handoff, and shipping out of scope unless product policy changes
 
@@ -1902,7 +1968,7 @@ Required tasks:
 1. fix critical auction/auth bugs already present
 2. enforce auction locking/edit restrictions
 3. harden the existing PaymentRequest flow
-4. add dispute/complaint handling only when product scope requires it
+4. extend dispute/complaint handling beyond the current MVP only when product scope requires it
 5. improve audit/reporting around payment request lifecycle
 6. keep seller order-item approval separate from sale completion
 
@@ -1925,6 +1991,7 @@ Current expected flow:
 4. seller approval finalizes the sale inside the system
 5. market stock is reduced for market requests
 6. bird ownership transfers for bird assets
+7. either related party can create a complaint after approval or rejection; managers review complaints manually without automatic financial or ownership reversal
 
 This project should behave as a marketplace coordination system, not a payment processor.
 

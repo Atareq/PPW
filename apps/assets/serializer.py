@@ -48,6 +48,10 @@ class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
         owner = request.user.active_profile if request else None
+        if owner is None:
+            raise serializers.ValidationError(
+                {"owner": "Owner profile is required."}
+            )
 
         return BirdValidator.validate(
             attrs=attrs,

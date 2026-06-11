@@ -169,7 +169,6 @@ class OrderCreationValidator:
         self.customer_profile = PurchaseRuleValidator.get_customer_profile(
             self.customer
         )
-        self._validate_non_empty()
         self._validate_duplicate_assets()
         self._retrieve_assets()
         self._retrieve_sellers()
@@ -179,10 +178,6 @@ class OrderCreationValidator:
     @staticmethod
     def get_seller_profile(profile):
         return PurchaseRuleValidator.get_seller_profile(profile)
-
-    def _validate_non_empty(self):
-        if not self.items_payload:
-            raise ValidationError({"items": "Order must include items."})
 
     def _validate_duplicate_assets(self):
         asset_ids = [item["asset_id"] for item in self.items_payload]

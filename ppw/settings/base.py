@@ -57,6 +57,7 @@ APPS = [
     "apps.loyalty",
     "apps.payments",
     "apps.promotions",
+    "apps.complaints",
 ]
 
 DEBUG_APPS = []

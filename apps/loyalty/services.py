@@ -272,7 +272,6 @@ class BadgeService:
         """Award a badge once per profile/type, preserving the first award."""
 
         profile = Profile.objects.get(pk=profile.pk)
-        badge_type = BadgeValidator.validate_badge_type(badge_type)
         BadgeValidator.validate_badge_eligibility(profile, badge_type)
 
         defaults = {
