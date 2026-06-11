@@ -25,6 +25,7 @@ from apps.orders.validators import (
     OrderCreationValidator,
     PurchaseRuleValidator,
 )
+from apps.promotions.services import CashbackService, DiscountOfferService
 
 
 def cart_item_queryset():
@@ -41,9 +42,12 @@ def order_item_queryset():
     return (
         OrderItem.objects.select_related(
             "order",
+            "order__owner",
             "asset",
             "seller",
             "seller__user",
+            "discount_offer",
+            "cashback_offer",
         )
         .prefetch_related("asset__media")
         .order_by("-created")
@@ -347,7 +351,20 @@ class OrderCheckoutService:
             asset = asset_map[item_payload["asset_id"]]
             quantity = item_payload["quantity"]
             unit_price = asset.price
-            item_total = quantity * unit_price
+            gross_total = quantity * unit_price
+            discount_offer = DiscountOfferService.choose_best_offer(
+                asset,
+                gross_total,
+            )
+            discount_amount = (
+                DiscountOfferService.calculate_discount(
+                    discount_offer,
+                    gross_total,
+                )
+                if discount_offer
+                else Decimal("0.00")
+            )
+            item_total = gross_total - discount_amount
             total_price += item_total
 
             order_items.append(
@@ -357,6 +374,9 @@ class OrderCheckoutService:
                     seller=seller_map[asset.owner_id],
                     quantity=quantity,
                     unit_price_snapshot=unit_price,
+                    gross_total=gross_total,
+                    discount_offer=discount_offer,
+                    discount_amount=discount_amount,
                     total_price=item_total,
                     status=OrderItemStatus.PENDING_SELLER,
                 )
@@ -449,6 +469,7 @@ class OrderItemService:
         if item.status != OrderItemStatus.PENDING_SELLER:
             raise ValidationError("Only pending order items can be approved.")
 
+        item = CashbackService.redeem_for_order_item(item)
         item.status = OrderItemStatus.APPROVED
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)

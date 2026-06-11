@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/", include("apps.packages.urls")),
     path("api/loyalty/", include("apps.loyalty.urls")),
     path("api/payments/", include("apps.payments.urls")),
+    path("api/promotions/", include("apps.promotions.urls")),
     path(
         "api/schema/",
         InternalSchemaAPIView.as_view(),

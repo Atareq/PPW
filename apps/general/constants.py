@@ -130,4 +130,14 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
     ],
+    "DISCOUNT_OFFER": [
+        "list",
+    ],
+    "CASHBACK_OFFER": [
+        "list",
+    ],
+    "CASHBACK": [
+        "list",
+        "retrieve",
+    ],
 }

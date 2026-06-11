@@ -16,6 +16,7 @@ from apps.payments.models import (
     PaymentRequestType,
 )
 from apps.payments.validators import PaymentRequestValidator
+from apps.promotions.services import CashbackService
 from apps.users.constants import ProfileType
 
 
@@ -330,6 +331,7 @@ class PaymentRequestService:
 
         order_item.status = OrderItemStatus.COMPLETED
         order_item.save(update_fields=["status", "modified"])
+        CashbackService.earn_for_completed_order_item(order_item)
         OrderService.refresh_order_status(order_item.order_id)
 
     @staticmethod

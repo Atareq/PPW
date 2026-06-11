@@ -35,6 +35,14 @@ from apps.packages.models import (
     Package,
     SellerPackageStatus,
 )
+from apps.promotions.models import (
+    CashbackOffer,
+    CashbackTransaction,
+    CashbackTransactionType,
+    DiscountOffer,
+    OfferTargetType,
+    OfferValueType,
+)
 from apps.races.models import Race, RaceResult
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
@@ -94,6 +102,7 @@ class CustomerProfileFactory(BaseProfileFactory):
 
     type = ProfileType.CUSTOMER
     balance = Decimal("0.00")
+    cashback_balance = Decimal("0.00")
     country = CountryOptions.EGYPT
     currency = CurrencyOptions.EGP
 
@@ -285,6 +294,61 @@ class OrderEventFactory(factory.django.DjangoModelFactory):
     event_type = OrderEventType.ORDER_CREATED
     message = "Order created."
     metadata = factory.LazyFunction(dict)
+
+
+# ============================================================================
+# PROMOTION FACTORIES
+# ============================================================================
+
+
+class DiscountOfferFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = DiscountOffer
+
+    title = factory.Sequence(lambda n: f"Discount Offer {n}")
+    description = ""
+    value_type = OfferValueType.FIXED_AMOUNT
+    value = Decimal("5.00")
+    target_type = OfferTargetType.ALL
+    asset = None
+    category = None
+    minimum_order_price = Decimal("0.00")
+    is_active = True
+    priority = 0
+    created_by = factory.SubFactory(ManagerProfileFactory)
+
+
+class CashbackOfferFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = CashbackOffer
+
+    title = factory.Sequence(lambda n: f"Cashback Offer {n}")
+    description = ""
+    value_type = OfferValueType.FIXED_AMOUNT
+    value = Decimal("5.00")
+    target_type = OfferTargetType.ALL
+    asset = None
+    category = None
+    minimum_order_price = Decimal("0.00")
+    allowed_redemption_amount = Decimal("0.00")
+    is_active = True
+    priority = 0
+    created_by = factory.SubFactory(ManagerProfileFactory)
+
+
+class CashbackTransactionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = CashbackTransaction
+
+    customer = factory.SubFactory(CustomerProfileFactory)
+    cashback_offer = factory.SubFactory(CashbackOfferFactory)
+    order_item = None
+    transaction_type = CashbackTransactionType.EARNED
+    amount = Decimal("5.00")
+    balance_after = Decimal("5.00")
+    adjusted_by = None
+    note = ""
+    idempotency_key = factory.Sequence(lambda n: f"cashback-tx-{n}")
 
 
 # ============================================================================

@@ -172,6 +172,44 @@ class OrderItem(BaseModel):
         decimal_places=2,
         validators=[MinValueValidator(0)],
     )
+    gross_total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+    )
+    discount_offer = models.ForeignKey(
+        "promotions.DiscountOffer",
+        on_delete=models.SET_NULL,
+        related_name="order_items",
+        null=True,
+        blank=True,
+    )
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+    )
+    cashback_offer = models.ForeignKey(
+        "promotions.CashbackOffer",
+        on_delete=models.SET_NULL,
+        related_name="order_items",
+        null=True,
+        blank=True,
+    )
+    cashback_redeemed_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+    )
+    cashback_earned_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+    )
     total_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -197,18 +235,41 @@ class OrderItem(BaseModel):
                 name="orders_orderitem_unit_price_gte_0",
             ),
             models.CheckConstraint(
+                check=models.Q(gross_total__gte=0),
+                name="orders_orderitem_gross_total_gte_0",
+            ),
+            models.CheckConstraint(
+                check=models.Q(discount_amount__gte=0),
+                name="orders_orderitem_discount_amount_gte_0",
+            ),
+            models.CheckConstraint(
+                check=models.Q(cashback_redeemed_amount__gte=0),
+                name="orders_orderitem_cashback_redeemed_gte_0",
+            ),
+            models.CheckConstraint(
+                check=models.Q(cashback_earned_amount__gte=0),
+                name="orders_orderitem_cashback_earned_gte_0",
+            ),
+            models.CheckConstraint(
                 check=models.Q(total_price__gte=0),
                 name="orders_orderitem_total_price_gte_0",
             ),
         ]
 
     def save(self, *args, **kwargs):
-        self.total_price = self.quantity * self.unit_price_snapshot
+        self.gross_total = self.quantity * self.unit_price_snapshot
+        self.total_price = (
+            self.gross_total
+            - self.discount_amount
+            - self.cashback_redeemed_amount
+        )
+        if self.total_price < 0:
+            self.total_price = Decimal("0.00")
 
         update_fields = kwargs.get("update_fields")
         if update_fields is not None:
             kwargs["update_fields"] = list(
-                set(update_fields) | {"total_price"}
+                set(update_fields) | {"gross_total", "total_price"}
             )
 
         super().save(*args, **kwargs)

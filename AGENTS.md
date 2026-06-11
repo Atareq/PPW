@@ -22,10 +22,11 @@ The platform currently supports and will continue to expand around:
 - auction creation and bidding
 - scheduled auction closing with winner resolution
 - fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
+- admin-created marketplace discount and cashback offers for order items
 - ratings and comments as a simple trust and feedback layer
 - race records and race result rankings for pigeon/bird racing reports
 - manual PaymentRequest-based auction and marketplace sale completion
-- future media, pedigree, QR, reviews, reward points, chat, and promotion modules
+- future media, pedigree, QR, reviews, reward point automation, chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
 
@@ -39,6 +40,7 @@ Core business reality and intended product policy:
 - seller approval finalizes the sale inside the system
 - bird ownership transfers on seller approval; non-bird product ownership does not transfer
 - market product stock is reduced only when a seller approves a market `PaymentRequest`
+- marketplace cashback is an internal customer balance only; it is not withdrawable cash
 
 Current implementation caveat:
 
@@ -119,6 +121,7 @@ Current major apps:
 - `apps.packages`
 - `apps.loyalty`
 - `apps.payments`
+- `apps.promotions`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -410,8 +413,12 @@ Current order behavior:
 - order item detail asset summaries use nested `media` from `AssetMedia`; they no longer expose `thumbnail_url`
 - checkout and direct `POST /api/orders/` validate stock but do not decrement `Asset.count`
 - checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
+- checkout and direct `POST /api/orders/` calculate `gross_total`, apply the best active `DiscountOffer`, store `discount_offer` and `discount_amount`, and store discounted `total_price`
+- checkout and direct `POST /api/orders/` do not redeem or earn cashback
 - new order items start as `pending_seller`
 - seller approval changes `pending_seller` to `approved` without decrementing stock, marking assets sold, or unlisting assets
+- seller approval checks active `CashbackOffer` eligibility, stores `cashback_offer`, `cashback_redeemed_amount`, and `cashback_earned_amount`, and updates `OrderItem.total_price`
+- seller approval redeems cashback from `CustomerProfile.cashback_balance` only through `CashbackService` using `transaction.atomic()`, `select_for_update()`, and a `CashbackTransaction`
 - seller approval does not revalidate stock at approval time
 - seller approval is idempotent when the item is already `approved`
 - seller rejection changes `pending_seller` to `rejected` only; it does not change stock, asset status, or market listing
@@ -431,7 +438,7 @@ Current order service implementation names:
 
 - `OrderCheckoutService._create_pending_order()` creates the order and pending seller items for cart checkout and direct order creation
 - `OrderCheckoutService._ensure_stock_available()` validates count during checkout/order creation without mutating assets; purchase validators enforce listed/status/seller/customer rules before this helper runs
-- `OrderItemService.approve_item()` approves seller-side order items without stock mutation
+- `OrderItemService.approve_item()` approves seller-side order items without stock mutation and delegates cashback redemption to `CashbackService.redeem_for_order_item()`
 - `OrderItemService.cancel_expired_pending_items()` cancels stale `pending_seller` order items whose `created` timestamp is outside the configured seller decision window
 
 ### `apps.payments`
@@ -484,11 +491,88 @@ Current payment behavior:
 - seller approval marks the request approved and immutable
 - seller approval completes the source marketplace `OrderItem` and refreshes the parent order status
 - seller approval for market requests locks the source asset, requires enough current stock, decrements `Asset.count`, and marks zero-count assets `sold` and unlisted
+- seller approval for market requests credits earned marketplace cashback once through `CashbackService.earn_for_completed_order_item()` after the source `OrderItem` is completed
 - seller approval transfers ownership only for bird assets
 - seller approval transfers an auction item's `paired_bird` when present
 - seller approval does not transfer ownership for supply, accessory, feed, or supplement assets
 - seller rejection marks the request rejected and does not transfer ownership, complete order items, or mutate stock
 - `PaymentRequestEvent` records are written only for created, updated, approved, and rejected events
+
+### `apps.promotions`
+
+Current responsibilities:
+
+- admin-created immutable `DiscountOffer` records for marketplace order-item discounts
+- admin-created immutable `CashbackOffer` records for automatic marketplace cashback earning and redemption
+- customer `cashback_balance` storage on `CustomerProfile`
+- immutable `CashbackTransaction` ledger records for every cashback balance movement
+- admin cashback balance adjustments with audit trail
+- customer/admin promotion and cashback APIs
+
+Important note:
+
+This app is not a payment gateway, withdrawal wallet, coupon-code system, cashback expiration engine, seller campaign tool, auction cashback module, or admin approval workflow. Cashback is an internal customer balance only.
+
+Current promotions API:
+
+- `/api/promotions/discount-offers/current/`
+  - `GET`: customer-visible active discount offers
+- `/api/promotions/cashback-offers/current/`
+  - `GET`: customer-visible active cashback offers
+- `/api/promotions/cashback/my/`
+  - `GET`: customer lists their own cashback transactions
+- `/api/promotions/cashback/balance/`
+  - `GET`: customer retrieves their current cashback balance
+- `/api/promotions/admin/discount-offers/`
+  - `GET`: manager lists discount offers
+  - `POST`: manager creates a discount offer
+- `/api/promotions/admin/discount-offers/<id>/activate/`
+  - `POST`: manager activates a discount offer
+- `/api/promotions/admin/discount-offers/<id>/deactivate/`
+  - `POST`: manager deactivates a discount offer
+- `/api/promotions/admin/cashback-offers/`
+  - `GET`: manager lists cashback offers
+  - `POST`: manager creates a cashback offer
+- `/api/promotions/admin/cashback-offers/<id>/activate/`
+  - `POST`: manager activates a cashback offer
+- `/api/promotions/admin/cashback-offers/<id>/deactivate/`
+  - `POST`: manager deactivates a cashback offer
+- `/api/promotions/admin/cashback-transactions/`
+  - `GET`: manager lists all cashback transactions
+- `/api/promotions/admin/cashback-adjustments/`
+  - `POST`: manager creates a positive or negative cashback balance adjustment
+
+Current promotions behavior:
+
+- offer value types are `percentage` and `fixed_amount`
+- offer target types are `all`, `category`, and `asset`
+- offer values must be greater than zero
+- percentage offer values cannot exceed `100`
+- target validation requires an asset for `asset`, a category for `category`, and neither for `all`
+- discount and cashback offers are immutable after creation except `is_active`
+- managers can activate or deactivate offers; offer update endpoints are intentionally not exposed
+- discount selection considers only active eligible offers and chooses by calculated discount, target specificity, priority, and newest creation time
+- cashback selection considers only active eligible offers and chooses by calculated earned cashback, target specificity, priority, and newest creation time
+- discounts apply when an `OrderItem` is created and reduce `OrderItem.total_price` immediately
+- cashback redemption happens only when the seller approves an `OrderItem`
+- cashback earning happens only after a seller approves the related `MarketPaymentRequest` and the market sale completes
+- cashback earning and redemption use idempotency keys based on `order_item.id`
+- admin adjustments use a system `CashbackOffer` titled `Manual Admin Adjustment`
+- every cashback balance change must create exactly one `CashbackTransaction`
+- cashback balance mutations use `transaction.atomic()` and `select_for_update()` on `CustomerProfile`
+- `CashbackService.refund_redeemed_for_order_item()` exists for future approved-item cancellation flows; current seller rejection and seller timeout paths do not call it because they only affect pending seller items
+
+Current promotions service implementation names:
+
+- `DiscountOfferService.choose_best_offer()` selects the best active discount offer for an asset and gross total
+- `DiscountOfferService.calculate_discount()` calculates the immediate discount amount
+- `CashbackOfferService.choose_best_offer()` selects the best active cashback offer for an asset and payable amount
+- `CashbackOfferService.calculate_cashback_earned()` calculates cashback to credit after sale completion
+- `CashbackOfferService.calculate_redemption_amount()` calculates automatic redemption from current customer balance
+- `CashbackService.redeem_for_order_item()` deducts redeemed cashback and writes a redeemed transaction
+- `CashbackService.earn_for_completed_order_item()` credits earned cashback and writes an earned transaction
+- `CashbackService.refund_redeemed_for_order_item()` refunds redeemed cashback idempotently when applicable
+- `CashbackService.admin_adjust()` applies manager-only manual balance adjustments
 
 ### `apps.auctions`
 
@@ -734,7 +818,7 @@ Current responsibilities:
 
 Important note:
 
-This app is a rewards foundation only. It does not implement automatic reward earning, reward schedules, point purchase, cashback conversion, withdrawal, payment gateway behavior, notifications, offers, promotions, leaderboards, or referral rewards.
+This app is a rewards foundation only. It does not implement automatic reward earning, reward schedules, point purchase, cashback conversion, withdrawal, payment gateway behavior, notifications, leaderboards, or referral rewards. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`.
 
 Current loyalty API:
 
@@ -953,6 +1037,9 @@ Each item has:
 - explicit `SellerProfile` reference
 - quantity
 - unit price snapshot
+- gross total
+- optional discount offer and discount amount
+- optional cashback offer, redeemed amount, and earned amount
 - total price
 - independent status
 
@@ -969,6 +1056,45 @@ Current order-item statuses:
 Important rule:
 
 Manual market sale completion operates at the order-item level through `MarketPaymentRequest`.
+
+#### DiscountOffer
+
+DiscountOffer is an admin-created marketplace promotion that reduces an order item's price at creation time.
+
+Current design choice:
+
+- offers are immutable after creation except activation state
+- offers target all assets, one category, or one asset
+- offer selection is automatic and service-owned, not frontend-driven
+- discounts are stored on `OrderItem` as the selected offer and calculated discount amount
+- sellers cannot create or manage discount offers
+
+#### CashbackOffer
+
+CashbackOffer is an admin-created marketplace promotion that defines automatic redemption and earning rules.
+
+Current design choice:
+
+- offers are immutable after creation except activation state
+- offers target all assets, one category, or one asset
+- redemption happens at seller order-item approval, not order creation
+- earning happens at market sale completion, not seller order-item approval
+- auction cashback is not implemented
+- sellers cannot create or manage cashback offers
+
+#### CashbackTransaction
+
+CashbackTransaction is the ledger for customer cashback balance movement.
+
+Current design choice:
+
+- each transaction belongs to a concrete `CustomerProfile`
+- every transaction points to a `CashbackOffer`; admin adjustments use the system `Manual Admin Adjustment` offer
+- transaction types are `earned`, `redeemed`, `refunded`, and `admin_adjustment`
+- `idempotency_key` is required and unique
+- non-admin transaction amounts are positive; admin adjustment amounts may be positive or negative
+- `balance_after` must never be negative
+- balance changes must happen through `CashbackService`, not direct model updates
 
 #### OrderEvent
 
@@ -1118,6 +1244,7 @@ Mounted API roots:
 - `/api/race-results/`
 - `/api/packages/`
 - `/api/seller-packages/`
+- `/api/promotions/`
 
 Current internal API docs endpoints:
 
@@ -1170,6 +1297,17 @@ Current approach:
 - no automated settlement, no capture, no refund engine
 - no admin payment review, no proof upload, no handoff model
 
+### Promotions / Cashback
+
+Current approach:
+
+- discounts are admin-created and apply automatically to marketplace order items at order creation
+- cashback offers are admin-created and apply automatically to marketplace order items at seller approval and sale completion
+- cashback redemption deducts from `CustomerProfile.cashback_balance` when a seller approves an order item
+- cashback earning credits `CustomerProfile.cashback_balance` only after the related market `PaymentRequest` is approved
+- every cashback balance change must have a `CashbackTransaction` with an idempotency key
+- cashback is not withdrawable money and is not connected to payment capture, refunds, or shipping
+
 ### Handoff / Delivery
 
 There is no shipping integration.
@@ -1205,6 +1343,8 @@ Current e-commerce foundation:
 - customers can add listed seller assets to a persistent server-side cart
 - customers can checkout the full active cart into a pending seller decision market order
 - direct `POST /api/orders/` remains available as a compatibility alias with the same stock-validation semantics
+- active discount offers apply automatically to order items at checkout/direct order creation
+- active cashback offers apply automatically at seller order-item approval and market sale completion
 - sellers can approve or reject their own order items
 - checkout-time stock validation does not decrement stock or change listing state
 - seller order-item approval does not update stock or listing state
@@ -1374,6 +1514,13 @@ Current permission resources:
 - `SELLER_RATING`
 - `RACE`
 - `RACE_RESULT`
+- `DISCOUNT_OFFER`
+- `CASHBACK_OFFER`
+- `CASHBACK`
+- `DISCOUNT_OFFER_ADMIN`
+- `CASHBACK_OFFER_ADMIN`
+- `CASHBACK_TRANSACTION_ADMIN`
+- `CASHBACK_ADJUSTMENT_ADMIN`
 
 Permission implementation rule:
 
@@ -1451,6 +1598,17 @@ Current package permission pattern:
 - manager seller-package updates are PATCH status transitions only, not arbitrary field updates
 - customers have no package permissions in `CUSTOMER_PERMISSIONS`
 
+Current promotions permission pattern:
+
+- current offer list endpoints use `HasAppAccess` with `DISCOUNT_OFFER` and `CASHBACK_OFFER`
+- customer cashback balance/history endpoints use `HasAppAccess` with `CASHBACK`
+- admin offer management endpoints use `DISCOUNT_OFFER_ADMIN` and `CASHBACK_OFFER_ADMIN`
+- admin transaction and adjustment endpoints use `CASHBACK_TRANSACTION_ADMIN` and `CASHBACK_ADJUSTMENT_ADMIN`
+- customers can list current offers and their own cashback balance/transactions
+- managers can create, activate, deactivate, and list offers, list all cashback transactions, and perform cashback adjustments
+- sellers have no direct promotions permissions in this sprint
+- promotion services still enforce concrete customer/manager profile requirements where endpoint-level permission is not enough
+
 Current auction permission pattern:
 
 - `AuctionViewSet` uses `IsAuthenticated` plus `HasAppAccess` with `permission_resource = "AUCTION"`
@@ -1505,6 +1663,8 @@ The codebase currently provides:
 - persistent customer cart and cart item API foundation for market flows
 - checkout and compatibility direct-order APIs for fixed-price order creation
 - order validators and services for stock-validating fixed-price order creation
+- order-item discount snapshots through admin-created discount offers
+- marketplace cashback balance, offer, transaction, redemption, earning, refund-helper, and admin-adjustment services
 - seller item approval/rejection foundation
 - seller-decision timeout auto-cancellation for stale pending market order items
 - manual PaymentRequest flow for won auction items and approved marketplace order items
@@ -1539,8 +1699,8 @@ The codebase does not yet fully implement:
 - pedigree reader
 - QR flow
 - race results
-- reward points / cashback / badges
-- offers / promotions
+- reward point automation and richer rewards programs
+- promotion features beyond the current marketplace discount/cashback MVP, such as expiration, coupons, seller-created offers, auction cashback, usage caps, and complex campaign limits
 - chat
 - notification delivery beyond lightweight order event placeholders
 - pedigree package/quota enforcement as a finished business module
@@ -1591,6 +1751,13 @@ These risks are important and should be respected during future work.
 - product assets do not store a seller package FK; product traceability currently depends on `PackageUsageLog`
 - `PackageService.validate_can_consume()` is a preflight check only; final point decrement must still call `PackageService.consume_points()` inside the object creation transaction
 - SQLite does not enforce `select_for_update()` row locks, so true package consumption concurrency behavior must be verified on PostgreSQL
+
+### Promotions Risks
+
+- cashback balance changes rely on row locks; true concurrent redemption behavior must be verified on PostgreSQL, not SQLite
+- never update `CustomerProfile.cashback_balance` directly; use `CashbackService` so a `CashbackTransaction` is written
+- promotion offers are immutable after creation except activation state; do not add offer update endpoints without a product decision
+- current promotions do not implement expiration, coupons, seller-created offers, auction cashback, per-user usage caps, admin approval per transaction, or withdrawal behavior
 
 ### Business Flow Gap
 
@@ -1717,10 +1884,10 @@ Add growth and retention features.
 
 Includes:
 
-- reward points
-- cashback as reward points, not money
-- badges
-- offers and promotions
+- reward point automation
+- expanded cashback rules beyond the current internal-balance MVP
+- expanded badge automation
+- expanded offer and promotion campaigns beyond the current marketplace discount/cashback MVP
 - notifications
 - chat later, kept simple first
 
@@ -1739,7 +1906,7 @@ Required tasks:
 5. improve audit/reporting around payment request lifecycle
 6. keep seller order-item approval separate from sale completion
 
-Do not prioritize reward points, QR, chat, or promotions before this phase is complete.
+Do not prioritize reward point automation, QR, chat, or expanded promotions before this phase is complete.
 
 ## Payment Approach
 
