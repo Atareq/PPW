@@ -115,6 +115,7 @@ class Bird(AssetSubtype):
         ("good", "Good"),
     ]
     stamina_ability = models.CharField(max_length=10, choices=STAMINA_CHOICES)
+    video_url = models.CharField(max_length=2048, blank=True, default='')
 
     class Meta:
         indexes = [

@@ -54,6 +54,9 @@ class Auction(OwnerBaseModel):
     title = models.CharField(max_length=255)
     description = models.TextField()
 
+    # Optional cover image for the auction (Cloudinary URL, uploaded by frontend)
+    thumbnail_url = models.CharField(max_length=2048, blank=True)
+
     status = models.CharField(
         choices=AuctionStatus.choices,
         default=AuctionStatus.ACTIVE,

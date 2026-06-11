@@ -26,5 +26,10 @@ DEBUG_APPS = []
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + APPS + DEBUG_APPS
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 # Optional local email backend example later:
 # EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

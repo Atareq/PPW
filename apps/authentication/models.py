@@ -16,6 +16,7 @@ class UserAccount(AbstractUser, BaseModel):
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS = []
     permissions = models.JSONField(default=list, blank=True)
+    avatar_url = models.CharField(max_length=2048, blank=True, null=True)
 
     def __str__(self):
         return f" #{self.pk} userAccount{str(self.phone_number)} "

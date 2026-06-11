@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.assets.models import Bird
 from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
 from apps.auctions.services import AuctionService, SettlementService
+from apps.general.serializers import AssetImageSerializer
 
 # ============================================================================
 # NESTED SERIALIZERS
@@ -14,6 +15,8 @@ from apps.auctions.services import AuctionService, SettlementService
 
 class BirdBasicSerializer(serializers.ModelSerializer):
     """Minimal bird info for auction display"""
+
+    images = AssetImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Bird
@@ -24,6 +27,8 @@ class BirdBasicSerializer(serializers.ModelSerializer):
             "gender",
             "colour",
             "birthday",
+            "images",
+            "video_url",
         ]
 
 
@@ -181,6 +186,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "thumbnail_url",
             "auction_type",
             "auction_type_display",
             "seller_nickname",
@@ -193,6 +199,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "buy_now_price",
             "deposit_required",
             "payment_deadline_days",
+            "min_bid_increment",
             "is_visible",
             "tags",
             "status",
@@ -243,12 +250,14 @@ class AuctionListSerializer(serializers.ModelSerializer):
         source="get_auction_type_display", read_only=True
     )
     time_remaining = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Auction
         fields = [
             "id",
             "title",
+            "description",
             "auction_type",
             "auction_type_display",
             "status_display",
@@ -260,6 +269,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "time_remaining",
             "created",
             "status",
+            "thumbnail_url",
         ]
         read_only_fields = [
             "id",
@@ -274,6 +284,20 @@ class AuctionListSerializer(serializers.ModelSerializer):
         remaining = obj.time_remaining()
         if remaining:
             return int(remaining.total_seconds())
+        return None
+
+    def get_thumbnail_url(self, obj) -> str | None:
+        # Prefer the auction's own uploaded cover image
+        if obj.thumbnail_url:
+            return obj.thumbnail_url
+        # Fall back to the first item's bird image
+        item = obj.items.first()
+        if item and item.bird:
+            img = (
+                item.bird.images.filter(is_primary=True).first()
+                or item.bird.images.first()
+            )
+            return img.image_url if img else None
         return None
 
 
@@ -352,6 +376,7 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
         fields = [
             "title",
             "description",
+            "thumbnail_url",
             "auction_type",
             "start_time",
             "end_time",

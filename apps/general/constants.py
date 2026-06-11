@@ -91,6 +91,7 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
         "active",
+        "ending_soon",
     ],
     "ORDER": [
         "list",

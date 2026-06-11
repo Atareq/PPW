@@ -26,9 +26,12 @@ class CustomerTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
 class CustomerRegisterSerializer(
     PhoneValidationMixin, serializers.ModelSerializer
 ):
+    import json as _json
+
     password = serializers.CharField(write_only=True)
     customer_profile = CustomerProfileMobileSerializer()
     region = serializers.CharField(max_length=2, read_only=True)
+    avatar_url = serializers.CharField(required=False, allow_blank=True, default='')
 
     class Meta:
         model = UserAccount
@@ -37,6 +40,7 @@ class CustomerRegisterSerializer(
             "phone_number",
             "region",
             "password",
+            "avatar_url",
             "customer_profile",
         ]
         read_only_fields = ["id", "is_staff", "is_superuser", "last_login"]
@@ -58,7 +62,7 @@ class CustomerRegisterSerializer(
             user = UserAccount.objects.create_user(**validated_data)
             CustomerProfile.objects.create(
                 user=user,
-                is_active=True,  # The user's first profile
+                is_active=True,
                 **profile_data
             )
 

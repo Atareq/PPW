@@ -101,6 +101,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     """
 
     permission_resource = "AUCTION"
+    allow_scoped_read_access = True
     queryset = Auction.objects.all().order_by("-created")
     permission_classes = [IsAuthenticated, HasAppAccess]
 
@@ -160,6 +161,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
             owner=self.request.user.active_profile,
             title=validated_data["title"],
             description=validated_data.get("description", ""),
+            thumbnail_url=validated_data.get("thumbnail_url", ""),
             auction_type=validated_data["auction_type"],
             start_time=validated_data["start_time"],
             end_time=validated_data["end_time"],

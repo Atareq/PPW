@@ -8,7 +8,6 @@ from apps.assets.views import (
     SupplementViewSet,
     SupplyViewSet,
 )
-
 router = DefaultRouter()
 
 router.register("birds", BirdViewSet)

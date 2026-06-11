@@ -35,4 +35,5 @@ def build_token_for_user_role(user, profile):
     token["profile"] = profile.type
     token["user_id"] = user.id
     token["is_activated"] = profile.activated
+    token["avatar_url"] = user.avatar_url or ""
     return token

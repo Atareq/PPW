@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Q
 from django.http import Http404
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
@@ -9,6 +10,7 @@ from apps.users.models import CustomerProfile, SellerProfile
 from apps.users.serializers import (
     CustomerProfileAdminSerializer,
     CustomerProfileMobileSerializer,
+    SellerDiscoverSerializer,
     SellerProfileAdminSerializer,
     SellerProfileMobileSerializer,
 )
@@ -29,9 +31,35 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
 
 
 class SellerProfileMobileViewSet(viewsets.ModelViewSet):
-    serializer_class = SellerProfileMobileSerializer
-    queryset = SellerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return SellerDiscoverSerializer
+        return SellerProfileMobileSerializer
+
+    def get_queryset(self):
+        if self.action == "list":
+            return (
+                SellerProfile.objects.filter(
+                    deleted__isnull=True,
+                    is_valid=True,
+                    activated=True,
+                )
+                .annotate(
+                    active_auctions_count=Count(
+                        "owned_auctions",
+                        filter=Q(
+                            owned_auctions__status="active",
+                            owned_auctions__deleted__isnull=True,
+                        ),
+                    )
+                )
+                .order_by("-avg_rating", "-created")
+            )
+        return SellerProfile.objects.filter(
+            user=self.request.user, deleted__isnull=True, is_active=True
+        ).order_by("-created")
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -53,19 +81,15 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    def get_queryset(self):
-
-        return SellerProfile.objects.filter(
+    def get_object(self):
+        qs = SellerProfile.objects.filter(
             user=self.request.user, deleted__isnull=True, is_active=True
         ).order_by("-created")
-
-    def get_object(self):
-        if self.get_queryset():
-            return self.get_queryset().first()
+        if qs.exists():
+            return qs.first()
         raise Http404
 
     def perform_destroy(self, instance):
-
         if instance.is_active:
             other_profile = instance.user.profiles.exclude(
                 id=instance.id
