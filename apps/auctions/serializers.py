@@ -447,6 +447,7 @@ class AuctionUpdateSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "tags",
+            "thumbnail_url",
         ]
 
     def update(self, instance, validated_data):
