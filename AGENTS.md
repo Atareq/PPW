@@ -27,7 +27,8 @@ The platform currently supports and will continue to expand around:
 - race records and race result rankings for pigeon/bird racing reports
 - manual PaymentRequest-based auction and marketplace sale completion
 - simple complaint/dispute records tied to approved or rejected payment requests
-- future media, pedigree, QR, reviews, reward point automation, chat, and expanded promotion modules
+- customer-to-seller direct chat through a REST-only MVP
+- future media, pedigree, QR, reviews, reward point automation, realtime chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
 
@@ -128,6 +129,7 @@ Current major apps:
 - `apps.payments`
 - `apps.promotions`
 - `apps.complaints`
+- `apps.chat`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -560,6 +562,66 @@ Current complaint service implementation names:
 - `ComplaintService.resolve()` resolves an open or in-review complaint
 - `ComplaintService.reject()` rejects an open or in-review complaint
 - `ComplaintService.cancel()` cancels an open complaint created by the active profile
+
+### `apps.chat`
+
+Current responsibilities:
+
+- direct one-to-one conversations between one customer profile and one seller profile
+- REST-only conversation creation and listing
+- REST-only message listing and text message sending
+- message read marking for the active receiver
+- simple contact-sharing rejection for MVP chat safety
+- Celery notification task placeholder for new chat messages
+
+Important note:
+
+This app is not a realtime system. It does not implement WebSockets, Firebase, realtime database behavior, typing indicators, online presence, group chat, attachments, asset/order-linked conversations, moderation UI, blocking, message deletion, or frontend behavior.
+
+Current chat API:
+
+- `/api/chat/conversations/`
+  - `GET`: authenticated active customer or seller profile lists only conversations where it is the customer or seller
+  - `POST`: authenticated active profile creates or retrieves the existing conversation with `receiver_profile_id`
+- `/api/chat/conversations/<id>/messages/`
+  - `GET`: participant lists messages in one conversation; supports optional `after_id`
+  - `POST`: participant sends a new text message
+- `/api/chat/conversations/<id>/mark-read/`
+  - `POST`: participant marks unread messages addressed to their active profile as read
+
+Current chat behavior:
+
+- conversations are tied to profiles, not directly to `UserAccount`
+- `Conversation.customer` points to `CustomerProfile`
+- `Conversation.seller` points to `SellerProfile`
+- only one conversation can exist for a customer and seller pair
+- existing conversations are returned instead of creating duplicates
+- active profiles cannot create conversations with themselves
+- conversation creation rejects customer/customer, seller/seller, manager/customer, and manager/seller pairs
+- conversation creation rejects customer and seller profiles that belong to the same user account
+- conversation creation rejects receiver profiles that are not active, activated, valid, or non-deleted
+- conversation list is scoped to the active customer or seller profile only
+- conversation list uses `Conversation.last_message` and `last_message_at` for latest-message summary and ordering
+- message list is scoped to the conversation customer or seller only and orders by `created`, then `id`
+- message list supports `after_id` for polling-style incremental fetches
+- sending requires an active conversation and a sender who is the conversation customer or seller
+- message receiver is derived as the other participant; clients do not submit receiver ids
+- messages are text-only and capped at `Message.MAX_BODY_LENGTH`
+- empty messages are rejected
+- messages containing phone-like numbers, email addresses, URLs, WhatsApp references, `wa.me`, Telegram, or `t.me` references are rejected
+- sending a message updates `Conversation.last_message` and `last_message_at`
+- sending a message triggers `send_chat_message_notification(message_id)` through Celery
+- notification enqueue failures are logged and do not roll back message creation
+- the current notification task is a safe logging placeholder because there is no notification app/model yet
+
+Current chat service implementation names:
+
+- `conversation_queryset()` returns optimized conversation rows with customer, seller, and last-message relations
+- `message_queryset()` returns optimized message rows with sender and receiver relations
+- `ChatService.get_or_create_conversation()` resolves the customer/seller pair and returns the existing or new conversation
+- `ChatService.send_message()` validates customer/seller participation, state, and contact-sharing rules, creates the message, updates conversation summary fields, and enqueues notification
+- `ChatService.mark_messages_read()` marks unread messages for the reader profile as read
+- `send_chat_message_notification()` is the Celery notification placeholder task
 
 ### `apps.promotions`
 
@@ -1766,8 +1828,8 @@ The codebase does not yet fully implement:
 - race results
 - reward point automation and richer rewards programs
 - promotion features beyond the current marketplace discount/cashback MVP, such as expiration, coupons, seller-created offers, auction cashback, usage caps, and complex campaign limits
-- chat
-- notification delivery beyond lightweight order event placeholders
+- realtime or expanded chat beyond the current REST-only direct chat MVP
+- notification delivery beyond lightweight order event and chat task placeholders
 - pedigree package/quota enforcement as a finished business module
 
 Important framing:
@@ -1954,8 +2016,8 @@ Includes:
 - expanded cashback rules beyond the current internal-balance MVP
 - expanded badge automation
 - expanded offer and promotion campaigns beyond the current marketplace discount/cashback MVP
-- notifications
-- chat later, kept simple first
+- notifications beyond current placeholders
+- realtime or expanded chat beyond the current REST-only direct chat MVP
 
 ## Immediate Next Sprint Direction
 
@@ -1972,7 +2034,7 @@ Required tasks:
 5. improve audit/reporting around payment request lifecycle
 6. keep seller order-item approval separate from sale completion
 
-Do not prioritize reward point automation, QR, chat, or expanded promotions before this phase is complete.
+Do not prioritize reward point automation, QR, realtime or expanded chat, or expanded promotions before this phase is complete.
 
 ## Payment Approach
 
@@ -2029,7 +2091,7 @@ Rules:
   - auction lifecycle updates and auction settling
   - stale pending seller order-item cancellation
   - delayed or scheduled transitions
-  - notifications later
+  - notification placeholders and later notification delivery
   - non-critical async work
 - all Celery tasks must be:
   - idempotent
