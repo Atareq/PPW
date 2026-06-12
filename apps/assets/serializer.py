@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
 
@@ -39,11 +40,16 @@ class RemovedThumbnailUrlMixin:
 
 class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
     media = AssetMediaSerializer(many=True, required=False)
+    qr_payload_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Bird
         fields = "__all__"
-        read_only_fields = ["owner"]
+        read_only_fields = ["owner", "public_id", "qr_payload_url"]
+
+    def get_qr_payload_url(self, obj):
+        base_url = settings.PUBLIC_FRONTEND_BASE_URL.rstrip("/")
+        return f"{base_url}/birds/{obj.public_id}"
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -74,6 +80,43 @@ class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
             if media_data is not None:
                 AssetMediaWriteService.replace_media(bird, media_data)
             return bird
+
+
+class PublicAssetMediaSerializer(serializers.Serializer):
+    media_url = serializers.CharField(read_only=True)
+    media_type = serializers.CharField(read_only=True)
+    alt_text = serializers.CharField(read_only=True)
+    is_primary = serializers.BooleanField(read_only=True)
+    order = serializers.IntegerField(read_only=True)
+
+
+class PublicBirdSerializer(serializers.ModelSerializer):
+    media = PublicAssetMediaSerializer(many=True, read_only=True)
+    hatch_date = serializers.DateField(source="birthday", read_only=True)
+    seller = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Bird
+        fields = [
+            "public_id",
+            "ring_number",
+            "title",
+            "name",
+            "gender",
+            "colour",
+            "hatch_date",
+            "media",
+            "seller",
+        ]
+        read_only_fields = fields
+
+    def get_seller(self, obj):
+        data = {"type": obj.owner.type}
+        seller_profile = getattr(obj.owner, "sellerprofile", None)
+        nickname = getattr(seller_profile, "nickname", "")
+        if nickname:
+            data["nickname"] = nickname
+        return data
 
 
 class ProductAssetSerializer(

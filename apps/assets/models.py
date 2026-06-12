@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -75,6 +76,11 @@ class AssetSubtype(Asset):
 
 class Bird(AssetSubtype):
     CATEGORY = AssetCategory.BIRD
+    public_id = models.UUIDField(
+        unique=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
 
     # Bird-specific info
     GENDER_CHOICES = [

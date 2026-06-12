@@ -19,6 +19,7 @@ The platform currently supports and will continue to expand around:
 
 - user authentication with multiple profile types
 - bird ownership and bird listing
+- stable public bird identity via UUID-backed QR payload URLs
 - auction creation and bidding
 - scheduled auction closing with winner resolution
 - fixed-price product marketplace foundations through carts, checkout, orders, and seller item decisions
@@ -28,7 +29,8 @@ The platform currently supports and will continue to expand around:
 - manual PaymentRequest-based auction and marketplace sale completion
 - simple complaint/dispute records tied to approved or rejected payment requests
 - customer-to-seller direct chat through a REST-only MVP
-- future media, pedigree, QR, reviews, reward point automation, realtime chat, and expanded promotion modules
+- customer follow relationships for sellers and deterministic home feed MVPs
+- future media, pedigree, expanded QR, reviews, reward point automation, realtime chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
 
@@ -130,6 +132,7 @@ Current major apps:
 - `apps.promotions`
 - `apps.complaints`
 - `apps.chat`
+- `apps.social`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -290,6 +293,7 @@ Current model shape:
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
+- `Bird.public_id` is a stable UUID for public bird identity and QR payload URLs
 - `apps.general.models.Media` is a concrete base media-reference model with `media_url`, `media_type`, and optional `alt_text`
 - `Media.media_type` currently supports `image` and `video`; existing and omitted media types default to `image`
 - `apps.general.models.AssetMedia` is a concrete `Media` subclass linked to `Asset` through `asset.media`
@@ -298,14 +302,21 @@ Current model shape:
 Current bird API:
 
 - `/api/assets/birds/`
+- `/api/assets/birds/public/<public_id>/`
 
 Current bird API behavior:
 
 - `BirdViewSet` is a DRF `ModelViewSet`
 - `BirdSerializer` sets `owner` from `request.user.active_profile` on create
 - `owner` is read-only in API input
+- `public_id` is read-only in API input and must not be confused with internal `Bird.id`
+- `BirdSerializer` exposes `qr_payload_url` built from `PUBLIC_FRONTEND_BASE_URL` as `{PUBLIC_FRONTEND_BASE_URL}/birds/{public_id}`
 - `BirdSerializer` returns nested `media` and accepts nested `media` on create
 - `BirdSerializer` replaces the full media set when `media` is supplied on update; omitted `media` preserves existing media rows and `media: []` clears them
+- the public bird endpoint is unauthenticated, looks up by `public_id`, and returns `PublicBirdSerializer`
+- the public bird endpoint excludes deleted and inactive birds
+- `PublicBirdSerializer` exposes only public-safe bird identity fields, media, and seller display info; it does not expose internal DB ids, owner ids, prices, admin fields, phone, or email
+- the backend does not generate, store, or return QR images; frontend clients render QR codes from `qr_payload_url`
 - `images` and `image_url` are no longer accepted asset media API field names
 - `thumbnail_url` is no longer accepted in bird API payloads
 - `BirdValidator` enforces seller ownership, future birthday rejection, non-negative flying speed, parent gender, parent age, and no self-parent
@@ -622,6 +633,66 @@ Current chat service implementation names:
 - `ChatService.send_message()` validates customer/seller participation, state, and contact-sharing rules, creates the message, updates conversation summary fields, and enqueues notification
 - `ChatService.mark_messages_read()` marks unread messages for the reader profile as read
 - `send_chat_message_notification()` is the Celery notification placeholder task
+
+### `apps.social`
+
+Current responsibilities:
+
+- customer-to-seller follow relationships
+- idempotent seller follow and unfollow endpoints
+- active customer following-list endpoint
+- cursor-based customer auction feed
+- cursor-based customer market feed
+- deterministic discovery fallback after followed-seller content
+
+Important note:
+
+This app is not a recommendation engine, notification system, realtime feed, seen-item tracker, ads/sponsored-content system, seller-room feed, frontend module, or public unauthenticated discovery feed.
+
+Current social API:
+
+- `/api/social/sellers/<seller_id>/follow/`
+  - `POST`: authenticated active customer creates or reactivates a follow for an active seller
+- `/api/social/sellers/<seller_id>/unfollow/`
+  - `POST`: authenticated active customer deactivates a follow if present
+- `/api/social/sellers/following/`
+  - `GET`: authenticated active customer lists active followed sellers
+- `/api/feed/auctions/`
+  - `GET`: authenticated active customer gets followed-seller active auctions first, then discovery auctions
+- `/api/feed/market/`
+  - `GET`: authenticated active customer gets followed-seller market-listed products first, then discovery products
+
+Current social behavior:
+
+- `SellerFollow.follower` points to `CustomerProfile`
+- `SellerFollow.seller` points to `SellerProfile`
+- `SellerFollow.is_active` is toggled for unfollow/refollow; follows are not hard-deleted by the API
+- only one `SellerFollow` row can exist per follower/seller pair
+- customers cannot follow a seller profile on the same user account
+- customers cannot follow inactive, invalid, unactivated, or deleted sellers
+- repeated follow returns the existing active row or reactivates an inactive row
+- repeated unfollow is safe and leaves the row inactive
+- following lists exclude inactive, invalid, unactivated, or deleted sellers
+- feed endpoints require an authenticated active customer profile
+- auction feed content is limited to visible, currently active `AuctionStatus.ACTIVE` auctions from active valid sellers
+- market feed content is limited to available, listed, positive-count supply/accessory/feed/supplement assets from active valid sellers
+- feed ordering is stable by `created` descending, then `id` descending
+- feed responses put `source="following"` results before `source="discovery"` results
+- discovery excludes content from followed sellers and IDs already returned in the same response
+- if followed content is exhausted or absent, discovery fills the remaining limit
+- feed `limit` defaults to `20`, is capped at `50`, and must be at least `1`
+- feed cursors are URL-safe base64 JSON with separate `following` and `discovery` positions plus `following_exhausted`
+- invalid cursor payloads return a clean validation error
+- feeds do not use `order_by("?")`, SQL random functions, seen-item tracking, personalization scores, or recommendation ranking
+
+Current social service implementation names:
+
+- `SellerFollowService.follow()` creates, returns, or reactivates a seller follow
+- `SellerFollowService.unfollow()` idempotently marks a seller follow inactive
+- `SellerFollowService.following_queryset()` returns active followed sellers for the active customer
+- `FeedService.get_auction_feed()` builds the auction feed with following content first and deterministic discovery fallback
+- `FeedService.get_market_feed()` builds the market feed with following content first and deterministic discovery fallback
+- `FeedCursor` parses and encodes the two-source cursor state
 
 ### `apps.promotions`
 
@@ -1807,6 +1878,8 @@ The codebase currently provides:
 - Dockerized local and production runtime configuration
 - Redis + Celery worker/beat infrastructure for background jobs
 - automatic scheduled auction closing through Celery Beat
+- seller follow relationships for customer profiles
+- cursor-based auction and market home feeds that rank followed-seller content before deterministic discovery fallback
 
 Current API documentation coverage:
 
@@ -1824,7 +1897,7 @@ The codebase does not yet fully implement:
 - rating/comment moderation, replies, reports, likes, notifications, or analytics
 - pedigree system
 - pedigree reader
-- QR flow
+- expanded QR generation, printing, and transfer flows beyond the current public identity URL
 - race results
 - reward point automation and richer rewards programs
 - promotion features beyond the current marketplace discount/cashback MVP, such as expiration, coupons, seller-created offers, auction cashback, usage caps, and complex campaign limits
@@ -2001,7 +2074,7 @@ Includes:
 - race results
 - pedigree data model
 - pedigree export structure
-- QR identity / transfer entrypoint
+- QR transfer entrypoint beyond the current public identity URL
 - pedigree reader later in a simple manual-assisted phase first
 
 ### Phase F - Engagement Layer

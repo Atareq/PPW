@@ -1,7 +1,8 @@
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.filters import OrderingFilter
+from rest_framework.permissions import AllowAny
 from rest_framework.permissions import SAFE_METHODS
 
 from apps.assets.filters import (
@@ -10,11 +11,19 @@ from apps.assets.filters import (
     SupplementFilter,
     SupplyFilter,
 )
-from apps.assets.models import Accessory, Bird, Feed, Supplement, Supply
+from apps.assets.models import (
+    Accessory,
+    AssetStatus,
+    Bird,
+    Feed,
+    Supplement,
+    Supply,
+)
 from apps.assets.serializer import (
     AccessorySerializer,
     BirdSerializer,
     FeedSerializer,
+    PublicBirdSerializer,
     SupplementSerializer,
     SupplySerializer,
 )
@@ -31,6 +40,24 @@ class BirdViewSet(viewsets.ModelViewSet):
         HasAppAccess,
     ]
     permission_resource = "BIRD"
+
+
+class PublicBirdViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Public-safe bird identity lookup by stable UUID."""
+
+    serializer_class = PublicBirdSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    lookup_field = "public_id"
+    lookup_url_kwarg = "public_id"
+
+    def get_queryset(self):
+        return (
+            Bird.objects.filter(deleted__isnull=True)
+            .exclude(status=AssetStatus.INACTIVE)
+            .select_related("owner", "owner__sellerprofile")
+            .prefetch_related("media")
+        )
 
 
 class ProductAssetViewSet(viewsets.ModelViewSet):

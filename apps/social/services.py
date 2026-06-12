@@ -1,0 +1,388 @@
+import base64
+import json
+
+from django.db import IntegrityError, transaction
+from django.db.models import Q
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+
+from apps.assets.models import Asset, AssetCategory, AssetStatus
+from apps.auctions.models import Auction, AuctionStatus
+from apps.social.models import SellerFollow
+from apps.users.constants import ProfileType
+from apps.users.models import CustomerProfile, SellerProfile
+
+
+DEFAULT_FEED_LIMIT = 20
+MAX_FEED_LIMIT = 50
+PRODUCT_MARKET_CATEGORIES = [
+    AssetCategory.SUPPLY,
+    AssetCategory.ACCESSORY,
+    AssetCategory.FEED,
+    AssetCategory.SUPPLEMENT,
+]
+
+
+class SellerFollowService:
+    @staticmethod
+    def follow(active_profile, seller_id):
+        customer = SellerFollowService._require_customer(active_profile)
+        seller = SellerFollowService._get_seller(seller_id)
+        SellerFollowService._validate_not_same_user(customer, seller)
+        SellerFollowService._ensure_active_seller(seller)
+
+        try:
+            with transaction.atomic():
+                follow, created = SellerFollow.objects.get_or_create(
+                    follower_id=customer.pk,
+                    seller_id=seller.pk,
+                    defaults={"is_active": True},
+                )
+                if not created and not follow.is_active:
+                    follow.is_active = True
+                    follow.save(update_fields=["is_active", "modified"])
+                return follow
+        except IntegrityError:
+            follow = SellerFollow.objects.get(
+                follower_id=customer.pk,
+                seller_id=seller.pk,
+            )
+            if not follow.is_active:
+                follow.is_active = True
+                follow.save(update_fields=["is_active", "modified"])
+            return follow
+
+    @staticmethod
+    def unfollow(active_profile, seller_id):
+        customer = SellerFollowService._require_customer(active_profile)
+        seller = SellerProfile.objects.filter(pk=seller_id).first()
+        if seller is None:
+            raise NotFound("Seller was not found.")
+
+        SellerFollow.objects.filter(
+            follower_id=customer.pk,
+            seller_id=seller.pk,
+            is_active=True,
+        ).update(is_active=False, modified=timezone.now())
+        return seller
+
+    @staticmethod
+    def following_queryset(active_profile):
+        customer = SellerFollowService._require_customer(active_profile)
+        return (
+            SellerFollow.objects.filter(
+                follower_id=customer.pk,
+                is_active=True,
+                seller__is_active=True,
+                seller__activated=True,
+                seller__is_valid=True,
+                seller__deleted__isnull=True,
+            )
+            .select_related("seller")
+            .order_by("-created", "-id")
+        )
+
+    @staticmethod
+    def followed_seller_ids(customer_profile):
+        return list(
+            SellerFollow.objects.filter(
+                follower_id=customer_profile.pk,
+                is_active=True,
+                seller__is_active=True,
+                seller__activated=True,
+                seller__is_valid=True,
+                seller__deleted__isnull=True,
+            ).values_list("seller_id", flat=True)
+        )
+
+    @staticmethod
+    def _require_customer(profile):
+        if profile.type != ProfileType.CUSTOMER:
+            raise PermissionDenied("Active profile must be a customer.")
+        return CustomerProfile.objects.get(pk=profile.pk)
+
+    @staticmethod
+    def _get_seller(seller_id):
+        try:
+            return SellerProfile.objects.get(pk=seller_id)
+        except SellerProfile.DoesNotExist as exc:
+            raise NotFound("Seller was not found.") from exc
+
+    @staticmethod
+    def _ensure_active_seller(seller):
+        if (
+            not seller.is_active
+            or not seller.activated
+            or not seller.is_valid
+            or getattr(seller, "deleted", None) is not None
+        ):
+            raise NotFound("Seller was not found.")
+
+    @staticmethod
+    def _validate_not_same_user(customer, seller):
+        if customer.user_id == seller.user_id:
+            raise ValidationError(
+                {
+                    "seller_id": (
+                        "Customers cannot follow their own seller profile."
+                    )
+                }
+            )
+
+
+class FeedCursor:
+    @staticmethod
+    def parse(raw_cursor):
+        if not raw_cursor:
+            return {
+                "following": None,
+                "discovery": None,
+                "following_exhausted": False,
+            }
+
+        try:
+            padded = raw_cursor + "=" * (-len(raw_cursor) % 4)
+            decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+            data = json.loads(decoded.decode("utf-8"))
+        except (ValueError, TypeError, UnicodeDecodeError) as exc:
+            raise ValidationError({"cursor": "Invalid cursor."}) from exc
+
+        return {
+            "following": FeedCursor._parse_position(data.get("following")),
+            "discovery": FeedCursor._parse_position(data.get("discovery")),
+            "following_exhausted": bool(data.get("following_exhausted")),
+        }
+
+    @staticmethod
+    def encode(state):
+        data = {
+            "following": FeedCursor._dump_position(state.get("following")),
+            "discovery": FeedCursor._dump_position(state.get("discovery")),
+            "following_exhausted": bool(state.get("following_exhausted")),
+        }
+        payload = json.dumps(data, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+    @staticmethod
+    def from_object(obj):
+        return {
+            "created_at": obj.created.isoformat(),
+            "id": obj.pk,
+        }
+
+    @staticmethod
+    def _parse_position(value):
+        if value in (None, {}):
+            return None
+
+        try:
+            created_at = parse_datetime(value["created_at"])
+            object_id = int(value["id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValidationError({"cursor": "Invalid cursor."}) from exc
+
+        if created_at is None:
+            raise ValidationError({"cursor": "Invalid cursor."})
+        if timezone.is_naive(created_at):
+            raise ValidationError({"cursor": "Invalid cursor."})
+
+        return {
+            "created_at": created_at,
+            "id": object_id,
+        }
+
+    @staticmethod
+    def _dump_position(value):
+        if not value:
+            return None
+
+        created_at = value["created_at"]
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+        return {
+            "created_at": created_at,
+            "id": value["id"],
+        }
+
+
+class FeedService:
+    @staticmethod
+    def parse_limit(raw_limit):
+        if raw_limit in (None, ""):
+            return DEFAULT_FEED_LIMIT
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"limit": "Limit must be an integer."}) from exc
+        if limit < 1:
+            raise ValidationError({"limit": "Limit must be at least 1."})
+        return min(limit, MAX_FEED_LIMIT)
+
+    @staticmethod
+    def get_auction_feed(customer_profile, limit, cursor=None):
+        customer = SellerFollowService._require_customer(customer_profile)
+        followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        cursor_state = FeedCursor.parse(cursor)
+
+        now = timezone.now()
+        base_queryset = (
+            Auction.objects.filter(
+                deleted__isnull=True,
+                owner__is_active=True,
+                owner__activated=True,
+                owner__is_valid=True,
+                owner__deleted__isnull=True,
+                status=AuctionStatus.ACTIVE,
+                is_visible=True,
+                start_time__lte=now,
+                end_time__gt=now,
+            )
+            .select_related("owner", "owner__sellerprofile")
+            .prefetch_related("items")
+            .order_by("-created", "-id")
+        )
+
+        return FeedService._build_feed(
+            base_queryset=base_queryset,
+            followed_seller_ids=followed_seller_ids,
+            limit=limit,
+            cursor_state=cursor_state,
+        )
+
+    @staticmethod
+    def get_market_feed(customer_profile, limit, cursor=None):
+        customer = SellerFollowService._require_customer(customer_profile)
+        followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        cursor_state = FeedCursor.parse(cursor)
+
+        base_queryset = (
+            Asset.objects.filter(
+                deleted__isnull=True,
+                owner__is_active=True,
+                owner__activated=True,
+                owner__is_valid=True,
+                owner__deleted__isnull=True,
+                category__in=PRODUCT_MARKET_CATEGORIES,
+                is_market_listed=True,
+                status=AssetStatus.AVAILABLE,
+                count__gt=0,
+            )
+            .select_related("owner", "owner__sellerprofile")
+            .prefetch_related("media")
+            .order_by("-created", "-id")
+        )
+
+        return FeedService._build_feed(
+            base_queryset=base_queryset,
+            followed_seller_ids=followed_seller_ids,
+            limit=limit,
+            cursor_state=cursor_state,
+        )
+
+    @staticmethod
+    def _build_feed(
+        *,
+        base_queryset,
+        followed_seller_ids,
+        limit,
+        cursor_state,
+    ):
+        results = []
+        returned_ids = set()
+        next_state = {
+            "following": cursor_state.get("following"),
+            "discovery": cursor_state.get("discovery"),
+            "following_exhausted": cursor_state.get("following_exhausted")
+            or not followed_seller_ids,
+        }
+        following_has_more = False
+        discovery_has_more = False
+
+        if followed_seller_ids and not next_state["following_exhausted"]:
+            following_queryset = base_queryset.filter(
+                owner_id__in=followed_seller_ids
+            )
+            following_items, following_has_more = FeedService._page_queryset(
+                following_queryset,
+                limit,
+                cursor_state.get("following"),
+            )
+            for item in following_items:
+                results.append({"source": "following", "item": item})
+                returned_ids.add(item.pk)
+            if following_items:
+                next_state["following"] = FeedCursor.from_object(
+                    following_items[-1]
+                )
+            if not following_has_more:
+                next_state["following_exhausted"] = True
+
+        remaining = limit - len(results)
+        if remaining > 0:
+            discovery_queryset = base_queryset
+            if followed_seller_ids:
+                discovery_queryset = discovery_queryset.exclude(
+                    owner_id__in=followed_seller_ids
+                )
+            if returned_ids:
+                discovery_queryset = discovery_queryset.exclude(
+                    pk__in=returned_ids
+                )
+
+            discovery_items, discovery_has_more = FeedService._page_queryset(
+                discovery_queryset,
+                remaining,
+                cursor_state.get("discovery"),
+            )
+            for item in discovery_items:
+                results.append({"source": "discovery", "item": item})
+                returned_ids.add(item.pk)
+            if discovery_items:
+                next_state["discovery"] = FeedCursor.from_object(
+                    discovery_items[-1]
+                )
+        elif next_state["following_exhausted"]:
+            discovery_queryset = base_queryset
+            if followed_seller_ids:
+                discovery_queryset = discovery_queryset.exclude(
+                    owner_id__in=followed_seller_ids
+                )
+            _, discovery_has_more = FeedService._page_queryset(
+                discovery_queryset,
+                1,
+                cursor_state.get("discovery"),
+            )
+
+        has_more = following_has_more or discovery_has_more
+        return {
+            "results": results,
+            "next_cursor": FeedCursor.encode(next_state) if has_more else None,
+            "has_more": has_more,
+            "meta": {
+                "following_count": sum(
+                    1 for item in results if item["source"] == "following"
+                ),
+                "discovery_count": sum(
+                    1 for item in results if item["source"] == "discovery"
+                ),
+                "fallback_used": any(
+                    item["source"] == "discovery" for item in results
+                ),
+                "following_exhausted": next_state["following_exhausted"],
+            },
+        }
+
+    @staticmethod
+    def _page_queryset(queryset, limit, cursor_position):
+        if cursor_position:
+            queryset = queryset.filter(
+                Q(created__lt=cursor_position["created_at"])
+                | Q(
+                    created=cursor_position["created_at"],
+                    id__lt=cursor_position["id"],
+                )
+            )
+
+        items = list(queryset[: limit + 1])
+        return items[:limit], len(items) > limit

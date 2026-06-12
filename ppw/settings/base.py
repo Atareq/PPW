@@ -59,6 +59,7 @@ APPS = [
     "apps.promotions",
     "apps.complaints",
     "apps.chat",
+    "apps.social",
 ]
 
 DEBUG_APPS = []
@@ -180,6 +181,10 @@ CELERY_TASK_EAGER_PROPAGATES = env_bool(
 ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS = int(
     os.getenv("ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS", "3")
 )
+PUBLIC_FRONTEND_BASE_URL = os.getenv(
+    "PUBLIC_FRONTEND_BASE_URL",
+    "http://localhost:3000",
+).rstrip("/")
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {
         "task": "auctions.tasks.close_expired_auctions",
