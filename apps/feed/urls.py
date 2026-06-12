@@ -1,6 +1,9 @@
 from django.urls import path
 
-from apps.social.views import (
+from apps.feed.views import (
+    AuctionFeedViewSet,
+    MarketFeedViewSet,
+    PeopleYouMayKnowViewSet,
     SellerFollowCreateViewSet,
     SellerFollowingViewSet,
     SellerUnfollowCreateViewSet,
@@ -9,7 +12,7 @@ from apps.social.views import (
 CREATE_ACTION = {"post": "create"}
 LIST_ACTION = {"get": "list"}
 
-app_name = "social"
+app_name = "feed"
 
 urlpatterns = [
     path(
@@ -26,5 +29,20 @@ urlpatterns = [
         "sellers/following/",
         SellerFollowingViewSet.as_view(LIST_ACTION),
         name="seller-following",
+    ),
+    path(
+        "people-you-may-know/",
+        PeopleYouMayKnowViewSet.as_view(LIST_ACTION),
+        name="people-you-may-know",
+    ),
+    path(
+        "auctions/",
+        AuctionFeedViewSet.as_view(LIST_ACTION),
+        name="auction-feed",
+    ),
+    path(
+        "market/",
+        MarketFeedViewSet.as_view(LIST_ACTION),
+        name="market-feed",
     ),
 ]

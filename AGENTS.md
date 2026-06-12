@@ -132,7 +132,7 @@ Current major apps:
 - `apps.promotions`
 - `apps.complaints`
 - `apps.chat`
-- `apps.social`
+- `apps.feed`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -634,13 +634,14 @@ Current chat service implementation names:
 - `ChatService.mark_messages_read()` marks unread messages for the reader profile as read
 - `send_chat_message_notification()` is the Celery notification placeholder task
 
-### `apps.social`
+### `apps.feed`
 
 Current responsibilities:
 
 - customer-to-seller follow relationships
 - idempotent seller follow and unfollow endpoints
 - active customer following-list endpoint
+- random active seller suggestions for customers
 - cursor-based customer auction feed
 - cursor-based customer market feed
 - deterministic discovery fallback after followed-seller content
@@ -649,20 +650,22 @@ Important note:
 
 This app is not a recommendation engine, notification system, realtime feed, seen-item tracker, ads/sponsored-content system, seller-room feed, frontend module, or public unauthenticated discovery feed.
 
-Current social API:
+Current feed API:
 
-- `/api/social/sellers/<seller_id>/follow/`
+- `/api/feed/sellers/<seller_id>/follow/`
   - `POST`: authenticated active customer creates or reactivates a follow for an active seller
-- `/api/social/sellers/<seller_id>/unfollow/`
+- `/api/feed/sellers/<seller_id>/unfollow/`
   - `POST`: authenticated active customer deactivates a follow if present
-- `/api/social/sellers/following/`
+- `/api/feed/sellers/following/`
   - `GET`: authenticated active customer lists active followed sellers
+- `/api/feed/people-you-may-know/`
+  - `GET`: authenticated active customer gets public-safe active seller suggestions
 - `/api/feed/auctions/`
   - `GET`: authenticated active customer gets followed-seller active auctions first, then discovery auctions
 - `/api/feed/market/`
   - `GET`: authenticated active customer gets followed-seller market-listed products first, then discovery products
 
-Current social behavior:
+Current feed behavior:
 
 - `SellerFollow.follower` points to `CustomerProfile`
 - `SellerFollow.seller` points to `SellerProfile`
@@ -673,6 +676,10 @@ Current social behavior:
 - repeated follow returns the existing active row or reactivates an inactive row
 - repeated unfollow is safe and leaves the row inactive
 - following lists exclude inactive, invalid, unactivated, or deleted sellers
+- seller suggestions require an authenticated active customer profile
+- seller suggestions return only `SellerProfile` rows and exclude followed sellers, same-user seller profiles, inactive, invalid, unactivated, and deleted sellers
+- seller suggestions expose public-safe seller fields only and do not expose user, phone, email, balance, private, or admin fields
+- seller suggestions default to `limit=10`, cap `limit` at `50`, and apply Django `Random()` only after all eligibility filters
 - feed endpoints require an authenticated active customer profile
 - auction feed content is limited to visible, currently active `AuctionStatus.ACTIVE` auctions from active valid sellers
 - market feed content is limited to available, listed, positive-count supply/accessory/feed/supplement assets from active valid sellers
@@ -683,13 +690,14 @@ Current social behavior:
 - feed `limit` defaults to `20`, is capped at `50`, and must be at least `1`
 - feed cursors are URL-safe base64 JSON with separate `following` and `discovery` positions plus `following_exhausted`
 - invalid cursor payloads return a clean validation error
-- feeds do not use `order_by("?")`, SQL random functions, seen-item tracking, personalization scores, or recommendation ranking
+- cursor feeds do not use `order_by("?")`, SQL random functions, seen-item tracking, personalization scores, or recommendation ranking
 
-Current social service implementation names:
+Current feed service implementation names:
 
 - `SellerFollowService.follow()` creates, returns, or reactivates a seller follow
 - `SellerFollowService.unfollow()` idempotently marks a seller follow inactive
 - `SellerFollowService.following_queryset()` returns active followed sellers for the active customer
+- `FeedService.get_people_you_may_know()` returns random active seller suggestions after customer-specific exclusions
 - `FeedService.get_auction_feed()` builds the auction feed with following content first and deterministic discovery fallback
 - `FeedService.get_market_feed()` builds the market feed with following content first and deterministic discovery fallback
 - `FeedCursor` parses and encodes the two-source cursor state

@@ -69,17 +69,17 @@ class Migration(migrations.Migration):
                 "indexes": [
                     models.Index(
                         fields=["follower", "is_active"],
-                        name="social_fol_follower_active",
+                        name="feed_fol_follower_active",
                     ),
                     models.Index(
-                        fields=["seller", "is_active"], name="social_fol_seller_active"
+                        fields=["seller", "is_active"], name="feed_fol_seller_active"
                     ),
                     models.Index(
                         fields=["follower", "created"],
-                        name="social_fol_follower_created",
+                        name="feed_fol_follower_created",
                     ),
                     models.Index(
-                        fields=["seller", "created"], name="social_fol_seller_created"
+                        fields=["seller", "created"], name="feed_fol_seller_created"
                     ),
                 ],
             },
@@ -87,7 +87,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="sellerfollow",
             constraint=models.UniqueConstraint(
-                fields=("follower", "seller"), name="social_unique_follower_seller"
+                fields=("follower", "seller"), name="feed_unique_follower_seller"
             ),
         ),
     ]

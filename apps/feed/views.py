@@ -3,16 +3,18 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.social.models import SellerFollow
-from apps.social.serializers import (
+from apps.feed.models import SellerFollow
+from apps.feed.serializers import (
     AuctionFeedResultSerializer,
     FeedQuerySerializer,
     MarketFeedResultSerializer,
     SellerFollowSerializer,
     SellerFollowSellerSerializer,
+    SellerSuggestionQuerySerializer,
+    SellerSuggestionSerializer,
     SellerUnfollowResponseSerializer,
 )
-from apps.social.services import FeedService, SellerFollowService
+from apps.feed.services import FeedService, SellerFollowService
 
 
 def active_profile(request):
@@ -21,7 +23,7 @@ def active_profile(request):
 
 @extend_schema_view(
     create=extend_schema(
-        tags=["Social"],
+        tags=["Feed"],
         request=None,
         responses={200: SellerFollowSerializer},
     ),
@@ -46,7 +48,7 @@ class SellerFollowCreateViewSet(viewsets.GenericViewSet):
 
 @extend_schema_view(
     create=extend_schema(
-        tags=["Social"],
+        tags=["Feed"],
         request=None,
         responses={200: SellerUnfollowResponseSerializer},
     ),
@@ -74,7 +76,7 @@ class SellerUnfollowCreateViewSet(viewsets.GenericViewSet):
 
 @extend_schema_view(
     list=extend_schema(
-        tags=["Social"],
+        tags=["Feed"],
         responses={200: SellerFollowSellerSerializer(many=True)},
     ),
 )
@@ -86,12 +88,40 @@ class SellerFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = SellerFollowSellerSerializer
 
     def list(self, request, *args, **kwargs):
-        follows = SellerFollowService.following_queryset(
-            active_profile(request)
-        )
+        follows = SellerFollowService.following_queryset(active_profile(request))
         sellers = [follow.seller for follow in follows]
         return Response(
             SellerFollowSellerSerializer(sellers, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Feed"],
+        parameters=[SellerSuggestionQuerySerializer],
+        responses={200: SellerSuggestionSerializer(many=True)},
+    ),
+)
+class PeopleYouMayKnowViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Return random active seller suggestions for the active customer."""
+
+    permission_classes = [IsAuthenticated]
+    queryset = SellerFollow.objects.none()
+    serializer_class = SellerSuggestionSerializer
+
+    def list(self, request, *args, **kwargs):
+        query_serializer = SellerSuggestionQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        limit = FeedService.parse_suggestion_limit(
+            query_serializer.validated_data.get("limit")
+        )
+        sellers = FeedService.get_people_you_may_know(
+            active_profile(request),
+            limit,
+        )
+        return Response(
+            SellerSuggestionSerializer(sellers, many=True).data,
             status=status.HTTP_200_OK,
         )
 
@@ -102,9 +132,7 @@ class BaseFeedViewSet(viewsets.GenericViewSet):
     def _feed_response(self, request, service_method, result_serializer_class):
         query_serializer = FeedQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
-        limit = FeedService.parse_limit(
-            query_serializer.validated_data.get("limit")
-        )
+        limit = FeedService.parse_limit(query_serializer.validated_data.get("limit"))
         cursor = query_serializer.validated_data.get("cursor")
         feed = service_method(
             active_profile(request),

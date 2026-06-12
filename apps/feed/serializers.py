@@ -3,7 +3,7 @@ from rest_framework import serializers
 from apps.assets.models import Asset
 from apps.auctions.serializers import AuctionListSerializer
 from apps.general.serializers import AssetMediaSerializer
-from apps.social.models import SellerFollow
+from apps.feed.models import SellerFollow
 
 
 class SellerFollowSellerSerializer(serializers.Serializer):
@@ -22,6 +22,23 @@ class SellerFollowSellerSerializer(serializers.Serializer):
             "is_followed": True,
         }
         return data
+
+
+class SellerSuggestionSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    nickname = serializers.CharField(read_only=True, allow_blank=True)
+    country = serializers.CharField(read_only=True)
+    currency = serializers.CharField(read_only=True)
+    avg_rating = serializers.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        read_only=True,
+    )
+    ratings_count = serializers.IntegerField(read_only=True)
+    is_followed = serializers.SerializerMethodField()
+
+    def get_is_followed(self, obj):
+        return False
 
 
 class SellerFollowSerializer(serializers.ModelSerializer):
@@ -108,3 +125,7 @@ class MarketFeedResultSerializer(serializers.Serializer):
 class FeedQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(required=False, min_value=1)
     cursor = serializers.CharField(required=False, allow_blank=False)
+
+
+class SellerSuggestionQuerySerializer(serializers.Serializer):
+    limit = serializers.IntegerField(required=False, min_value=1)

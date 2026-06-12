@@ -3,18 +3,20 @@ import json
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.db.models.functions import Random
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import Auction, AuctionStatus
-from apps.social.models import SellerFollow
+from apps.feed.models import SellerFollow
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, SellerProfile
 
 
 DEFAULT_FEED_LIMIT = 20
+DEFAULT_SELLER_SUGGESTION_LIMIT = 10
 MAX_FEED_LIMIT = 50
 PRODUCT_MARKET_CATEGORIES = [
     AssetCategory.SUPPLY,
@@ -123,11 +125,7 @@ class SellerFollowService:
     def _validate_not_same_user(customer, seller):
         if customer.user_id == seller.user_id:
             raise ValidationError(
-                {
-                    "seller_id": (
-                        "Customers cannot follow their own seller profile."
-                    )
-                }
+                {"seller_id": ("Customers cannot follow their own seller profile.")}
             )
 
 
@@ -220,6 +218,34 @@ class FeedService:
         return min(limit, MAX_FEED_LIMIT)
 
     @staticmethod
+    def parse_suggestion_limit(raw_limit):
+        if raw_limit in (None, ""):
+            return DEFAULT_SELLER_SUGGESTION_LIMIT
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"limit": "Limit must be an integer."}) from exc
+        if limit < 1:
+            raise ValidationError({"limit": "Limit must be at least 1."})
+        return min(limit, MAX_FEED_LIMIT)
+
+    @staticmethod
+    def get_people_you_may_know(customer_profile, limit):
+        customer = SellerFollowService._require_customer(customer_profile)
+        followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+
+        queryset = SellerProfile.objects.filter(
+            is_active=True,
+            activated=True,
+            is_valid=True,
+            deleted__isnull=True,
+        ).exclude(user_id=customer.user_id)
+        if followed_seller_ids:
+            queryset = queryset.exclude(pk__in=followed_seller_ids)
+
+        return list(queryset.order_by(Random())[:limit])
+
+    @staticmethod
     def get_auction_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
@@ -300,9 +326,7 @@ class FeedService:
         discovery_has_more = False
 
         if followed_seller_ids and not next_state["following_exhausted"]:
-            following_queryset = base_queryset.filter(
-                owner_id__in=followed_seller_ids
-            )
+            following_queryset = base_queryset.filter(owner_id__in=followed_seller_ids)
             following_items, following_has_more = FeedService._page_queryset(
                 following_queryset,
                 limit,
@@ -312,9 +336,7 @@ class FeedService:
                 results.append({"source": "following", "item": item})
                 returned_ids.add(item.pk)
             if following_items:
-                next_state["following"] = FeedCursor.from_object(
-                    following_items[-1]
-                )
+                next_state["following"] = FeedCursor.from_object(following_items[-1])
             if not following_has_more:
                 next_state["following_exhausted"] = True
 
@@ -326,9 +348,7 @@ class FeedService:
                     owner_id__in=followed_seller_ids
                 )
             if returned_ids:
-                discovery_queryset = discovery_queryset.exclude(
-                    pk__in=returned_ids
-                )
+                discovery_queryset = discovery_queryset.exclude(pk__in=returned_ids)
 
             discovery_items, discovery_has_more = FeedService._page_queryset(
                 discovery_queryset,
@@ -339,9 +359,7 @@ class FeedService:
                 results.append({"source": "discovery", "item": item})
                 returned_ids.add(item.pk)
             if discovery_items:
-                next_state["discovery"] = FeedCursor.from_object(
-                    discovery_items[-1]
-                )
+                next_state["discovery"] = FeedCursor.from_object(discovery_items[-1])
         elif next_state["following_exhausted"]:
             discovery_queryset = base_queryset
             if followed_seller_ids:
@@ -366,9 +384,7 @@ class FeedService:
                 "discovery_count": sum(
                     1 for item in results if item["source"] == "discovery"
                 ),
-                "fallback_used": any(
-                    item["source"] == "discovery" for item in results
-                ),
+                "fallback_used": any(item["source"] == "discovery" for item in results),
                 "following_exhausted": next_state["following_exhausted"],
             },
         }

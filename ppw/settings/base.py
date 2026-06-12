@@ -59,7 +59,7 @@ APPS = [
     "apps.promotions",
     "apps.complaints",
     "apps.chat",
-    "apps.social",
+    "apps.feed",
 ]
 
 DEBUG_APPS = []

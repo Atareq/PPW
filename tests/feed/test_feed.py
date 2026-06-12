@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from apps.assets.models import AssetStatus
 from apps.auctions.models import Auction, AuctionStatus
 from apps.authentication.services import build_token_for_user
-from apps.social.models import SellerFollow
+from apps.feed.models import SellerFollow
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionFactory,
@@ -65,9 +65,7 @@ class TestSellerFollow:
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         client = authenticated_client(customer)
 
-        response = client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/follow/"
-        )
+        response = client.post(f"/api/feed/sellers/{seller.active_profile.pk}/follow/")
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["is_active"] is True
@@ -98,19 +96,13 @@ class TestSellerFollow:
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         client = authenticated_client(customer)
 
-        first = client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/follow/"
-        )
-        second = client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/follow/"
-        )
+        first = client.post(f"/api/feed/sellers/{seller.active_profile.pk}/follow/")
+        second = client.post(f"/api/feed/sellers/{seller.active_profile.pk}/follow/")
         SellerFollow.objects.filter(
             follower_id=customer.active_profile.pk,
             seller_id=seller.active_profile.pk,
         ).update(is_active=False)
-        third = client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/follow/"
-        )
+        third = client.post(f"/api/feed/sellers/{seller.active_profile.pk}/follow/")
 
         assert first.status_code == status.HTTP_200_OK
         assert second.status_code == status.HTTP_200_OK
@@ -128,12 +120,8 @@ class TestSellerFollow:
         )
         client = authenticated_client(customer)
 
-        first = client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/unfollow/"
-        )
-        second = client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/unfollow/"
-        )
+        first = client.post(f"/api/feed/sellers/{seller.active_profile.pk}/unfollow/")
+        second = client.post(f"/api/feed/sellers/{seller.active_profile.pk}/unfollow/")
         follow.refresh_from_db()
 
         assert first.status_code == status.HTTP_200_OK
@@ -145,9 +133,7 @@ class TestSellerFollow:
         seller_profile = SellerProfileFactory(user=user, is_active=False)
         client = authenticated_client(user)
 
-        response = client.post(
-            f"/api/social/sellers/{seller_profile.pk}/follow/"
-        )
+        response = client.post(f"/api/feed/sellers/{seller_profile.pk}/follow/")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert not SellerFollow.objects.exists()
@@ -157,9 +143,7 @@ class TestSellerFollow:
         inactive_seller = SellerProfileFactory(is_active=False)
         client = authenticated_client(customer)
 
-        response = client.post(
-            f"/api/social/sellers/{inactive_seller.pk}/follow/"
-        )
+        response = client.post(f"/api/feed/sellers/{inactive_seller.pk}/follow/")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert not SellerFollow.objects.exists()
@@ -169,10 +153,10 @@ class TestSellerFollow:
         seller_client = authenticated_client(seller)
 
         unauthenticated = APIClient().post(
-            f"/api/social/sellers/{seller.active_profile.pk}/follow/"
+            f"/api/feed/sellers/{seller.active_profile.pk}/follow/"
         )
         non_customer = seller_client.post(
-            f"/api/social/sellers/{seller.active_profile.pk}/follow/"
+            f"/api/feed/sellers/{seller.active_profile.pk}/follow/"
         )
 
         assert unauthenticated.status_code == status.HTTP_401_UNAUTHORIZED
@@ -193,12 +177,102 @@ class TestSellerFollow:
         )
         client = authenticated_client(customer)
 
-        response = client.get("/api/social/sellers/following/")
+        response = client.get("/api/feed/sellers/following/")
 
         assert response.status_code == status.HTTP_200_OK
-        assert [item["id"] for item in response.data] == [
-            seller.active_profile.pk
+        assert [item["id"] for item in response.data] == [seller.active_profile.pk]
+
+
+class TestPeopleYouMayKnow:
+    def test_customer_gets_public_safe_seller_suggestions(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = SellerProfileFactory(is_active=True)
+        UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        UserAccountFactory(with_profile=ProfileType.MANAGER)
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/people-you-may-know/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0] == {
+            "id": seller.pk,
+            "nickname": seller.nickname,
+            "country": seller.country,
+            "currency": seller.currency,
+            "avg_rating": "0.00",
+            "ratings_count": 0,
+            "is_followed": False,
+        }
+        assert "user" not in response.data[0]
+        assert "balance" not in response.data[0]
+        assert "recoded_voice" not in response.data[0]
+        assert "phone_number" not in response.data[0]
+        assert "email" not in response.data[0]
+
+    def test_suggestions_exclude_followed_own_inactive_and_deleted_sellers(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        suggested = UserAccountFactory(with_profile=ProfileType.SELLER)
+        followed = UserAccountFactory(with_profile=ProfileType.SELLER)
+        inactive = UserAccountFactory(with_profile=ProfileType.SELLER)
+        deleted = UserAccountFactory(with_profile=ProfileType.SELLER)
+        own_seller = SellerProfileFactory(user=customer, is_active=False)
+        inactive_profile = inactive.active_profile
+        inactive_profile.is_active = False
+        inactive_profile.save(update_fields=["is_active"])
+        deleted_profile_id = deleted.active_profile.pk
+        deleted.active_profile.delete()
+        SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=followed.active_profile.pk,
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/people-you-may-know/", {"limit": 10})
+        suggestion_ids = {item["id"] for item in response.data}
+
+        assert response.status_code == status.HTTP_200_OK
+        assert suggestion_ids == {suggested.active_profile.pk}
+        assert followed.active_profile.pk not in suggestion_ids
+        assert inactive_profile.pk not in suggestion_ids
+        assert deleted_profile_id not in suggestion_ids
+        assert own_seller.pk not in suggestion_ids
+
+    def test_suggestions_limit_defaults_and_caps_at_fifty(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        sellers = [
+            UserAccountFactory(with_profile=ProfileType.SELLER) for _ in range(55)
         ]
+        client = authenticated_client(customer)
+
+        default_response = client.get("/api/feed/people-you-may-know/")
+        capped_response = client.get(
+            "/api/feed/people-you-may-know/",
+            {"limit": 100},
+        )
+
+        assert default_response.status_code == status.HTTP_200_OK
+        assert len(default_response.data) == 10
+        assert capped_response.status_code == status.HTTP_200_OK
+        assert len(capped_response.data) == 50
+        assert {item["id"] for item in capped_response.data}.issubset(
+            {seller.active_profile.pk for seller in sellers}
+        )
+
+    def test_suggestions_auth_and_customer_permissions(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_client = authenticated_client(seller)
+
+        unauthenticated = APIClient().get("/api/feed/people-you-may-know/")
+        non_customer = seller_client.get("/api/feed/people-you-may-know/")
+
+        assert unauthenticated.status_code == status.HTTP_401_UNAUTHORIZED
+        assert non_customer.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_old_social_routes_are_removed(self):
+        response = APIClient().get("/api/social/sellers/following/")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 class TestAuctionFeed:

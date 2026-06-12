@@ -1,6 +1,7 @@
 from django.apps import AppConfig
 
 
-class SocialConfig(AppConfig):
+class FeedConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.social"
+    name = "apps.feed"
+    label = "feed"

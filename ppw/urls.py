@@ -34,8 +34,7 @@ urlpatterns = [
     path("api/promotions/", include("apps.promotions.urls")),
     path("api/complaints/", include("apps.complaints.urls")),
     path("api/chat/", include("apps.chat.urls")),
-    path("api/social/", include("apps.social.urls")),
-    path("api/feed/", include("apps.social.feed_urls")),
+    path("api/feed/", include("apps.feed.urls")),
     path(
         "api/schema/",
         InternalSchemaAPIView.as_view(),
