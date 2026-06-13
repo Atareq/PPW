@@ -4,6 +4,7 @@ from rest_framework import mixins, viewsets
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import SAFE_METHODS
+from rest_framework.response import Response
 
 from apps.assets.filters import (
     AccessoryFilter,
@@ -28,6 +29,8 @@ from apps.assets.serializer import (
     SupplySerializer,
 )
 from apps.general.authorizations import HasAppAccess
+from apps.insights.models import SellerInsightEventType
+from apps.insights.services import SellerInsightEventService
 from apps.users.constants import ProfileType
 
 
@@ -75,6 +78,17 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
         "title",
         "status",
     ]
+
+    def retrieve(self, request, *args, **kwargs):
+        asset = self.get_object()
+        SellerInsightEventService.record_event(
+            seller=asset.owner,
+            event_type=SellerInsightEventType.MARKET_ITEM_VIEW,
+            object_id=asset.pk,
+            actor_profile=request.user.active_profile,
+        )
+        serializer = self.get_serializer(asset)
+        return Response(serializer.data)
 
     def get_queryset(self):
         """Managers see all; customers see listed; sellers see own plus listed."""

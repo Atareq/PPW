@@ -60,6 +60,7 @@ APPS = [
     "apps.complaints",
     "apps.chat",
     "apps.feed",
+    "apps.insights",
 ]
 
 DEBUG_APPS = []

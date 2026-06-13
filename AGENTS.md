@@ -30,6 +30,7 @@ The platform currently supports and will continue to expand around:
 - simple complaint/dispute records tied to approved or rejected payment requests
 - customer-to-seller direct chat through a REST-only MVP
 - customer follow relationships for sellers and deterministic home feed MVPs
+- seller home-page insights summaries from current marketplace data
 - future media, pedigree, expanded QR, reviews, reward point automation, realtime chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
@@ -133,6 +134,7 @@ Current major apps:
 - `apps.complaints`
 - `apps.chat`
 - `apps.feed`
+- `apps.insights`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -701,6 +703,47 @@ Current feed service implementation names:
 - `FeedService.get_auction_feed()` builds the auction feed with following content first and deterministic discovery fallback
 - `FeedService.get_market_feed()` builds the market feed with following content first and deterministic discovery fallback
 - `FeedCursor` parses and encodes the two-source cursor state
+
+### `apps.insights`
+
+Current responsibilities:
+
+- seller home-page summary metrics
+- lightweight seller insight view events
+- safe aggregation over existing auction, market, feed, chat, rating, payment, and package data
+
+Important note:
+
+This app is not a full reporting system, recommendation engine, analytics export, admin dashboard, deduplicated view tracker, device/IP tracker, notification system, frontend module, or Celery rollup pipeline.
+
+Current insights API:
+
+- `/api/insights/seller/home/`
+  - `GET`: authenticated active seller gets their own home-page summary
+
+Current insights behavior:
+
+- seller insights require an authenticated active seller profile
+- customer and manager active profiles are rejected for seller home insights
+- `SellerInsightsService.get_home_summary()` owns aggregation logic
+- the home summary returns `auction_summary`, `market_summary`, `engagement_summary`, `trust_summary`, and `package_summary`
+- missing optional features return safe defaults instead of creating unrelated systems
+- promoted auction and market-item counts currently return `0` because no promoted listing model exists
+- active package quota is derived from the active `AssetSellerPackage.remaining_points` divided by package auction/product costs
+- recent windows use the last 7 days with timezone-aware `timezone.now()`
+- ending-soon auction count currently uses active seller auctions ending within the next 24 hours
+- low-stock market product count currently uses market-listed available product assets with `count` from `1` through `3`
+- `SellerInsightEvent` stores seller, optional actor profile, event type, object type, optional object id, and timestamps only
+- event types are `seller_profile_view`, `auction_view`, and `market_item_view`
+- object types are `seller_profile`, `auction`, and `market_item`
+- insight events do not store IP address, device, user-agent, deduplication keys, or daily rollups
+- event recording is best-effort through `SellerInsightEventService.record_event()`; failures are logged and return `None`
+- current low-risk view-event hooks record auction detail views and product asset detail views only, not list endpoints
+
+Current insights service implementation names:
+
+- `SellerInsightsService.get_home_summary()` returns the seller home summary
+- `SellerInsightEventService.record_event()` records a small view event without breaking caller flows
 
 ### `apps.promotions`
 

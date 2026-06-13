@@ -35,6 +35,8 @@ from apps.auctions.services import (
     BiddingService,
 )
 from apps.general.authorizations import HasAppAccess
+from apps.insights.models import SellerInsightEventType
+from apps.insights.services import SellerInsightEventService
 from apps.users.constants import ProfileType
 
 # ============================================================================
@@ -195,6 +197,17 @@ class AuctionViewSet(viewsets.ModelViewSet):
             AuctionDetailSerializer(auction).data,
             status=status.HTTP_201_CREATED,
         )
+
+    def retrieve(self, request, *args, **kwargs):
+        auction = self.get_object()
+        SellerInsightEventService.record_event(
+            seller=auction.owner,
+            event_type=SellerInsightEventType.AUCTION_VIEW,
+            object_id=auction.pk,
+            actor_profile=request.user.active_profile,
+        )
+        serializer = self.get_serializer(auction)
+        return Response(serializer.data)
 
     def partial_update(self, request, *args, **kwargs):
 

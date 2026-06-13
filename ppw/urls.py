@@ -35,6 +35,7 @@ urlpatterns = [
     path("api/complaints/", include("apps.complaints.urls")),
     path("api/chat/", include("apps.chat.urls")),
     path("api/feed/", include("apps.feed.urls")),
+    path("api/insights/", include("apps.insights.urls")),
     path(
         "api/schema/",
         InternalSchemaAPIView.as_view(),
