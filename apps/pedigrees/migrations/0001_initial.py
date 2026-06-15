@@ -1,0 +1,142 @@
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+import django_extensions.db.fields
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        ("assets", "0007_bird_public_id"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ("users", "0005_customerprofile_cashback_balance"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="PedigreeDocument",
+            fields=[
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "deleted",
+                    models.DateTimeField(
+                        db_index=True,
+                        editable=False,
+                        null=True,
+                    ),
+                ),
+                (
+                    "deleted_by_cascade",
+                    models.BooleanField(default=False, editable=False),
+                ),
+                (
+                    "created",
+                    django_extensions.db.fields.CreationDateTimeField(
+                        auto_now_add=True,
+                        verbose_name="created",
+                    ),
+                ),
+                (
+                    "modified",
+                    django_extensions.db.fields.ModificationDateTimeField(
+                        auto_now=True,
+                        verbose_name="modified",
+                    ),
+                ),
+                (
+                    "original_file",
+                    models.FileField(upload_to="pedigree_documents/"),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("uploaded", "Uploaded"),
+                            ("processed", "Processed"),
+                            ("reviewed", "Reviewed"),
+                            ("failed", "Failed"),
+                        ],
+                        default="uploaded",
+                        max_length=20,
+                    ),
+                ),
+                ("raw_ocr_text", models.TextField(blank=True)),
+                (
+                    "extracted_bird_ring_number",
+                    models.CharField(blank=True, max_length=100),
+                ),
+                ("extracted_description", models.TextField(blank=True)),
+                (
+                    "reviewed_bird_ring_number",
+                    models.CharField(blank=True, max_length=100),
+                ),
+                ("reviewed_description", models.TextField(blank=True)),
+                ("processing_error", models.TextField(blank=True)),
+                (
+                    "reviewed_at",
+                    models.DateTimeField(blank=True, null=True),
+                ),
+                (
+                    "bird",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="pedigree_documents",
+                        to="assets.bird",
+                    ),
+                ),
+                (
+                    "owner",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="owned_%(class)ss",
+                        to="users.profile",
+                    ),
+                ),
+                (
+                    "uploaded_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="pedigree_documents",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+            ],
+            options={
+                "ordering": ["-created"],
+                "indexes": [
+                    models.Index(
+                        fields=["owner"],
+                        name="pedigree_doc_owner_idx",
+                    ),
+                    models.Index(
+                        fields=["uploaded_by"],
+                        name="pedigree_doc_user_idx",
+                    ),
+                    models.Index(
+                        fields=["bird"],
+                        name="pedigree_doc_bird_idx",
+                    ),
+                    models.Index(
+                        fields=["status"],
+                        name="pedigree_doc_status_idx",
+                    ),
+                    models.Index(
+                        fields=["created"],
+                        name="pedigree_doc_created_idx",
+                    ),
+                ],
+            },
+        ),
+    ]

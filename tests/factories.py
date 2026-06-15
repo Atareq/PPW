@@ -35,6 +35,7 @@ from apps.packages.models import (
     Package,
     SellerPackageStatus,
 )
+from apps.pedigrees.models import PedigreeDocument, PedigreeDocumentStatus
 from apps.promotions.models import (
     CashbackOffer,
     CashbackTransaction,
@@ -176,6 +177,27 @@ class AssetMediaFactory(factory.django.DjangoModelFactory):
     alt_text = ""
     is_primary = False
     order = 0
+
+
+class PedigreeDocumentFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PedigreeDocument
+
+    owner = factory.SubFactory(SellerProfileFactory)
+
+    @factory.lazy_attribute
+    def uploaded_by(self):
+        return self.owner.user
+
+    bird = None
+    original_file = "pedigree_documents/test-pedigree.jpg"
+    status = PedigreeDocumentStatus.PROCESSED
+    raw_ocr_text = "EG-12345-2024\nFather: Blue Champion"
+    extracted_bird_ring_number = "EG-12345-2024"
+    extracted_description = "Father: Blue Champion"
+    reviewed_bird_ring_number = ""
+    reviewed_description = ""
+    processing_error = ""
 
 
 # ============================================================================

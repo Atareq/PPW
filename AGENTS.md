@@ -31,6 +31,7 @@ The platform currently supports and will continue to expand around:
 - customer-to-seller direct chat through a REST-only MVP
 - customer follow relationships for sellers and deterministic home feed MVPs
 - seller home-page insights summaries from current marketplace data
+- internal pedigree certificate OCR extraction MVP with a null local OCR adapter
 - future media, pedigree, expanded QR, reviews, reward point automation, realtime chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
@@ -135,6 +136,7 @@ Current major apps:
 - `apps.chat`
 - `apps.feed`
 - `apps.insights`
+- `apps.pedigrees`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -744,6 +746,51 @@ Current insights service implementation names:
 
 - `SellerInsightsService.get_home_summary()` returns the seller home summary
 - `SellerInsightEventService.record_event()` records a small view event without breaking caller flows
+
+### `apps.pedigrees`
+
+Current responsibilities:
+
+- internal pedigree certificate document upload records
+- placeholder/null local OCR adapter for future replacement
+- deterministic OCR text extraction into bird ring number and description fields
+- document retrieval and manual review of extracted values
+
+Important note:
+
+This app is a Phase 1 internal extraction module only. It does not implement real OCR, Tesseract integration, cloud OCR, AI APIs, Celery/background processing, full pedigree modeling, pedigree export, media moderation, or automatic bird updates.
+
+Current pedigree API:
+
+- `/api/pedigrees/documents/`
+  - `POST`: authenticated customer or seller uploads a pedigree certificate file for OCR extraction
+- `/api/pedigrees/documents/<id>/`
+  - `GET`: owner retrieves one pedigree document; managers retrieve any document
+- `/api/pedigrees/documents/<id>/review/`
+  - `PATCH`: owner reviews corrected ring number and description; managers can review any document
+
+Current pedigree behavior:
+
+- `PedigreeDocument` inherits the standard profile-owned model shape and also stores `uploaded_by` as the user account
+- `PedigreeDocument.bird` is nullable and can link to an existing `Bird` when supplied
+- non-manager uploads can link only to birds owned by the active profile; managers can link any bird
+- document statuses are `uploaded`, `processed`, `reviewed`, and `failed`
+- upload creates a document with status `uploaded`, then calls `LocalOCRService.extract_text(file)`
+- `LocalOCRService` is intentionally a null adapter and returns empty text until a real local OCR implementation is added
+- OCR exceptions mark the document `failed`, store `processing_error`, and return a clear error response
+- empty OCR output marks the document `failed`, stores `processing_error`, and returns a clear error response
+- extraction splits OCR text into stripped non-empty lines
+- first non-empty OCR line becomes `extracted_bird_ring_number`
+- remaining non-empty OCR lines joined by newline become `extracted_description`
+- review stores corrected values in `reviewed_bird_ring_number` and `reviewed_description`, marks the document `reviewed`, and sets `reviewed_at`
+- review currently does not update linked `Bird.ring_number` or `Asset.description`; a code TODO is left because there is not yet a dedicated bird pedigree-description field and overwriting generic asset description would be ambiguous
+
+Current pedigree service implementation names:
+
+- `LocalOCRService.extract_text()` is the mockable null OCR adapter
+- `PedigreeExtractionService.extract()` owns the deterministic line-splitting extraction rule
+- `PedigreeDocumentService.upload_and_process()` creates the document and stores OCR/extraction success or failure state
+- `PedigreeDocumentService.review_document()` stores manual review corrections
 
 ### `apps.promotions`
 
@@ -1494,6 +1541,7 @@ Mounted API roots:
 - `/api/packages/`
 - `/api/seller-packages/`
 - `/api/promotions/`
+- `/api/pedigrees/`
 
 Current internal API docs endpoints:
 
@@ -1770,6 +1818,7 @@ Current permission resources:
 - `CASHBACK_OFFER_ADMIN`
 - `CASHBACK_TRANSACTION_ADMIN`
 - `CASHBACK_ADJUSTMENT_ADMIN`
+- `PEDIGREE_DOCUMENT`
 
 Permission implementation rule:
 
@@ -1858,6 +1907,14 @@ Current promotions permission pattern:
 - sellers have no direct promotions permissions in this sprint
 - promotion services still enforce concrete customer/manager profile requirements where endpoint-level permission is not enough
 
+Current pedigree permission pattern:
+
+- `PedigreeDocumentViewSet` and `PedigreeDocumentReviewViewSet` use `HasAppAccess` with `permission_resource = "PEDIGREE_DOCUMENT"`
+- customers and sellers can create, retrieve, and review only their own pedigree documents
+- managers can access all pedigree document actions through existing manager behavior
+- retrieve uses scoped read access only after `get_queryset()` limits non-manager reads to the active profile owner
+- review relies on profile ownership through `owner_id` and service-level actor validation
+
 Current auction permission pattern:
 
 - `AuctionViewSet` uses `IsAuthenticated` plus `HasAppAccess` with `permission_resource = "AUCTION"`
@@ -1931,6 +1988,7 @@ The codebase currently provides:
 - automatic scheduled auction closing through Celery Beat
 - seller follow relationships for customer profiles
 - cursor-based auction and market home feeds that rank followed-seller content before deterministic discovery fallback
+- pedigree document upload, null OCR extraction, retrieval, and manual review APIs
 
 Current API documentation coverage:
 
@@ -1946,7 +2004,7 @@ The codebase does not yet fully implement:
 - ownership history workflow
 - dispute flow
 - rating/comment moderation, replies, reports, likes, notifications, or analytics
-- pedigree system
+- full pedigree system beyond the current document OCR extraction MVP
 - pedigree reader
 - expanded QR generation, printing, and transfer flows beyond the current public identity URL
 - race results
@@ -2027,6 +2085,10 @@ Important remaining gaps:
 ### Media Gap
 
 Current assets app supports simple asset media URL references through `AssetMedia`, but not file upload, storage, processing, validation, or moderation.
+
+### Pedigree OCR Gap
+
+Current pedigree extraction is intentionally local/null and mockable only. It does not run real OCR, does not use background processing, and does not update linked birds until a dedicated pedigree description field or explicit product rule exists.
 
 ### Repo Cautions
 

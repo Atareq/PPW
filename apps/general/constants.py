@@ -76,6 +76,11 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "PEDIGREE_DOCUMENT": [
+        "create",
+        "retrieve",
+        "partial_update",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -157,5 +162,10 @@ CUSTOMER_PERMISSIONS = {
     "CASHBACK": [
         "list",
         "retrieve",
+    ],
+    "PEDIGREE_DOCUMENT": [
+        "create",
+        "retrieve",
+        "partial_update",
     ],
 }
