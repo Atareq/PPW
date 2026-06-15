@@ -4,6 +4,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import AuctionItem, AuctionItemStatus
+from apps.feed.services import BlockService
 from apps.orders.models import OrderItem, OrderItemStatus
 from apps.orders.services import OrderService
 from apps.payments.models import (
@@ -81,6 +82,7 @@ class PaymentRequestService:
         seller = item.auction.owner
         if seller.type != ProfileType.SELLER:
             raise ValidationError("Auction must be owned by a seller.")
+        PaymentRequestService._validate_not_blocked(buyer_profile, seller)
 
         asset = item.bird
         PaymentRequestService._validate_no_active_duplicate(
@@ -125,6 +127,7 @@ class PaymentRequestService:
 
         if item.status != OrderItemStatus.APPROVED:
             raise ValidationError("Order item must be approved.")
+        PaymentRequestService._validate_not_blocked(buyer_profile, item.seller)
 
         PaymentRequestService._validate_no_active_duplicate(
             buyer_profile,
@@ -290,6 +293,13 @@ class PaymentRequestService:
         ).exists():
             raise ValidationError(
                 "An active payment request already exists for this asset."
+            )
+
+    @staticmethod
+    def _validate_not_blocked(buyer_profile, seller_profile):
+        if BlockService.is_blocked_between(buyer_profile, seller_profile):
+            raise ValidationError(
+                "Payment requests are not allowed while a block is active."
             )
 
     @staticmethod

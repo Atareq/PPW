@@ -53,3 +53,68 @@ class SellerFollow(BaseModel):
 
     def __str__(self):
         return f"SellerFollow #{self.pk}"
+
+
+class SellerCustomerBlock(BaseModel):
+    customer = models.ForeignKey(
+        "users.CustomerProfile",
+        on_delete=models.CASCADE,
+        related_name="seller_blocks",
+    )
+    seller = models.ForeignKey(
+        "users.SellerProfile",
+        on_delete=models.CASCADE,
+        related_name="customer_blocks",
+    )
+    blocked_by = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.CASCADE,
+        related_name="seller_customer_blocks_created",
+    )
+    reason = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer", "seller"],
+                name="feed_unique_customer_seller_block",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["customer", "is_active"],
+                name="feed_blk_customer_active",
+            ),
+            models.Index(
+                fields=["seller", "is_active"],
+                name="feed_blk_seller_active",
+            ),
+            models.Index(
+                fields=["blocked_by", "created"],
+                name="feed_blk_actor_created",
+            ),
+            models.Index(
+                fields=["customer", "seller", "is_active"],
+                name="feed_blk_pair_active",
+            ),
+        ]
+        ordering = ["-created"]
+
+    def clean(self):
+        errors = {}
+        if self.customer_id and self.seller_id:
+            if self.customer.user_id == self.seller.user_id:
+                errors["seller"] = (
+                    "Customer and seller must belong to different users."
+                )
+        if self.blocked_by_id and self.customer_id and self.seller_id:
+            if self.blocked_by_id not in {self.customer_id, self.seller_id}:
+                errors["blocked_by"] = (
+                    "Block creator must be either the customer or seller."
+                )
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"SellerCustomerBlock #{self.pk}"

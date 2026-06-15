@@ -3,7 +3,82 @@ from rest_framework import serializers
 from apps.assets.models import Asset
 from apps.auctions.serializers import AuctionListSerializer
 from apps.general.serializers import AssetMediaSerializer
-from apps.feed.models import SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow
+from apps.users.constants import ProfileType
+
+
+class BlockProfileSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    type = serializers.CharField(read_only=True)
+    nickname = serializers.CharField(read_only=True, allow_blank=True)
+    country = serializers.CharField(read_only=True)
+    currency = serializers.CharField(read_only=True)
+
+    def to_representation(self, instance):
+        profile = self._concrete_profile(instance)
+        data = {
+            "id": instance.pk,
+            "type": instance.type,
+        }
+        nickname = getattr(profile, "nickname", "")
+        if nickname:
+            data["nickname"] = nickname
+        country = getattr(profile, "country", "")
+        if country:
+            data["country"] = country
+        currency = getattr(profile, "currency", "")
+        if currency:
+            data["currency"] = currency
+        return data
+
+    def _concrete_profile(self, instance):
+        if instance.type == ProfileType.SELLER:
+            return getattr(instance, "sellerprofile", instance)
+        if instance.type == ProfileType.CUSTOMER:
+            return getattr(instance, "customerprofile", instance)
+        return instance
+
+
+class SellerCustomerBlockSerializer(serializers.ModelSerializer):
+    customer = BlockProfileSummarySerializer(read_only=True)
+    seller = BlockProfileSummarySerializer(read_only=True)
+    blocked_by = BlockProfileSummarySerializer(read_only=True)
+    other_participant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SellerCustomerBlock
+        fields = [
+            "id",
+            "customer",
+            "seller",
+            "blocked_by",
+            "other_participant",
+            "reason",
+            "is_active",
+            "created",
+        ]
+        read_only_fields = fields
+
+    def get_other_participant(self, obj):
+        active_profile = self.context.get("active_profile")
+        if active_profile and active_profile.pk == obj.customer_id:
+            return BlockProfileSummarySerializer(obj.seller).data
+        return BlockProfileSummarySerializer(obj.customer).data
+
+
+class CreateBlockSerializer(serializers.Serializer):
+    profile_id = serializers.IntegerField()
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        default=None,
+    )
+
+
+class BlockUnblockResponseSerializer(serializers.Serializer):
+    profile_id = serializers.IntegerField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
 
 
 class SellerFollowSellerSerializer(serializers.Serializer):

@@ -8,6 +8,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.chat.models import Conversation, Message
 from apps.chat.tasks import send_chat_message_notification
+from apps.feed.services import BlockService
 from apps.users.constants import ProfileType
 from apps.users.models import Profile
 
@@ -80,6 +81,14 @@ class ChatService:
         ChatService._ensure_active_profile(sender)
         ChatService._ensure_active_profile(receiver)
         customer, seller = ChatService._resolve_customer_seller(sender, receiver)
+        if BlockService.is_blocked_between(customer, seller):
+            raise ValidationError(
+                {
+                    "receiver_profile_id": (
+                        "Cannot create a conversation while a block is active."
+                    )
+                }
+            )
 
         try:
             with transaction.atomic():
@@ -105,6 +114,11 @@ class ChatService:
             raise ValidationError("Conversation is not active.")
 
         ChatService._ensure_participant(conversation, sender)
+        if BlockService.is_blocked_between(
+            conversation.customer,
+            conversation.seller,
+        ):
+            raise ValidationError("Cannot send messages while a block is active.")
         receiver = ChatService._other_participant(conversation, sender)
         ChatService._validate_no_contact_sharing(body)
 

@@ -4,6 +4,7 @@ from apps.feed.views import (
     AuctionFeedViewSet,
     MarketFeedViewSet,
     PeopleYouMayKnowViewSet,
+    SellerCustomerBlockViewSet,
     SellerFollowCreateViewSet,
     SellerFollowingViewSet,
     SellerUnfollowCreateViewSet,
@@ -11,10 +12,22 @@ from apps.feed.views import (
 
 CREATE_ACTION = {"post": "create"}
 LIST_ACTION = {"get": "list"}
+LIST_CREATE_ACTION = {"get": "list", "post": "create"}
+DESTROY_ACTION = {"delete": "destroy"}
 
 app_name = "feed"
 
 urlpatterns = [
+    path(
+        "blocks/customer-seller/",
+        SellerCustomerBlockViewSet.as_view(LIST_CREATE_ACTION),
+        name="seller-customer-block-list-create",
+    ),
+    path(
+        "blocks/customer-seller/<int:profile_id>/",
+        SellerCustomerBlockViewSet.as_view(DESTROY_ACTION),
+        name="seller-customer-block-delete",
+    ),
     path(
         "sellers/<int:seller_id>/follow/",
         SellerFollowCreateViewSet.as_view(CREATE_ACTION),

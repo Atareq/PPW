@@ -30,6 +30,7 @@ The platform currently supports and will continue to expand around:
 - simple complaint/dispute records tied to approved or rejected payment requests
 - customer-to-seller direct chat through a REST-only MVP
 - customer follow relationships for sellers and deterministic home feed MVPs
+- customer-to-seller block relationships that prevent new follow, feed, chat, and payment-request interactions
 - seller home-page insights summaries from current marketplace data
 - internal pedigree certificate OCR extraction MVP with a null local OCR adapter
 - future media, pedigree, expanded QR, reviews, reward point automation, realtime chat, and expanded promotion modules
@@ -504,8 +505,10 @@ Current payment behavior:
 - `AuctionPaymentRequest` stores the required one-to-one `auction_item`
 - `MarketPaymentRequest` stores the required one-to-one `order_item`
 - auction payment requests require a sold `AuctionItem`, the active customer profile must be the winner, and the auction owner must be a seller profile
+- auction payment request creation is rejected when an active `SellerCustomerBlock` exists between the winning customer and auction seller
 - auction payment request amount comes from `AuctionItem.current_price`
 - marketplace payment requests require an approved `OrderItem` owned by the active customer profile
+- marketplace payment request creation is rejected when an active `SellerCustomerBlock` exists between the order customer and item seller
 - marketplace payment request amount comes from `OrderItem.total_price`
 - only one pending or rejected request per buyer and asset is allowed at a time
 - buyers can update pending or rejected requests only; updating a rejected request resubmits it as pending
@@ -614,12 +617,14 @@ Current chat behavior:
 - active profiles cannot create conversations with themselves
 - conversation creation rejects customer/customer, seller/seller, manager/customer, and manager/seller pairs
 - conversation creation rejects customer and seller profiles that belong to the same user account
+- conversation creation rejects customer/seller pairs with an active `SellerCustomerBlock`
 - conversation creation rejects receiver profiles that are not active, activated, valid, or non-deleted
 - conversation list is scoped to the active customer or seller profile only
 - conversation list uses `Conversation.last_message` and `last_message_at` for latest-message summary and ordering
 - message list is scoped to the conversation customer or seller only and orders by `created`, then `id`
 - message list supports `after_id` for polling-style incremental fetches
 - sending requires an active conversation and a sender who is the conversation customer or seller
+- sending rejects new messages when an active `SellerCustomerBlock` exists between the conversation customer and seller
 - message receiver is derived as the other participant; clients do not submit receiver ids
 - messages are text-only and capped at `Message.MAX_BODY_LENGTH`
 - empty messages are rejected
@@ -643,7 +648,9 @@ Current chat service implementation names:
 Current responsibilities:
 
 - customer-to-seller follow relationships
+- customer-to-seller active block relationships
 - idempotent seller follow and unfollow endpoints
+- customer/seller block, unblock, and active block list endpoints
 - active customer following-list endpoint
 - random active seller suggestions for customers
 - cursor-based customer auction feed
@@ -662,6 +669,11 @@ Current feed API:
   - `POST`: authenticated active customer deactivates a follow if present
 - `/api/feed/sellers/following/`
   - `GET`: authenticated active customer lists active followed sellers
+- `/api/feed/blocks/customer-seller/`
+  - `GET`: authenticated active customer or seller lists active blocks involving the active profile
+  - `POST`: authenticated active customer or seller blocks the opposite profile by `profile_id`
+- `/api/feed/blocks/customer-seller/<profile_id>/`
+  - `DELETE`: authenticated original block creator deactivates the active block for the opposite profile
 - `/api/feed/people-you-may-know/`
   - `GET`: authenticated active customer gets public-safe active seller suggestions
 - `/api/feed/auctions/`
@@ -684,6 +696,16 @@ Current feed behavior:
 - seller suggestions return only `SellerProfile` rows and exclude followed sellers, same-user seller profiles, inactive, invalid, unactivated, and deleted sellers
 - seller suggestions expose public-safe seller fields only and do not expose user, phone, email, balance, private, or admin fields
 - seller suggestions default to `limit=10`, cap `limit` at `50`, and apply Django `Random()` only after all eligibility filters
+- `SellerCustomerBlock.customer` points to `CustomerProfile`
+- `SellerCustomerBlock.seller` points to `SellerProfile`
+- `SellerCustomerBlock.blocked_by` points to the customer or seller profile that created the block
+- only one block row can exist for a customer/seller pair; unblock/reblock toggles `is_active`
+- only customer/seller pairs can be blocked; customer/customer, seller/seller, manager/admin, and same-user customer/seller profile blocks are rejected
+- block creation deactivates any active `SellerFollow` between the customer and seller
+- only the profile that created the block can unblock it
+- active blocks prevent following, hide blocked sellers from following and discovery feed results, and hide blocked sellers from seller suggestions
+- active blocks prevent new chat conversations, new chat messages in existing conversations, and new auction/market payment requests between the pair
+- active blocks do not delete old follows, orders, payment requests, conversations, or messages; historical records remain intact
 - feed endpoints require an authenticated active customer profile
 - auction feed content is limited to visible, currently active `AuctionStatus.ACTIVE` auctions from active valid sellers
 - market feed content is limited to available, listed, positive-count supply/accessory/feed/supplement assets from active valid sellers
@@ -701,6 +723,11 @@ Current feed service implementation names:
 - `SellerFollowService.follow()` creates, returns, or reactivates a seller follow
 - `SellerFollowService.unfollow()` idempotently marks a seller follow inactive
 - `SellerFollowService.following_queryset()` returns active followed sellers for the active customer
+- `BlockService.block_customer_seller()` creates or reactivates a customer/seller block and deactivates any existing follow
+- `BlockService.unblock_customer_seller()` deactivates an active block when called by the original blocker
+- `BlockService.is_blocked_between()` checks active block state for customer/seller interaction gates
+- `BlockService.get_blocked_seller_ids_for_customer()` returns seller ids hidden from customer feed and suggestion surfaces
+- `BlockService.get_blocked_customer_ids_for_seller()` returns customer ids blocked with a seller
 - `FeedService.get_people_you_may_know()` returns random active seller suggestions after customer-specific exclusions
 - `FeedService.get_auction_feed()` builds the auction feed with following content first and deterministic discovery fallback
 - `FeedService.get_market_feed()` builds the market feed with following content first and deterministic discovery fallback
@@ -1819,6 +1846,7 @@ Current permission resources:
 - `CASHBACK_TRANSACTION_ADMIN`
 - `CASHBACK_ADJUSTMENT_ADMIN`
 - `PEDIGREE_DOCUMENT`
+- `FEED_BLOCK`
 
 Permission implementation rule:
 

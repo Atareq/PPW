@@ -4,12 +4,14 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 import pytest
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.test import APIClient
 
 from apps.assets.models import AssetStatus
 from apps.auctions.models import Auction, AuctionStatus
 from apps.authentication.services import build_token_for_user
-from apps.feed.models import SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow
+from apps.feed.services import BlockService, SellerFollowService
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionFactory,
@@ -57,6 +59,261 @@ def result_ids(response):
 
 def result_sources(response):
     return [entry["source"] for entry in response.data["results"]]
+
+
+class TestSellerCustomerBlockService:
+    def test_customer_can_block_seller(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        block = BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+            reason="spam",
+        )
+
+        assert block.customer_id == customer.active_profile.pk
+        assert block.seller_id == seller.active_profile.pk
+        assert block.blocked_by_id == customer.active_profile.pk
+        assert block.reason == "spam"
+        assert block.is_active is True
+
+    def test_seller_can_block_customer(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        block = BlockService.block_customer_seller(
+            seller.active_profile,
+            customer.active_profile,
+        )
+
+        assert block.customer_id == customer.active_profile.pk
+        assert block.seller_id == seller.active_profile.pk
+        assert block.blocked_by_id == seller.active_profile.pk
+
+    def test_customer_cannot_block_customer(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+        with pytest.raises(ValidationError):
+            BlockService.block_customer_seller(
+                customer.active_profile,
+                other_customer.active_profile,
+            )
+
+    def test_seller_cannot_block_seller(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        other_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        with pytest.raises(ValidationError):
+            BlockService.block_customer_seller(
+                seller.active_profile,
+                other_seller.active_profile,
+            )
+
+    def test_manager_block_flow_is_unsupported(self):
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        with pytest.raises(PermissionDenied):
+            BlockService.block_customer_seller(
+                manager.active_profile,
+                seller.active_profile,
+            )
+
+    def test_user_cannot_block_own_seller_profile(self):
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller_profile = SellerProfileFactory(user=user, is_active=False)
+
+        with pytest.raises(ValidationError):
+            BlockService.block_customer_seller(
+                user.active_profile,
+                seller_profile,
+            )
+
+    def test_duplicate_block_returns_and_reactivates_existing_block(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        first = BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+            reason="first",
+        )
+        duplicate = BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+            reason="ignored",
+        )
+        first.is_active = False
+        first.save(update_fields=["is_active", "modified"])
+
+        reactivated = BlockService.block_customer_seller(
+            seller.active_profile,
+            customer.active_profile,
+            reason="again",
+        )
+
+        assert duplicate.pk == first.pk
+        assert duplicate.reason == "first"
+        assert reactivated.pk == first.pk
+        assert reactivated.is_active is True
+        assert reactivated.blocked_by_id == seller.active_profile.pk
+        assert reactivated.reason == "again"
+        assert SellerCustomerBlock.objects.count() == 1
+
+    def test_unblock_sets_inactive_and_only_blocked_by_can_unblock(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        block = BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+
+        with pytest.raises(PermissionDenied):
+            BlockService.unblock_customer_seller(
+                seller.active_profile,
+                customer.active_profile,
+            )
+
+        unblocked = BlockService.unblock_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+        block.refresh_from_db()
+
+        assert unblocked.pk == block.pk
+        assert block.is_active is False
+
+    def test_block_removes_follow_and_prevents_refollow(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        follow = SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=seller.active_profile.pk,
+        )
+
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+        follow.refresh_from_db()
+
+        assert follow.is_active is False
+        with pytest.raises(ValidationError):
+            SellerFollowService.follow(
+                customer.active_profile,
+                seller.active_profile.pk,
+            )
+
+
+class TestSellerCustomerBlockApi:
+    def test_unauthenticated_block_request_is_denied(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        response = APIClient().post(
+            "/api/feed/blocks/customer-seller/",
+            {"profile_id": seller.active_profile.pk},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_customer_can_block_seller_via_api(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        client = authenticated_client(customer)
+
+        response = client.post(
+            "/api/feed/blocks/customer-seller/",
+            {"profile_id": seller.active_profile.pk, "reason": "spam"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["seller"]["id"] == seller.active_profile.pk
+        assert response.data["customer"]["id"] == customer.active_profile.pk
+        assert response.data["blocked_by"]["id"] == customer.active_profile.pk
+        assert response.data["other_participant"]["id"] == seller.active_profile.pk
+        assert response.data["reason"] == "spam"
+        assert "phone_number" not in response.data["seller"]
+        assert "email" not in response.data["seller"]
+        assert "balance" not in response.data["seller"]
+        assert "user" not in response.data["seller"]
+
+    def test_seller_can_block_customer_via_api(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        client = authenticated_client(seller)
+
+        response = client.post(
+            "/api/feed/blocks/customer-seller/",
+            {"profile_id": customer.active_profile.pk},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["customer"]["id"] == customer.active_profile.pk
+        assert response.data["seller"]["id"] == seller.active_profile.pk
+        assert response.data["blocked_by"]["id"] == seller.active_profile.pk
+
+    def test_list_returns_active_blocks_only(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        active_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        inactive_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        active = BlockService.block_customer_seller(
+            customer.active_profile,
+            active_seller.active_profile,
+        )
+        inactive = BlockService.block_customer_seller(
+            customer.active_profile,
+            inactive_seller.active_profile,
+        )
+        inactive.is_active = False
+        inactive.save(update_fields=["is_active", "modified"])
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/blocks/customer-seller/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert [item["id"] for item in response.data] == [active.pk]
+
+    def test_blocked_by_can_delete_block_via_api(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        block = BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+        client = authenticated_client(customer)
+
+        response = client.delete(
+            f"/api/feed/blocks/customer-seller/{seller.active_profile.pk}/"
+        )
+        block.refresh_from_db()
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {
+            "profile_id": seller.active_profile.pk,
+            "is_active": False,
+        }
+        assert block.is_active is False
+
+    def test_other_side_cannot_delete_block_via_api(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        block = BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+        client = authenticated_client(seller)
+
+        response = client.delete(
+            f"/api/feed/blocks/customer-seller/{customer.active_profile.pk}/"
+        )
+        block.refresh_from_db()
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert block.is_active is True
 
 
 class TestSellerFollow:
@@ -238,6 +495,23 @@ class TestPeopleYouMayKnow:
         assert deleted_profile_id not in suggestion_ids
         assert own_seller.pk not in suggestion_ids
 
+    def test_suggestions_exclude_blocked_sellers_before_random_ordering(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        visible = UserAccountFactory(with_profile=ProfileType.SELLER)
+        blocked = UserAccountFactory(with_profile=ProfileType.SELLER)
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            blocked.active_profile,
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/people-you-may-know/", {"limit": 10})
+        suggestion_ids = {item["id"] for item in response.data}
+
+        assert response.status_code == status.HTTP_200_OK
+        assert visible.active_profile.pk in suggestion_ids
+        assert blocked.active_profile.pk not in suggestion_ids
+
     def test_suggestions_limit_defaults_and_caps_at_fifty(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         sellers = [
@@ -324,6 +598,53 @@ class TestAuctionFeed:
         assert response.status_code == status.HTTP_200_OK
         assert result_ids(response) == [auction.pk]
         assert result_sources(response) == ["discovery"]
+
+    def test_auction_feed_excludes_blocked_following_and_discovery_sellers(self):
+        now = timezone.now()
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        visible_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        blocked_followed_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        blocked_discovery_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=visible_seller.active_profile.pk,
+        )
+        stale_follow = SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=blocked_followed_seller.active_profile.pk,
+        )
+        visible = create_active_auction(
+            visible_seller.active_profile,
+            "Visible followed",
+            now + timedelta(minutes=3),
+        )
+        blocked_followed = create_active_auction(
+            blocked_followed_seller.active_profile,
+            "Blocked followed",
+            now + timedelta(minutes=2),
+        )
+        blocked_discovery = create_active_auction(
+            blocked_discovery_seller.active_profile,
+            "Blocked discovery",
+            now + timedelta(minutes=1),
+        )
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            blocked_followed_seller.active_profile,
+        )
+        BlockService.block_customer_seller(
+            blocked_discovery_seller.active_profile,
+            customer.active_profile,
+        )
+        SellerFollow.objects.filter(pk=stale_follow.pk).update(is_active=True)
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/auctions/", {"limit": 10})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert result_ids(response) == [visible.pk]
+        assert blocked_followed.pk not in result_ids(response)
+        assert blocked_discovery.pk not in result_ids(response)
 
     def test_auction_feed_limit_invalid_cursor_and_next_cursor(self):
         now = timezone.now()
@@ -448,6 +769,53 @@ class TestMarketFeed:
         assert response.status_code == status.HTTP_200_OK
         assert result_ids(response) == [item.pk]
         assert result_sources(response) == ["discovery"]
+
+    def test_market_feed_excludes_blocked_following_and_discovery_sellers(self):
+        now = timezone.now()
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        visible_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        blocked_followed_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        blocked_discovery_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=visible_seller.active_profile.pk,
+        )
+        stale_follow = SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=blocked_followed_seller.active_profile.pk,
+        )
+        visible = create_market_item(
+            visible_seller.active_profile,
+            "Visible followed",
+            now + timedelta(minutes=3),
+        )
+        blocked_followed = create_market_item(
+            blocked_followed_seller.active_profile,
+            "Blocked followed",
+            now + timedelta(minutes=2),
+        )
+        blocked_discovery = create_market_item(
+            blocked_discovery_seller.active_profile,
+            "Blocked discovery",
+            now + timedelta(minutes=1),
+        )
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            blocked_followed_seller.active_profile,
+        )
+        BlockService.block_customer_seller(
+            blocked_discovery_seller.active_profile,
+            customer.active_profile,
+        )
+        SellerFollow.objects.filter(pk=stale_follow.pk).update(is_active=True)
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/market/", {"limit": 10})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert result_ids(response) == [visible.pk]
+        assert blocked_followed.pk not in result_ids(response)
+        assert blocked_discovery.pk not in result_ids(response)
 
     def test_market_feed_excludes_inactive_unlisted_and_sold_assets(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

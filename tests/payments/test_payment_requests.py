@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from apps.assets.models import AssetCategory, AssetStatus
 from apps.authentication.services import build_token_for_user
 from apps.auctions.models import AuctionItemStatus
+from apps.feed.services import BlockService
 from apps.orders.models import OrderItemStatus, OrderStatus
 from apps.payments.models import (
     AuctionPaymentRequest,
@@ -286,6 +287,28 @@ class TestAuctionPaymentRequests:
                 buyer.active_profile,
             )
 
+    @pytest.mark.parametrize("blocked_by", ["customer", "seller"])
+    def test_blocked_pair_cannot_create_auction_payment_request(self, blocked_by):
+        item, buyer, seller = create_sold_auction_item()
+        if blocked_by == "customer":
+            BlockService.block_customer_seller(
+                buyer.active_profile,
+                seller.active_profile,
+            )
+        else:
+            BlockService.block_customer_seller(
+                seller.active_profile,
+                buyer.active_profile,
+            )
+
+        with pytest.raises(ValidationError):
+            PaymentRequestService.create_for_auction_item(
+                item.pk,
+                buyer.active_profile,
+            )
+
+        assert not PaymentRequest.objects.exists()
+
     def test_duplicate_pending_or_rejected_request_for_same_asset_is_blocked(
         self,
     ):
@@ -337,6 +360,44 @@ class TestMarketPaymentRequests:
                 item.pk,
                 other_buyer.active_profile,
             )
+
+    @pytest.mark.parametrize("blocked_by", ["customer", "seller"])
+    def test_blocked_pair_cannot_create_market_payment_request(self, blocked_by):
+        item, buyer, seller, _ = create_approved_order_item()
+        if blocked_by == "customer":
+            BlockService.block_customer_seller(
+                buyer.active_profile,
+                seller.active_profile,
+            )
+        else:
+            BlockService.block_customer_seller(
+                seller.active_profile,
+                buyer.active_profile,
+            )
+
+        with pytest.raises(ValidationError):
+            PaymentRequestService.create_for_order_item(
+                item.pk,
+                buyer.active_profile,
+            )
+
+        assert not PaymentRequest.objects.exists()
+
+    def test_existing_payment_requests_are_not_modified_by_later_block(self):
+        item, buyer, seller, _ = create_approved_order_item()
+        request = PaymentRequestService.create_for_order_item(
+            item.pk,
+            buyer.active_profile,
+        )
+
+        BlockService.block_customer_seller(
+            seller.active_profile,
+            buyer.active_profile,
+        )
+        request.refresh_from_db()
+
+        assert request.status == PaymentRequestStatus.PENDING
+        assert PaymentRequest.objects.count() == 1
 
     @pytest.mark.parametrize(
         "item_status",

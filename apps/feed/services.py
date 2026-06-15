@@ -10,9 +10,9 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import Auction, AuctionStatus
-from apps.feed.models import SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow
 from apps.users.constants import ProfileType
-from apps.users.models import CustomerProfile, SellerProfile
+from apps.users.models import CustomerProfile, Profile, SellerProfile
 
 
 DEFAULT_FEED_LIMIT = 20
@@ -26,6 +26,204 @@ PRODUCT_MARKET_CATEGORIES = [
 ]
 
 
+class BlockService:
+    @staticmethod
+    @transaction.atomic
+    def block_customer_seller(actor_profile, other_profile, reason=None):
+        actor = BlockService._require_active_customer_or_seller(actor_profile)
+        other = BlockService._get_profile(other_profile)
+        customer, seller = BlockService._resolve_customer_seller(actor, other)
+
+        try:
+            block, created = (
+                SellerCustomerBlock.objects.select_for_update().get_or_create(
+                    customer_id=customer.pk,
+                    seller_id=seller.pk,
+                    defaults={
+                        "blocked_by_id": actor.pk,
+                        "reason": reason,
+                        "is_active": True,
+                    },
+                )
+            )
+        except IntegrityError:
+            block = SellerCustomerBlock.objects.select_for_update().get(
+                customer_id=customer.pk,
+                seller_id=seller.pk,
+            )
+            created = False
+
+        if not created and not block.is_active:
+            block.blocked_by_id = actor.pk
+            block.reason = reason
+            block.is_active = True
+            block.save(
+                update_fields=[
+                    "blocked_by",
+                    "reason",
+                    "is_active",
+                    "modified",
+                ]
+            )
+
+        BlockService._remove_follow(customer, seller)
+        return block
+
+    @staticmethod
+    @transaction.atomic
+    def unblock_customer_seller(actor_profile, other_profile):
+        actor = BlockService._require_active_customer_or_seller(actor_profile)
+        other = BlockService._get_profile(other_profile)
+        customer, seller = BlockService._resolve_customer_seller(actor, other)
+
+        try:
+            block = SellerCustomerBlock.objects.select_for_update().get(
+                customer_id=customer.pk,
+                seller_id=seller.pk,
+                is_active=True,
+            )
+        except SellerCustomerBlock.DoesNotExist as exc:
+            raise NotFound("Active block was not found.") from exc
+
+        if block.blocked_by_id != actor.pk:
+            raise PermissionDenied(
+                "Only the profile that created the block can unblock."
+            )
+
+        block.is_active = False
+        block.save(update_fields=["is_active", "modified"])
+        return block
+
+    @staticmethod
+    def is_blocked_between(customer_profile, seller_profile):
+        return SellerCustomerBlock.objects.filter(
+            customer_id=getattr(customer_profile, "pk", customer_profile),
+            seller_id=getattr(seller_profile, "pk", seller_profile),
+            is_active=True,
+        ).exists()
+
+    @staticmethod
+    def get_blocked_seller_ids_for_customer(customer_profile):
+        return list(
+            SellerCustomerBlock.objects.filter(
+                customer_id=getattr(customer_profile, "pk", customer_profile),
+                is_active=True,
+            ).values_list("seller_id", flat=True)
+        )
+
+    @staticmethod
+    def get_blocked_customer_ids_for_seller(seller_profile):
+        return list(
+            SellerCustomerBlock.objects.filter(
+                seller_id=getattr(seller_profile, "pk", seller_profile),
+                is_active=True,
+            ).values_list("customer_id", flat=True)
+        )
+
+    @staticmethod
+    def blocks_for_profile(active_profile):
+        profile = BlockService._require_active_customer_or_seller(active_profile)
+        queryset = SellerCustomerBlock.objects.filter(
+            is_active=True,
+        ).select_related(
+            "customer",
+            "seller",
+            "blocked_by",
+        )
+
+        if profile.type == ProfileType.CUSTOMER:
+            return queryset.filter(customer_id=profile.pk).order_by(
+                "-created",
+                "-id",
+            )
+        return queryset.filter(seller_id=profile.pk).order_by("-created", "-id")
+
+    @staticmethod
+    def _remove_follow(customer, seller):
+        SellerFollow.objects.filter(
+            follower_id=customer.pk,
+            seller_id=seller.pk,
+            is_active=True,
+        ).update(is_active=False, modified=timezone.now())
+
+    @staticmethod
+    def _resolve_customer_seller(actor, other):
+        if other.type not in {ProfileType.CUSTOMER, ProfileType.SELLER}:
+            raise ValidationError(
+                {
+                    "profile_id": (
+                        "Blocks are supported only between customers and sellers."
+                    )
+                }
+            )
+        if actor.type == other.type:
+            raise ValidationError(
+                {"profile_id": "Blocks must be between one customer and one seller."}
+            )
+        if actor.user_id == other.user_id:
+            raise ValidationError(
+                {
+                    "profile_id": (
+                        "Cannot block another customer or seller profile on your account."
+                    )
+                }
+            )
+
+        if actor.type == ProfileType.CUSTOMER:
+            return (
+                BlockService._get_customer(actor),
+                BlockService._get_seller(other),
+            )
+        return (
+            BlockService._get_customer(other),
+            BlockService._get_seller(actor),
+        )
+
+    @staticmethod
+    def _require_active_customer_or_seller(profile_or_id):
+        profile = BlockService._get_profile(profile_or_id)
+        if profile.type not in {ProfileType.CUSTOMER, ProfileType.SELLER}:
+            raise PermissionDenied(
+                "Only customer and seller profiles can use blocks."
+            )
+        if (
+            not profile.is_active
+            or not profile.activated
+            or not profile.is_valid
+            or getattr(profile, "deleted", None) is not None
+        ):
+            raise PermissionDenied("Active profile is required.")
+        return profile
+
+    @staticmethod
+    def _get_profile(profile_or_id):
+        if hasattr(profile_or_id, "pk") and getattr(profile_or_id, "type", None):
+            return profile_or_id
+
+        try:
+            return Profile.objects.get(pk=profile_or_id)
+        except Profile.DoesNotExist as exc:
+            raise NotFound("Profile was not found.") from exc
+
+    @staticmethod
+    def _get_customer(profile):
+        try:
+            return CustomerProfile.objects.get(pk=profile.pk)
+        except CustomerProfile.DoesNotExist as exc:
+            raise ValidationError(
+                {"profile_id": "Customer profile was not found."}
+            ) from exc
+
+    @staticmethod
+    def _get_seller(profile):
+        try:
+            return SellerProfile.objects.get(pk=profile.pk)
+        except SellerProfile.DoesNotExist as exc:
+            raise ValidationError(
+                {"profile_id": "Seller profile was not found."}
+            ) from exc
+
+
 class SellerFollowService:
     @staticmethod
     def follow(active_profile, seller_id):
@@ -33,6 +231,10 @@ class SellerFollowService:
         seller = SellerFollowService._get_seller(seller_id)
         SellerFollowService._validate_not_same_user(customer, seller)
         SellerFollowService._ensure_active_seller(seller)
+        if BlockService.is_blocked_between(customer, seller):
+            raise ValidationError(
+                {"seller_id": "Cannot follow this seller while a block is active."}
+            )
 
         try:
             with transaction.atomic():
@@ -72,7 +274,10 @@ class SellerFollowService:
     @staticmethod
     def following_queryset(active_profile):
         customer = SellerFollowService._require_customer(active_profile)
-        return (
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+            customer
+        )
+        queryset = (
             SellerFollow.objects.filter(
                 follower_id=customer.pk,
                 is_active=True,
@@ -84,19 +289,26 @@ class SellerFollowService:
             .select_related("seller")
             .order_by("-created", "-id")
         )
+        if blocked_seller_ids:
+            queryset = queryset.exclude(seller_id__in=blocked_seller_ids)
+        return queryset
 
     @staticmethod
     def followed_seller_ids(customer_profile):
-        return list(
-            SellerFollow.objects.filter(
-                follower_id=customer_profile.pk,
-                is_active=True,
-                seller__is_active=True,
-                seller__activated=True,
-                seller__is_valid=True,
-                seller__deleted__isnull=True,
-            ).values_list("seller_id", flat=True)
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+            customer_profile
         )
+        queryset = SellerFollow.objects.filter(
+            follower_id=customer_profile.pk,
+            is_active=True,
+            seller__is_active=True,
+            seller__activated=True,
+            seller__is_valid=True,
+            seller__deleted__isnull=True,
+        )
+        if blocked_seller_ids:
+            queryset = queryset.exclude(seller_id__in=blocked_seller_ids)
+        return list(queryset.values_list("seller_id", flat=True))
 
     @staticmethod
     def _require_customer(profile):
@@ -233,6 +445,9 @@ class FeedService:
     def get_people_you_may_know(customer_profile, limit):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+            customer
+        )
 
         queryset = SellerProfile.objects.filter(
             is_active=True,
@@ -242,6 +457,8 @@ class FeedService:
         ).exclude(user_id=customer.user_id)
         if followed_seller_ids:
             queryset = queryset.exclude(pk__in=followed_seller_ids)
+        if blocked_seller_ids:
+            queryset = queryset.exclude(pk__in=blocked_seller_ids)
 
         return list(queryset.order_by(Random())[:limit])
 
@@ -249,6 +466,9 @@ class FeedService:
     def get_auction_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+            customer
+        )
         cursor_state = FeedCursor.parse(cursor)
 
         now = timezone.now()
@@ -268,6 +488,8 @@ class FeedService:
             .prefetch_related("items")
             .order_by("-created", "-id")
         )
+        if blocked_seller_ids:
+            base_queryset = base_queryset.exclude(owner_id__in=blocked_seller_ids)
 
         return FeedService._build_feed(
             base_queryset=base_queryset,
@@ -280,6 +502,9 @@ class FeedService:
     def get_market_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+            customer
+        )
         cursor_state = FeedCursor.parse(cursor)
 
         base_queryset = (
@@ -298,6 +523,8 @@ class FeedService:
             .prefetch_related("media")
             .order_by("-created", "-id")
         )
+        if blocked_seller_ids:
+            base_queryset = base_queryset.exclude(owner_id__in=blocked_seller_ids)
 
         return FeedService._build_feed(
             base_queryset=base_queryset,

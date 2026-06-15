@@ -3,22 +3,105 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.feed.models import SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow
 from apps.feed.serializers import (
     AuctionFeedResultSerializer,
+    BlockUnblockResponseSerializer,
+    CreateBlockSerializer,
     FeedQuerySerializer,
     MarketFeedResultSerializer,
+    SellerCustomerBlockSerializer,
     SellerFollowSerializer,
     SellerFollowSellerSerializer,
     SellerSuggestionQuerySerializer,
     SellerSuggestionSerializer,
     SellerUnfollowResponseSerializer,
 )
-from apps.feed.services import FeedService, SellerFollowService
+from apps.feed.services import BlockService, FeedService, SellerFollowService
+from apps.general.authorizations import HasAppAccess
 
 
 def active_profile(request):
     return request.user.active_profile
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Feed"],
+        responses={200: SellerCustomerBlockSerializer(many=True)},
+    ),
+    create=extend_schema(
+        tags=["Feed"],
+        request=CreateBlockSerializer,
+        responses={200: SellerCustomerBlockSerializer},
+    ),
+    destroy=extend_schema(
+        tags=["Feed"],
+        responses={200: BlockUnblockResponseSerializer},
+    ),
+)
+class SellerCustomerBlockViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """List, create, and deactivate customer/seller blocks."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "FEED_BLOCK"
+    queryset = SellerCustomerBlock.objects.all()
+    http_method_names = ["get", "post", "delete"]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return CreateBlockSerializer
+        if self.action == "destroy":
+            return BlockUnblockResponseSerializer
+        return SellerCustomerBlockSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["active_profile"] = active_profile(self.request)
+        return context
+
+    def list(self, request, *args, **kwargs):
+        blocks = BlockService.blocks_for_profile(active_profile(request))
+        return Response(
+            SellerCustomerBlockSerializer(
+                blocks,
+                many=True,
+                context=self.get_serializer_context(),
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        block = BlockService.block_customer_seller(
+            active_profile(request),
+            serializer.validated_data["profile_id"],
+            reason=serializer.validated_data.get("reason"),
+        )
+        return Response(
+            SellerCustomerBlockSerializer(
+                block,
+                context=self.get_serializer_context(),
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        block = BlockService.unblock_customer_seller(
+            active_profile(request),
+            kwargs["profile_id"],
+        )
+        return Response(
+            {
+                "profile_id": kwargs["profile_id"],
+                "is_active": block.is_active,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(

@@ -47,6 +47,11 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "FEED_BLOCK": [
+        "list",
+        "create",
+        "destroy",
+    ],
     "ASSET_COMMENT": [
         "list",
         "create",
@@ -128,6 +133,11 @@ CUSTOMER_PERMISSIONS = {
     "CHAT": [
         "list",
         "create",
+    ],
+    "FEED_BLOCK": [
+        "list",
+        "create",
+        "destroy",
     ],
     "ASSET_COMMENT": [
         "list",

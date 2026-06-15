@@ -10,6 +10,7 @@ from apps.authentication.services import build_token_for_user
 from apps.chat.models import Conversation, Message
 from apps.chat.services import ChatService
 from apps.chat.tasks import send_chat_message_notification
+from apps.feed.services import BlockService
 from apps.users.constants import ProfileType
 from tests.factories import (
     SellerProfileFactory,
@@ -121,6 +122,45 @@ class TestChatService:
                 user.active_profile,
                 seller_profile,
             )
+
+    def test_blocked_customer_seller_cannot_create_conversation(self):
+        customer, seller, _ = create_users()
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+
+        with pytest.raises(ValidationError):
+            ChatService.get_or_create_conversation(
+                customer.active_profile,
+                seller.active_profile,
+            )
+
+    def test_blocked_customer_seller_cannot_send_message_and_history_remains(self):
+        customer, seller, _ = create_users()
+        conversation = ChatService.get_or_create_conversation(
+            customer.active_profile,
+            seller.active_profile,
+        )
+        old_message = ChatService.send_message(
+            conversation.pk,
+            customer.active_profile,
+            "Before block",
+        )
+        BlockService.block_customer_seller(
+            seller.active_profile,
+            customer.active_profile,
+        )
+
+        with pytest.raises(ValidationError):
+            ChatService.send_message(
+                conversation.pk,
+                customer.active_profile,
+                "After block",
+            )
+
+        assert Message.objects.filter(pk=old_message.pk).exists()
+        assert Message.objects.count() == 1
 
     def test_conversation_stores_customer_and_seller(self):
         sender, receiver, _ = create_users()
