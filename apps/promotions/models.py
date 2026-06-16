@@ -169,28 +169,28 @@ class DiscountOffer(OfferBase):
         indexes = [
             models.Index(
                 fields=["is_active", "target_type"],
-                name="promotions_discount_active_target_idx",
+                name="disc_offer_active_target_idx",
             ),
             models.Index(
                 fields=["priority", "-created"],
-                name="promotions_discount_priority_created_idx",
+                name="disc_offer_prio_created_idx",
             ),
         ]
         constraints = [
             models.CheckConstraint(
                 check=models.Q(value__gt=0),
-                name="promotions_discount_value_gt_0",
+                name="disc_offer_value_gt_0_ck",
             ),
             models.CheckConstraint(
                 check=(
                     models.Q(value_type=OfferValueType.FIXED_AMOUNT)
                     | models.Q(value__lte=100)
                 ),
-                name="promotions_discount_percentage_lte_100",
+                name="disc_offer_pct_lte_100_ck",
             ),
             models.CheckConstraint(
                 check=models.Q(minimum_order_price__gte=0),
-                name="promotions_discount_min_order_gte_0",
+                name="disc_offer_min_order_gte_0_ck",
             ),
             models.CheckConstraint(
                 check=(
@@ -210,10 +210,9 @@ class DiscountOffer(OfferBase):
                         category__isnull=False,
                     )
                 ),
-                name="promotions_discount_target_shape",
+                name="disc_offer_target_shape_ck",
             ),
         ]
-
     def __str__(self):
         return f"DiscountOffer #{self.pk} {self.title}"
 
@@ -231,32 +230,32 @@ class CashbackOffer(OfferBase):
         indexes = [
             models.Index(
                 fields=["is_active", "target_type"],
-                name="promotions_cashback_active_target_idx",
+                name="cb_offer_active_target_idx",
             ),
             models.Index(
                 fields=["priority", "-created"],
-                name="promotions_cashback_priority_created_idx",
+                name="cb_offer_prio_created_idx",
             ),
         ]
         constraints = [
             models.CheckConstraint(
                 check=models.Q(value__gt=0),
-                name="promotions_cashback_value_gt_0",
+                name="cb_offer_value_gt_0_ck",
             ),
             models.CheckConstraint(
                 check=(
                     models.Q(value_type=OfferValueType.FIXED_AMOUNT)
                     | models.Q(value__lte=100)
                 ),
-                name="promotions_cashback_percentage_lte_100",
+                name="cb_offer_pct_lte_100_ck",
             ),
             models.CheckConstraint(
                 check=models.Q(minimum_order_price__gte=0),
-                name="promotions_cashback_min_order_gte_0",
+                name="cb_offer_min_order_gte_0_ck",
             ),
             models.CheckConstraint(
                 check=models.Q(allowed_redemption_amount__gte=0),
-                name="promotions_cashback_redemption_gte_0",
+                name="cb_offer_redeem_gte_0_ck",
             ),
             models.CheckConstraint(
                 check=(
@@ -276,10 +275,9 @@ class CashbackOffer(OfferBase):
                         category__isnull=False,
                     )
                 ),
-                name="promotions_cashback_target_shape",
+                name="cb_offer_target_shape_ck",
             ),
         ]
-
     def clean(self):
         super().clean()
         if (
@@ -331,27 +329,26 @@ class CashbackTransaction(BaseModel):
     )
     note = models.TextField(blank=True)
     idempotency_key = models.CharField(max_length=255, unique=True)
-
     class Meta:
         ordering = ["-created"]
         indexes = [
             models.Index(
                 fields=["customer", "-created"],
-                name="promotions_cashback_customer_created_idx",
+                name="cb_txn_customer_created_idx",
             ),
             models.Index(
                 fields=["transaction_type"],
-                name="promotions_cashback_type_idx",
+                name="cb_txn_type_idx",
             ),
             models.Index(
                 fields=["order_item"],
-                name="promotions_cashback_order_item_idx",
+                name="cb_txn_order_item_idx",
             ),
         ]
         constraints = [
             models.CheckConstraint(
                 check=models.Q(balance_after__gte=0),
-                name="promotions_cashback_balance_after_gte_0",
+                name="cb_txn_balance_after_gte_0_ck",
             ),
             models.CheckConstraint(
                 check=(
@@ -366,7 +363,7 @@ class CashbackTransaction(BaseModel):
                     )
                     & models.Q(amount__gt=0)
                 ),
-                name="promotions_cashback_amount_valid",
+                name="cb_txn_amount_sign_ck",
             ),
         ]
 
