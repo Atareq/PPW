@@ -18,7 +18,7 @@ class SellerProfileAdminViewSet(viewsets.ModelViewSet):
     """Admin/staff CRUD for seller profile moderation and correction."""
 
     serializer_class = SellerProfileAdminSerializer
-    queryset = SellerProfile.objects.all().order_by("-created")
+    queryset = SellerProfile.objects.select_related('user').all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
 
@@ -26,7 +26,7 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
     """Admin/staff CRUD for customer profile moderation and correction."""
 
     serializer_class = CustomerProfileAdminSerializer
-    queryset = CustomerProfile.objects.all().order_by("-created")
+    queryset = CustomerProfile.objects.select_related('user').all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
 
@@ -58,8 +58,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
         )
 
     def get_queryset(self):
-
-        return SellerProfile.objects.filter(
+        return SellerProfile.objects.select_related('user').filter(
             user=self.request.user, deleted__isnull=True, is_active=True
         ).order_by("-created")
 
@@ -90,7 +89,7 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return CustomerProfile.objects.filter(
+        return CustomerProfile.objects.select_related('user').filter(
             user=self.request.user, deleted__isnull=True
         ).order_by("-created")
 

@@ -26,5 +26,5 @@ DEBUG_APPS = []
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + APPS + DEBUG_APPS
 
-# Optional local email backend example later:
-# EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
