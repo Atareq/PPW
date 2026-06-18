@@ -44,11 +44,16 @@ class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
     qr_payload_url = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    seller_nickname = serializers.SerializerMethodField()
 
     class Meta:
         model = Bird
         fields = "__all__"
-        read_only_fields = ["owner", "public_id", "qr_payload_url", "rating", "review_count"]
+        read_only_fields = ["owner", "public_id", "qr_payload_url", "rating", "review_count", "seller_nickname"]
+
+    def get_seller_nickname(self, obj) -> str:
+        seller = getattr(obj.owner, "sellerprofile", None)
+        return getattr(seller, "nickname", "") or ""
 
     def get_qr_payload_url(self, obj):
         base_url = settings.PUBLIC_FRONTEND_BASE_URL.rstrip("/")

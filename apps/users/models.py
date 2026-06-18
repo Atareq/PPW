@@ -18,6 +18,7 @@ class Profile(BaseModel):
     )
 
     type = models.CharField(max_length=20, choices=ProfileType.choices)
+    photo = models.URLField(max_length=500, blank=True, default="")
     activated = models.BooleanField(
         default=True,  # For development reasons
         help_text="Only updated to True by admin once the profile created",

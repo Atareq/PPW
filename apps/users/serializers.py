@@ -26,6 +26,7 @@ class CustomerProfileAdminSerializer(serializers.ModelSerializer):
 class SellerProfileMobileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     phone_number = serializers.CharField(source='user.phone_number', read_only=True)
+    avatar_url = serializers.URLField(source='photo', read_only=False, allow_blank=True, required=False)
 
     class Meta:
         model = SellerProfile
@@ -34,6 +35,7 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
             'country', 'currency', 'recoded_voice',
             'avg_rating', 'ratings_count',
             'activated', 'is_active', 'is_valid', 'created',
+            'avatar_url',
         ]
         read_only_fields = [
             'id', 'type', 'username', 'phone_number',
@@ -45,6 +47,7 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
 class CustomerProfileMobileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     phone_number = serializers.CharField(source='user.phone_number', read_only=True)
+    avatar_url = serializers.URLField(source='photo', read_only=False, allow_blank=True, required=False)
 
     class Meta:
         model = CustomerProfile

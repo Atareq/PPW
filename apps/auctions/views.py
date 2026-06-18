@@ -103,6 +103,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     """
 
     permission_resource = "AUCTION"
+    allow_scoped_read_access = True
     queryset = Auction.objects.all().order_by("-created")
     permission_classes = [IsAuthenticated, HasAppAccess]
 

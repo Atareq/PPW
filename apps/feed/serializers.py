@@ -94,6 +94,7 @@ class SellerFollowSellerSerializer(serializers.Serializer):
             "nickname": instance.nickname,
             "country": instance.country,
             "currency": instance.currency,
+            "avatar_url": instance.photo or "",
             "is_followed": True,
         }
         return data
@@ -110,6 +111,7 @@ class SellerSuggestionSerializer(serializers.Serializer):
         read_only=True,
     )
     ratings_count = serializers.IntegerField(read_only=True)
+    avatar_url = serializers.URLField(source="photo", read_only=True, allow_blank=True)
     is_followed = serializers.SerializerMethodField()
 
     def get_is_followed(self, obj):

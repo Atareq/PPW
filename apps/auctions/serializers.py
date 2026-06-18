@@ -294,6 +294,8 @@ class AuctionListSerializer(serializers.ModelSerializer):
     thumbnail_url = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
     current_price = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
+    is_ended = serializers.SerializerMethodField()
 
     class Meta:
         model = Auction
@@ -311,9 +313,12 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "time_remaining",
             "current_price",
             "buy_now_enabled",
+            "buy_now_price",
             "min_bid_increment",
             "thumbnail_url",
             "is_owner",
+            "is_active",
+            "is_ended",
             "created",
             "status",
         ]
@@ -356,6 +361,12 @@ class AuctionListSerializer(serializers.ModelSerializer):
         if items:
             return items[0].current_price
         return None
+
+    def get_is_active(self, obj) -> bool:
+        return obj.is_active()
+
+    def get_is_ended(self, obj) -> bool:
+        return obj.is_ended()
 
 
 # ============================================================================
