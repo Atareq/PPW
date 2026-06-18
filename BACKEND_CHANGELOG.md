@@ -4,6 +4,12 @@
 > **What** — the file(s) changed and what was added/modified.
 > **Why** — the business or technical reason it was needed.
 
+## 2026-06-18 — Fix ImproperlyConfigured error for AuctionListSerializer
+
+### `apps/auctions/serializers.py`
+**What:** Defined `current_price` as a `SerializerMethodField` and implemented `get_current_price` to fetch the first item's price.
+**Why:** The `current_price` field was added to the `Meta.fields` list but was not defined as a field in `AuctionListSerializer` (since it is a field on `AuctionItem` and not on the `Auction` model directly). This was causing a 500 / `ImproperlyConfigured` error on all endpoints using `AuctionListSerializer` (e.g. `GET /api/auctions/`, `GET /api/auctions/active/`).
+
 ---
 
 ## 2026-06-18 — Notifications backend implementation

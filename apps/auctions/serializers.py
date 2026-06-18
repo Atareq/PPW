@@ -293,6 +293,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
     time_remaining = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Auction
@@ -349,6 +350,12 @@ class AuctionListSerializer(serializers.ModelSerializer):
         if request is None or not request.user.is_authenticated:
             return False
         return obj.owner_id == request.user.active_profile.pk
+
+    def get_current_price(self, obj) -> Decimal | None:
+        items = obj.items.all()
+        if items:
+            return items[0].current_price
+        return None
 
 
 # ============================================================================
