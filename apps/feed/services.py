@@ -246,6 +246,7 @@ class SellerFollowService:
                 if not created and not follow.is_active:
                     follow.is_active = True
                     follow.save(update_fields=["is_active", "modified"])
+                SellerFollowService._handle_follow_reward(follow, customer)
                 return follow
         except IntegrityError:
             follow = SellerFollow.objects.get(
@@ -255,6 +256,7 @@ class SellerFollowService:
             if not follow.is_active:
                 follow.is_active = True
                 follow.save(update_fields=["is_active", "modified"])
+            SellerFollowService._handle_follow_reward(follow, customer)
             return follow
 
     @staticmethod
@@ -339,6 +341,18 @@ class SellerFollowService:
             raise ValidationError(
                 {"seller_id": ("Customers cannot follow their own seller profile.")}
             )
+
+    @staticmethod
+    def _handle_follow_reward(follow, customer):
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        RewardEngine.handle_event(
+            RewardEventType.SELLER_FOLLOWED,
+            actor=customer,
+            profile=customer,
+            context={"follow": follow},
+        )
 
 
 class FeedCursor:

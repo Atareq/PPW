@@ -55,6 +55,7 @@ class BadgeAwardSerializer(serializers.ModelSerializer):
     criteria_type = serializers.SerializerMethodField()
     criteria_value = serializers.SerializerMethodField()
     icon_url = serializers.SerializerMethodField()
+    is_active = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BadgeAward
@@ -68,9 +69,13 @@ class BadgeAwardSerializer(serializers.ModelSerializer):
             "criteria_type",
             "criteria_value",
             "icon_url",
+            "is_active",
             "awarded_at",
+            "expires_at",
+            "revoked_at",
             "source_type",
             "source_id",
+            "idempotency_key",
             "metadata",
         ]
         read_only_fields = fields
@@ -102,6 +107,7 @@ class BadgeAwardCreateSerializer(serializers.Serializer):
     badge_type = serializers.ChoiceField(choices=BadgeType.choices)
     source_type = serializers.CharField(required=False, allow_blank=True)
     source_id = serializers.CharField(required=False, allow_blank=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
     metadata = serializers.JSONField(required=False)
 
     def validate_profile_id(self, value):
@@ -118,6 +124,6 @@ class BadgeAwardCreateSerializer(serializers.Serializer):
             badge_type=validated_data["badge_type"],
             source_type=validated_data.get("source_type"),
             source_id=validated_data.get("source_id"),
+            expires_at=validated_data.get("expires_at"),
             metadata=validated_data.get("metadata"),
         )
-

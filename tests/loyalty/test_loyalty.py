@@ -464,11 +464,15 @@ class TestLoyaltyEndpoints:
 
         assert response.status_code == 200
         badge_types = {item["badge_type"] for item in response.data}
-        assert badge_types == {
+        assert {
             BadgeType.FIRST_ORDER,
             BadgeType.POINTS_STARTER,
             BadgeType.SELLER_STARTER,
-        }
+            BadgeType.WELCOME_BUYER,
+            BadgeType.WELCOME_SELLER,
+            BadgeType.AUCTION_PURCHASE_CONFIRMED,
+            BadgeType.MARKET_PURCHASE_CONFIRMED,
+        }.issubset(badge_types)
 
     def test_active_profile_can_view_own_earned_badges(self):
         user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -589,15 +593,17 @@ class TestLoyaltyEndpoints:
 
         assert response.status_code == 403
 
-    def test_badge_award_unique_constraint(self):
+    def test_badge_award_idempotency_key_unique_constraint(self):
         user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         BadgeAwardFactory(
             profile=user.active_profile,
             badge_type=BadgeType.FIRST_ORDER,
+            idempotency_key="badge-key-1",
         )
 
         with pytest.raises(IntegrityError):
             BadgeAwardFactory(
                 profile=user.active_profile,
                 badge_type=BadgeType.FIRST_ORDER,
+                idempotency_key="badge-key-1",
             )

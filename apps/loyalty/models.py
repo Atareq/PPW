@@ -112,23 +112,40 @@ class BadgeAward(BaseModel):
         choices=BadgeType.choices,
     )
     awarded_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=100, blank=True)
+    idempotency_key = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+    )
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["profile", "-awarded_at"]),
             models.Index(fields=["badge_type"]),
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["source_type"]),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["profile", "badge_type"],
-                condition=Q(deleted__isnull=True),
-                name="loyalty_unique_active_profile_badge",
+                fields=["idempotency_key"],
+                condition=(
+                    Q(idempotency_key__isnull=False)
+                    & ~Q(idempotency_key="")
+                ),
+                name="loyalty_unique_badge_idempotency_key",
             ),
         ]
 
+    @property
+    def is_active(self):
+        if self.revoked_at is not None:
+            return False
+        return self.expires_at is None or self.expires_at > timezone.now()
+
     def __str__(self):
         return f"BadgeAward #{self.pk} {self.badge_type}"
-

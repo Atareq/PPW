@@ -1,4 +1,6 @@
 from django.db import IntegrityError, transaction
+from django.db.models import Q
+from django.utils import timezone
 from apps.authentication.models import UserAccount
 from apps.users.models import Profile
 from rest_framework.exceptions import ValidationError
@@ -267,38 +269,86 @@ class BadgeService:
         badge_type,
         source_type=None,
         source_id=None,
+        idempotency_key=None,
+        expires_at=None,
         metadata=None,
+        one_per_profile=True,
     ):
-        """Award a badge once per profile/type, preserving the first award."""
+        """Award a badge idempotently, preserving manager one-per-profile behavior."""
 
         profile = Profile.objects.get(pk=profile.pk)
         BadgeValidator.validate_badge_eligibility(profile, badge_type)
+        idempotency_key = normalize_idempotency_key(idempotency_key)
+
+        if idempotency_key is not None:
+            existing = BadgeAward.objects.filter(
+                idempotency_key=idempotency_key
+            ).first()
+            if existing is not None:
+                return existing
+
+        if one_per_profile:
+            existing = (
+                BadgeAward.objects.filter(
+                    profile=profile,
+                    badge_type=badge_type,
+                    deleted__isnull=True,
+                )
+                .order_by("awarded_at", "created")
+                .first()
+            )
+            if existing is not None:
+                return existing
 
         defaults = {
             "source_type": normalize_optional_string(source_type),
             "source_id": normalize_optional_string(source_id),
+            "idempotency_key": idempotency_key,
+            "expires_at": expires_at,
             "metadata": metadata or {},
         }
         try:
-            award, _ = BadgeAward.objects.get_or_create(
+            award = BadgeAward.objects.create(
                 profile=profile,
                 badge_type=badge_type,
-                defaults=defaults,
+                **defaults,
             )
         except IntegrityError:
-            award = BadgeAward.objects.get(
-                profile=profile,
-                badge_type=badge_type,
-            )
+            if idempotency_key is not None:
+                award = BadgeAward.objects.get(
+                    idempotency_key=idempotency_key,
+                )
+            else:
+                award = BadgeAward.objects.filter(
+                    profile=profile,
+                    badge_type=badge_type,
+                    deleted__isnull=True,
+                ).first()
+                if award is None:
+                    raise
         return award
 
     @staticmethod
-    def get_earned_badges(profile):
+    def get_earned_badges(profile, *, include_expired=True):
         profile = Profile.objects.get(pk=profile.pk)
-        return (
+        queryset = (
             BadgeAward.objects.select_related("profile", "profile__user")
             .filter(profile=profile)
             .order_by("-awarded_at", "-created")
+        )
+        if not include_expired:
+            queryset = queryset.filter(
+                revoked_at__isnull=True,
+            ).filter(
+                Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+            )
+        return queryset
+
+    @staticmethod
+    def get_active_badges(profile):
+        return BadgeService.get_earned_badges(
+            profile,
+            include_expired=False,
         )
 
     @staticmethod

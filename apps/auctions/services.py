@@ -404,6 +404,7 @@ class AuctionService:
                 bid=None,
                 metadata={"item_count": len(items)},
             )
+            AuctionService._handle_auction_published_reward(auction, owner)
 
         return auction
 
@@ -584,6 +585,18 @@ class AuctionService:
             metadata=metadata or {},
         )
 
+    @staticmethod
+    def _handle_auction_published_reward(auction, owner):
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        RewardEngine.handle_event(
+            RewardEventType.AUCTION_PUBLISHED,
+            actor=owner,
+            profile=owner,
+            context={"auction": auction},
+        )
+
 
 # ============================================================================
 # BID BUSINESS VALIDATOR
@@ -737,6 +750,11 @@ class BiddingService:
 
         item.current_price = amount
         item.save()
+        was_last_minute = (
+            timedelta(0)
+            < auction.end_time - timezone.now()
+            <= timedelta(minutes=5)
+        )
 
         # Check if auto-extend needed
         BiddingService._check_auto_extend(auction)
@@ -749,6 +767,11 @@ class BiddingService:
             item=item,
             bid=bid,
             metadata={"amount": str(amount)},
+        )
+        BiddingService._handle_bid_reward(
+            bid,
+            bidder,
+            was_last_minute=was_last_minute,
         )
 
         return bid
@@ -764,6 +787,18 @@ class BiddingService:
 
         if time_to_end < AUCTION_AUTO_EXTEND_MINUTES:
             AuctionService.auto_extend_auction(auction)
+
+    @staticmethod
+    def _handle_bid_reward(bid, bidder, *, was_last_minute):
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        RewardEngine.handle_event(
+            RewardEventType.BID_PLACED,
+            actor=bidder,
+            profile=bidder,
+            context={"bid": bid, "was_last_minute": was_last_minute},
+        )
 
 
 # ============================================================================

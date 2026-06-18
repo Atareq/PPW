@@ -33,7 +33,8 @@ The platform currently supports and will continue to expand around:
 - customer-to-seller block relationships that prevent new follow, feed, chat, and payment-request interactions
 - seller home-page insights summaries from current marketplace data
 - internal pedigree certificate OCR extraction MVP with a null local OCR adapter
-- future media, pedigree, expanded QR, reviews, reward point automation, realtime chat, and expanded promotion modules
+- loyalty reward automation for selected profile, bid, listing, rating, follow, and seller-approved payment-request events
+- future media, pedigree, expanded QR, reviews, expanded reward campaigns, realtime chat, and expanded promotion modules
 
 PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
 
@@ -1137,10 +1138,11 @@ Current responsibilities:
 - optional profile context on point transactions
 - profile-level badge awards
 - static badge definitions represented by code choices and constants, not database rows
+- an event-driven rewards engine for selected synchronous rewards and trusted buyer/seller aggregate task entry points
 
 Important note:
 
-This app is a rewards foundation only. It does not implement automatic reward earning, reward schedules, point purchase, cashback conversion, withdrawal, payment gateway behavior, notifications, leaderboards, or referral rewards. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`.
+This app implements an MVP rewards engine, not a campaign platform. It does not implement point purchase, cashback conversion, withdrawal, payment gateway behavior, notifications, leaderboards, referral rewards, paid badges, shipping/receipt rewards, or a full scheduled reward campaign system. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`.
 
 Current loyalty API:
 
@@ -1153,7 +1155,8 @@ Current loyalty API:
   - `GET ?profile_id=<id>`: manager-only badge award list for a specific profile
   - `POST`: manager-only badge award creation for a specific profile and badge type
 - `/api/loyalty/badges/my/`
-  - `GET`: authenticated user retrieves badge awards for the current active profile
+  - `GET`: authenticated user retrieves active badge awards for the current active profile
+  - `GET ?include_expired=true`: authenticated user includes expired historical badge awards
 
 Current point behavior:
 
@@ -1178,21 +1181,47 @@ Current badge behavior:
 - there is no `Badge` model
 - `BadgeAward` belongs to `Profile`, not `UserAccount`
 - `BadgeAward.badge_type` is a fixed choice field
+- `BadgeAward.expires_at` supports temporary badges
+- `BadgeAward.revoked_at` supports manual invalidation if needed
+- `BadgeAward.idempotency_key` is unique when provided and prevents duplicate event awards
 - current badge types are:
   - `first_order`
   - `points_starter`
   - `seller_starter`
+  - `WELCOME_BUYER`
+  - `WELCOME_SELLER`
+  - `FIRST_BIDDER`
+  - `LAST_MINUTE_FIGHTER`
+  - `AUCTION_PURCHASE_CONFIRMED`
+  - `MARKET_PURCHASE_CONFIRMED`
+  - `REVIEWER_BUYER`
+  - `LOYAL_FOLLOWER`
+  - `FIRST_AUCTION_PUBLISHED`
+  - `FIRST_MARKET_ITEM_LISTED`
+  - `FIRST_AUCTION_SALE_CONFIRMED`
+  - `FIRST_MARKET_SALE_CONFIRMED`
+  - `TRUSTED_BUYER`
+  - `TRUSTED_SELLER`
 - badge metadata, names, descriptions, eligibility, criteria type, criteria value, and icon URL live in `apps.loyalty.constants`
 - `BadgeAwardCreateSerializer` owns submitted `badge_type` choice validation for the manager award API
 - badge eligibility is enforced by `BadgeService.award_badge()`
 - `first_order` is eligible for `Customer` profiles
 - `seller_starter` is eligible for `Seller` profiles
 - `points_starter` is eligible for any profile type
-- a profile can receive the same badge type once
+- manager-created badge awards remain idempotent per profile and badge type through `BadgeService.award_badge()`
+- reward-created badges use deterministic idempotency keys and service-level one-time or active-temporary checks
+- temporary badges are active only when `revoked_at IS NULL` and `expires_at` is null or in the future
+- expired badges are retained as history and hidden from active badge reads by default
 - different profiles under the same user can receive the same badge type independently
-- badge awards are idempotent per profile and badge type
-- `/api/loyalty/badges/my/` returns only the current active profile's badge awards
-- automatic badge criteria evaluation is stubbed only and does not award badges yet
+- `/api/loyalty/badges/my/` returns only the current active profile's active badge awards unless `include_expired=true`
+- `RewardEngine.handle_event()` is the central synchronous reward dispatcher
+- reward idempotency keys use `reward:{reward_code}:{event_type}:{source_type}:{source_id}:profile:{profile_id}`
+- implemented synchronous reward events include customer profile creation, seller profile creation, auction creation/publishing, market product listing, bid placement, seller-approved auction payment requests, seller-approved market payment requests, rating creation, and seller follow creation/reactivation
+- sale-completion rewards are granted only after seller approval of `AuctionPaymentRequest` or `MarketPaymentRequest`
+- `OrderItem` seller approval, payment request creation/update/rejection, cashback redemption/earning, complaint creation, shipping, handoff, and buyer receipt confirmation do not grant sale-completion rewards
+- `LAST_MINUTE_FIGHTER` is a 7-day temporary badge and uses the bid's pre-auto-extend final-window state
+- `TRUSTED_BUYER` and `TRUSTED_SELLER` aggregate checks exist as Celery task entry points and are enqueued with `transaction.on_commit()` after payment approval
+- the detailed implementation/status report lives at `docs/rewards/rewarding-system-report.md`
 
 ### `apps.general`
 
@@ -1999,6 +2028,7 @@ The codebase currently provides:
 - order validators and services for stock-validating fixed-price order creation
 - order-item discount snapshots through admin-created discount offers
 - marketplace cashback balance, offer, transaction, redemption, earning, refund-helper, and admin-adjustment services
+- loyalty reward engine, temporary badge validity, reward idempotency, and trusted buyer/seller aggregate task entry points
 - seller item approval/rejection foundation
 - seller-decision timeout auto-cancellation for stale pending market order items
 - manual PaymentRequest flow for won auction items and approved marketplace order items
@@ -2101,6 +2131,7 @@ These risks are important and should be respected during future work.
 Current completion MVP:
 
 - buyer-created `PaymentRequest` records complete won auction items and approved market order items after seller approval
+- loyalty sale-completion rewards are granted only on seller-approved `PaymentRequest` records, after the relevant auction or market finalization succeeds
 - related buyers and sellers can create simple complaints for approved or rejected payment requests; managers resolve or reject them manually
 
 Important remaining gaps:
