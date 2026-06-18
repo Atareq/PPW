@@ -365,7 +365,7 @@ class SellerPackageService:
     @staticmethod
     @transaction.atomic
     def cancel_package(seller_package):
-        """Managers may cancel only pending seller package requests."""
+        """Cancel only pending seller package requests."""
 
         locked_package = (
             SellerPackage.objects.select_for_update()

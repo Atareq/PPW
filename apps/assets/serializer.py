@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Avg, Count
 from rest_framework import serializers
 
 from apps.assets.constants import (
@@ -41,15 +42,30 @@ class RemovedThumbnailUrlMixin:
 class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
     media = AssetMediaSerializer(many=True, required=False)
     qr_payload_url = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Bird
         fields = "__all__"
-        read_only_fields = ["owner", "public_id", "qr_payload_url"]
+        read_only_fields = ["owner", "public_id", "qr_payload_url", "rating", "review_count"]
 
     def get_qr_payload_url(self, obj):
         base_url = settings.PUBLIC_FRONTEND_BASE_URL.rstrip("/")
         return f"{base_url}/birds/{obj.public_id}"
+
+    def get_rating(self, obj) -> float:
+        # Use view-annotated value when present to avoid extra query per row.
+        avg = getattr(obj, "_avg_rating", None)
+        if avg is None:
+            avg = obj.asset_ratings.aggregate(avg=Avg("stars"))["avg"]
+        return round(avg or 0.0, 1)
+
+    def get_review_count(self, obj) -> int:
+        count = getattr(obj, "_review_count", None)
+        if count is None:
+            count = obj.asset_ratings.count()
+        return count
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -124,10 +140,24 @@ class ProductAssetSerializer(
     serializers.ModelSerializer,
 ):
     media = AssetMediaSerializer(many=True, required=False)
+    rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         fields = PRODUCT_ASSET_FIELDS
         read_only_fields = PRODUCT_ASSET_READ_ONLY_FIELDS
+
+    def get_rating(self, obj) -> float:
+        avg = getattr(obj, "_avg_rating", None)
+        if avg is None:
+            avg = obj.asset_ratings.aggregate(avg=Avg("stars"))["avg"]
+        return round(avg or 0.0, 1)
+
+    def get_review_count(self, obj) -> int:
+        count = getattr(obj, "_review_count", None)
+        if count is None:
+            count = obj.asset_ratings.count()
+        return count
 
     def create(self, validated_data):
         media_data = validated_data.pop("media", [])

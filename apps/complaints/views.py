@@ -167,3 +167,30 @@ class ComplaintAdminActionViewSet(viewsets.GenericViewSet):
             ComplaintDetailSerializer(complaint).data,
             status=status.HTTP_200_OK,
         )
+
+
+@extend_schema_view(
+    create=extend_schema(
+        tags=["Complaints"],
+        request=None,
+        responses={200: ComplaintDetailSerializer},
+    ),
+)
+class ComplaintReopenViewSet(viewsets.GenericViewSet):
+    """Manager command endpoint to reopen a resolved or rejected complaint."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "COMPLAINT_ADMIN"
+    serializer_class = ComplaintDetailSerializer
+    queryset = Complaint.objects.all()
+    http_method_names = ["post"]
+
+    def create(self, request, *args, **kwargs):
+        complaint = ComplaintService.reopen(
+            kwargs["pk"],
+            active_profile(request),
+        )
+        return Response(
+            ComplaintDetailSerializer(complaint).data,
+            status=status.HTTP_200_OK,
+        )

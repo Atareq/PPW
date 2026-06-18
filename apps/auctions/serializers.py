@@ -6,6 +6,8 @@ from rest_framework import serializers
 from apps.assets.models import Bird
 from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
 from apps.auctions.services import AuctionService, SettlementService
+from apps.general.serializers import AssetMediaSerializer
+from apps.users.constants import ProfileType
 
 # ============================================================================
 # NESTED SERIALIZERS
@@ -24,6 +26,35 @@ class BirdBasicSerializer(serializers.ModelSerializer):
             "gender",
             "colour",
             "birthday",
+        ]
+
+
+class BirdAuctionSerializer(serializers.ModelSerializer):
+    """Full bird info for auction item detail — matches mobile BirdSummaryModel."""
+
+    media = AssetMediaSerializer(many=True, read_only=True)
+    seller_id = serializers.IntegerField(source="owner.pk", read_only=True)
+    seller_nickname = serializers.CharField(
+        source="owner.sellerprofile.nickname", read_only=True, default=""
+    )
+
+    class Meta:
+        model = Bird
+        fields = [
+            "id",
+            "name",
+            "ring_number",
+            "gender",
+            "colour",
+            "birthday",
+            "achievements",
+            "flying_speed",
+            "stamina_ability",
+            "description",
+            "price",
+            "media",
+            "seller_id",
+            "seller_nickname",
         ]
 
 
@@ -55,8 +86,8 @@ class BidSerializer(serializers.ModelSerializer):
 class AuctionItemDetailSerializer(serializers.ModelSerializer):
     """Detailed auction item with bid history"""
 
-    bird = BirdBasicSerializer(read_only=True)
-    paired_bird = BirdBasicSerializer(read_only=True)
+    bird = BirdAuctionSerializer(read_only=True)
+    paired_bird = BirdAuctionSerializer(read_only=True)
     bids = BidSerializer(many=True, read_only=True)
     current_highest_bidder = serializers.CharField(read_only=True)
     winner_username = serializers.CharField(
@@ -67,6 +98,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
         source="auction.title", read_only=True
     )
     auction_id = serializers.IntegerField(source="auction.id", read_only=True)
+    winner_payment_request_id = serializers.SerializerMethodField()
 
     class Meta:
         model = AuctionItem
@@ -86,6 +118,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
             "modified",
             "auction_id",
             "auction_title",
+            "winner_payment_request_id",
         ]
         read_only_fields = [
             "id",
@@ -99,6 +132,12 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
 
     def get_is_active(self, obj) -> bool:
         return obj.is_active()
+
+    def get_winner_payment_request_id(self, obj) -> int | None:
+        try:
+            return obj.payment_request.pk
+        except Exception:
+            return None
 
 
 class AuctionItemListSerializer(serializers.ModelSerializer):
@@ -170,6 +209,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
     time_remaining = serializers.SerializerMethodField()
     is_active = serializers.SerializerMethodField()
     is_ended = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
 
     auction_type_display = serializers.CharField(
         source="get_auction_type_display", read_only=True
@@ -191,6 +231,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "auto_extend_minutes",
             "buy_now_enabled",
             "buy_now_price",
+            "min_bid_increment",
             "deposit_required",
             "payment_deadline_days",
             "is_visible",
@@ -199,6 +240,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "time_remaining",
             "is_active",
             "is_ended",
+            "is_owner",
             "created",
             "modified",
             "items",
@@ -228,6 +270,12 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
     def get_is_ended(self, obj) -> bool:
         return obj.is_ended()
 
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return False
+        return obj.owner_id == request.user.active_profile.pk
+
 
 class AuctionListSerializer(serializers.ModelSerializer):
     """Minimal auction info for listing"""
@@ -243,6 +291,8 @@ class AuctionListSerializer(serializers.ModelSerializer):
         source="get_auction_type_display", read_only=True
     )
     time_remaining = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = Auction
@@ -258,6 +308,11 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "item_count",
             "is_visible",
             "time_remaining",
+            "current_price",
+            "buy_now_enabled",
+            "min_bid_increment",
+            "thumbnail_url",
+            "is_owner",
             "created",
             "status",
         ]
@@ -275,6 +330,25 @@ class AuctionListSerializer(serializers.ModelSerializer):
         if remaining:
             return int(remaining.total_seconds())
         return None
+
+    def get_thumbnail_url(self, obj) -> str | None:
+        # Use prefetched items to avoid N+1; get first image from first item's bird.
+        items = obj.items.all()
+        for item in items:
+            bird = item.bird
+            media_qs = bird.media.filter(media_type="image").order_by(
+                "-is_primary", "order"
+            )
+            first = media_qs.first()
+            if first:
+                return first.media_url
+        return None
+
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return False
+        return obj.owner_id == request.user.active_profile.pk
 
 
 # ============================================================================
@@ -437,11 +511,26 @@ class AuctionUpdateSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "tags",
+            "is_visible",
         ]
 
+    def validate(self, data):
+        if "is_visible" in data:
+            request = self.context.get("request")
+            if request is None or getattr(request.user, "role", None) != ProfileType.MANAGER:
+                raise serializers.ValidationError(
+                    {"is_visible": "Only managers can modify this field."}
+                )
+        return data
+
     def update(self, instance, validated_data):
-        """Update only allowed fields through the service layer."""
-        return AuctionService.update_auction(instance, validated_data)
+        is_visible = validated_data.pop("is_visible", None)
+        if is_visible is not None:
+            instance.is_visible = is_visible
+            instance.save(update_fields=["is_visible", "modified"])
+        if validated_data:
+            instance = AuctionService.update_auction(instance, validated_data)
+        return instance
 
 
 class PlaceBidSerializer(serializers.Serializer):

@@ -17,6 +17,10 @@ from apps.users.constants import ProfileType
 
 
 @extend_schema_view(
+    list=extend_schema(
+        tags=["Pedigrees"],
+        responses={200: PedigreeDocumentDetailSerializer(many=True)},
+    ),
     create=extend_schema(
         tags=["Pedigrees"],
         request=PedigreeDocumentUploadSerializer,
@@ -28,10 +32,11 @@ from apps.users.constants import ProfileType
     ),
 )
 class PedigreeDocumentViewSet(
+    mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Upload and retrieve profile-owned pedigree OCR documents."""
+    """Upload, list, and retrieve profile-owned pedigree OCR documents."""
 
     permission_classes = [HasAppAccess]
     permission_resource = "PEDIGREE_DOCUMENT"
@@ -49,7 +54,11 @@ class PedigreeDocumentViewSet(
         active_profile = self.request.user.active_profile
         if active_profile.type == ProfileType.MANAGER:
             return queryset
-        return queryset.filter(owner_id=active_profile.pk)
+        queryset = queryset.filter(owner_id=active_profile.pk)
+        bird_id = self.request.query_params.get("bird_id")
+        if bird_id:
+            queryset = queryset.filter(bird_id=bird_id)
+        return queryset
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

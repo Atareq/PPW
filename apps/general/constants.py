@@ -80,8 +80,10 @@ SELLER_PERMISSIONS = {
     "MY_SELLER_PACKAGE": [
         "list",
         "create",
+        "cancel",
     ],
     "PEDIGREE_DOCUMENT": [
+        "list",
         "create",
         "retrieve",
         "partial_update",
@@ -174,6 +176,7 @@ CUSTOMER_PERMISSIONS = {
         "retrieve",
     ],
     "PEDIGREE_DOCUMENT": [
+        "list",
         "create",
         "retrieve",
         "partial_update",

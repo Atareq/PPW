@@ -198,11 +198,25 @@ class CashbackBalanceViewSet(viewsets.GenericViewSet):
     @extend_schema(tags=["Promotions"], responses={200: CashbackBalanceSerializer})
     def retrieve(self, request):
         active_profile = request.user.active_profile
-        if active_profile.type != ProfileType.CUSTOMER:
+
+        if active_profile.type == ProfileType.MANAGER:
+            customer_id = request.query_params.get("customer")
+            if not customer_id:
+                raise PermissionDenied(
+                    "Managers must provide ?customer=<id> to view a customer's balance."
+                )
+            try:
+                customer = CustomerProfile.objects.get(pk=customer_id)
+            except CustomerProfile.DoesNotExist:
+                from rest_framework.exceptions import NotFound
+                raise NotFound("Customer profile not found.")
+        elif active_profile.type == ProfileType.CUSTOMER:
+            customer = CustomerProfile.objects.get(pk=active_profile.pk)
+        else:
             raise PermissionDenied(
-                "Only customer profiles can view cashback balance."
+                "Only customer or manager profiles can view cashback balance."
             )
-        customer = CustomerProfile.objects.get(pk=active_profile.pk)
+
         return Response(
             CashbackBalanceSerializer(
                 {

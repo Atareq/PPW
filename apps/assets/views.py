@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Avg, Count, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, viewsets
 from rest_framework.filters import OrderingFilter
@@ -37,7 +37,14 @@ from apps.users.constants import ProfileType
 class BirdViewSet(viewsets.ModelViewSet):
     """Bird asset CRUD gated by BIRD app permissions and seller validation."""
 
-    queryset = Bird.objects.prefetch_related("media").order_by("-created")
+    queryset = (
+        Bird.objects.prefetch_related("media", "asset_ratings")
+        .annotate(
+            _avg_rating=Avg("asset_ratings__stars"),
+            _review_count=Count("asset_ratings"),
+        )
+        .order_by("-created")
+    )
     serializer_class = BirdSerializer
     permission_classes = [
         HasAppAccess,
@@ -93,8 +100,15 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Managers see all; customers see listed; sellers see own plus listed."""
 
-        queryset = super().get_queryset().prefetch_related("media").order_by(
-            "-created"
+        queryset = (
+            super()
+            .get_queryset()
+            .prefetch_related("media", "asset_ratings")
+            .annotate(
+                _avg_rating=Avg("asset_ratings__stars"),
+                _review_count=Count("asset_ratings"),
+            )
+            .order_by("-created")
         )
         user = self.request.user
         role = user.role

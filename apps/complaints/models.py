@@ -23,6 +23,7 @@ class ComplaintEventType(models.TextChoices):
     RESOLVED = "complaint_resolved", "Complaint Resolved"
     REJECTED = "complaint_rejected", "Complaint Rejected"
     CANCELLED = "complaint_cancelled", "Complaint Cancelled"
+    REOPENED = "complaint_reopened", "Complaint Reopened"
 
 
 class Complaint(BaseModel):

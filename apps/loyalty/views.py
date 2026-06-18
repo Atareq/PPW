@@ -1,12 +1,13 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.authentication.models import UserAccount
 from apps.loyalty.filters import PointTransactionFilter
 from apps.loyalty.models import BadgeAward, PointTransaction
 from apps.loyalty.serializers import (
@@ -21,24 +22,57 @@ from apps.users.constants import ProfileType
 
 
 class PointBalanceAPIView(APIView):
-    """Return the authenticated user's current point balance."""
+    """Return the authenticated user's current point balance.
+
+    Managers can pass ?user_id=<id> to view any user's balance.
+    """
 
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Loyalty"],
+        parameters=[
+            OpenApiParameter(
+                name="user_id",
+                location=OpenApiParameter.QUERY,
+                required=False,
+                type=int,
+                description="Manager-only: return balance for this user.",
+            )
+        ],
         responses={200: PointBalanceSerializer},
     )
     def get(self, request):
-        active_profile = request.user.active_profile
-        balance = PointService.get_balance(request.user)
-        serializer = PointBalanceSerializer(
-            {
-                "user_id": request.user.pk,
-                "active_profile_id": active_profile.pk,
-                "balance": balance,
-            }
-        )
+        user_id_param = request.query_params.get("user_id")
+
+        if user_id_param:
+            if request.user.role != ProfileType.MANAGER:
+                raise PermissionDenied(
+                    "Only managers can view another user's balance."
+                )
+            try:
+                target_user = UserAccount.objects.get(pk=user_id_param)
+            except UserAccount.DoesNotExist:
+                raise NotFound("User not found.")
+            balance = PointService.get_balance(target_user)
+            serializer = PointBalanceSerializer(
+                {
+                    "user_id": target_user.pk,
+                    "active_profile_id": None,
+                    "balance": balance,
+                }
+            )
+        else:
+            active_profile = request.user.active_profile
+            balance = PointService.get_balance(request.user)
+            serializer = PointBalanceSerializer(
+                {
+                    "user_id": request.user.pk,
+                    "active_profile_id": active_profile.pk,
+                    "balance": balance,
+                }
+            )
+
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 

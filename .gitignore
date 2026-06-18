@@ -40,3 +40,4 @@ celerybeat-schedule
 
 .coverage
 htmlcov/
+.vercel

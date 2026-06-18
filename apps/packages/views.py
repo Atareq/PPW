@@ -77,6 +77,10 @@ class PackageViewSet(
         request=SellerPackageRequestSerializer,
         responses={201: SellerPackageSerializer},
     ),
+    cancel=extend_schema(
+        tags=["Seller Packages"],
+        responses={200: SellerPackageSerializer},
+    ),
 )
 class MySellerPackageViewSet(
     mixins.ListModelMixin,
@@ -127,6 +131,15 @@ class MySellerPackageViewSet(
             response_serializer.data,
             status=status.HTTP_201_CREATED,
         )
+
+    def cancel(self, request, *args, **kwargs):
+        seller_package = self.get_object()
+        seller_package = SellerPackageService.cancel_package(seller_package)
+        response_serializer = SellerPackageSerializer(
+            seller_package,
+            context=self.get_serializer_context(),
+        )
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
 @extend_schema_view(

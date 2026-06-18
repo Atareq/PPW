@@ -23,6 +23,11 @@ my_seller_package_list = MySellerPackageViewSet.as_view(
         "post": "create",
     }
 )
+my_seller_package_cancel = MySellerPackageViewSet.as_view(
+    {
+        "post": "cancel",
+    }
+)
 manager_seller_package_list = ManagerSellerPackageViewSet.as_view(
     {
         "get": "list",
@@ -45,6 +50,11 @@ urlpatterns = [
         "packages/my-packages/",
         my_seller_package_list,
         name="my-seller-package-list",
+    ),
+    path(
+        "packages/my-packages/<int:pk>/cancel/",
+        my_seller_package_cancel,
+        name="my-seller-package-cancel",
     ),
     path(
         "seller-packages/",

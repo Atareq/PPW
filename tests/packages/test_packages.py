@@ -190,6 +190,45 @@ class TestSellerPackageEndpoints:
         ids = {item["id"] for item in response_results(response)}
         assert ids == {seller_package.pk}
 
+    def test_seller_can_cancel_own_pending_package(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = AssetSellerPackageFactory(
+            owner=concrete_seller_profile(seller_user),
+            status=SellerPackageStatus.PENDING,
+            activated=False,
+        )
+        client = authenticated_client(seller_user)
+
+        response = client.post(
+            f"/api/packages/my-packages/{seller_package.pk}/cancel/"
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == seller_package.pk
+        assert response.data["status"] == SellerPackageStatus.CANCELLED
+        seller_package.refresh_from_db()
+        assert seller_package.status == SellerPackageStatus.CANCELLED
+        assert seller_package.activated is False
+        assert seller_package.invalidated_at is not None
+
+    def test_seller_cannot_cancel_another_sellers_package(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        other_seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        other_package = AssetSellerPackageFactory(
+            owner=concrete_seller_profile(other_seller_user),
+            status=SellerPackageStatus.PENDING,
+            activated=False,
+        )
+        client = authenticated_client(seller_user)
+
+        response = client.post(
+            f"/api/packages/my-packages/{other_package.pk}/cancel/"
+        )
+
+        assert response.status_code == 404
+        other_package.refresh_from_db()
+        assert other_package.status == SellerPackageStatus.PENDING
+
     def test_seller_can_view_active_package_summary(self):
         seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
         package = PackageFactory(auction_cost=12, product_cost=7)

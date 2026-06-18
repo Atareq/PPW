@@ -485,7 +485,7 @@ class FeedService:
                 end_time__gt=now,
             )
             .select_related("owner", "owner__sellerprofile")
-            .prefetch_related("items")
+            .prefetch_related("items__bird__media")
             .order_by("-created", "-id")
         )
         if blocked_seller_ids:

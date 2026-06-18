@@ -10,6 +10,8 @@ PRODUCT_ASSET_FIELDS = [
     "is_for_auction",
     "category",
     "owner",
+    "rating",
+    "review_count",
     "created",
     "modified",
 ]
@@ -18,6 +20,8 @@ PRODUCT_ASSET_READ_ONLY_FIELDS = [
     "id",
     "owner",
     "category",
+    "rating",
+    "review_count",
     "created",
     "modified",
 ]

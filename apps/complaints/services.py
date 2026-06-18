@@ -178,6 +178,30 @@ class ComplaintService:
 
     @staticmethod
     @transaction.atomic
+    def reopen(complaint_id, manager_profile):
+        ComplaintService._ensure_manager(manager_profile)
+        complaint = ComplaintService._get_locked_complaint(complaint_id)
+
+        if complaint.status not in {
+            ComplaintStatus.RESOLVED,
+            ComplaintStatus.REJECTED,
+        }:
+            raise ValidationError(
+                "Only resolved or rejected complaints can be reopened."
+            )
+
+        complaint.status = ComplaintStatus.OPEN
+        complaint.admin_note = ""
+        complaint.save(update_fields=["status", "admin_note", "modified"])
+        ComplaintService._log_event(
+            complaint,
+            ComplaintEventType.REOPENED,
+            actor=manager_profile,
+        )
+        return ComplaintService.get_complaint(complaint.pk)
+
+    @staticmethod
+    @transaction.atomic
     def cancel(complaint_id, actor_profile):
         complaint = ComplaintService._get_locked_complaint(complaint_id)
 

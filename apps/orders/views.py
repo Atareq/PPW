@@ -203,6 +203,8 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_owner_field = "seller_id"
     serializer_class = OrderItemSerializer
     queryset = OrderItem.objects.all()
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["discount_offer", "cashback_offer"]
 
     def get_queryset(self):
         queryset = order_item_queryset()

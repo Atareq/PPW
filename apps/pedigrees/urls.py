@@ -5,7 +5,7 @@ from apps.pedigrees.views import (
     PedigreeDocumentViewSet,
 )
 
-CREATE_ACTION = {"post": "create"}
+LIST_CREATE_ACTION = {"get": "list", "post": "create"}
 RETRIEVE_ACTION = {"get": "retrieve"}
 PARTIAL_UPDATE_ACTION = {"patch": "partial_update"}
 
@@ -14,8 +14,8 @@ app_name = "pedigrees"
 urlpatterns = [
     path(
         "documents/",
-        PedigreeDocumentViewSet.as_view(CREATE_ACTION),
-        name="pedigree-document-upload",
+        PedigreeDocumentViewSet.as_view(LIST_CREATE_ACTION),
+        name="pedigree-document-list-upload",
     ),
     path(
         "documents/<int:pk>/",

@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.http import Http404
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.authentication.services import switch_user_profile
@@ -21,6 +22,24 @@ class SellerProfileAdminViewSet(viewsets.ModelViewSet):
     queryset = SellerProfile.objects.select_related('user').all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
 
+    @action(detail=False, methods=["post"], url_path="bulk-suspend")
+    def bulk_suspend(self, request):
+        ids = request.data.get("ids", [])
+        updated = SellerProfile.objects.filter(pk__in=ids).update(is_valid=False)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-restore")
+    def bulk_restore(self, request):
+        ids = request.data.get("ids", [])
+        updated = SellerProfile.objects.filter(pk__in=ids).update(is_valid=True)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-activate")
+    def bulk_activate(self, request):
+        ids = request.data.get("ids", [])
+        updated = SellerProfile.objects.filter(pk__in=ids).update(activated=True)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
 
 class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
     """Admin/staff CRUD for customer profile moderation and correction."""
@@ -28,6 +47,24 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerProfileAdminSerializer
     queryset = CustomerProfile.objects.select_related('user').all().order_by("-created")
     permission_classes = [permissions.IsAdminUser]
+
+    @action(detail=False, methods=["post"], url_path="bulk-suspend")
+    def bulk_suspend(self, request):
+        ids = request.data.get("ids", [])
+        updated = CustomerProfile.objects.filter(pk__in=ids).update(is_valid=False)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-restore")
+    def bulk_restore(self, request):
+        ids = request.data.get("ids", [])
+        updated = CustomerProfile.objects.filter(pk__in=ids).update(is_valid=True)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-activate")
+    def bulk_activate(self, request):
+        ids = request.data.get("ids", [])
+        updated = CustomerProfile.objects.filter(pk__in=ids).update(activated=True)
+        return Response({"updated": updated}, status=status.HTTP_200_OK)
 
 
 class SellerProfileMobileViewSet(viewsets.ModelViewSet):

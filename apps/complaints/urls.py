@@ -3,6 +3,7 @@ from django.urls import path
 from apps.complaints.views import (
     ComplaintAdminActionViewSet,
     ComplaintCancelViewSet,
+    ComplaintReopenViewSet,
     ComplaintViewSet,
 )
 
@@ -57,5 +58,10 @@ urlpatterns = [
             action_type="reject",
         ),
         name="complaint-reject",
+    ),
+    path(
+        "<int:pk>/reopen/",
+        ComplaintReopenViewSet.as_view(CREATE_ACTION),
+        name="complaint-reopen",
     ),
 ]
