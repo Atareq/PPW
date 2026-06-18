@@ -8,6 +8,8 @@ from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset
+from apps.core.models import NotificationKind
+from apps.core.services import NotificationService
 from apps.orders.models import (
     Cart,
     CartItem,
@@ -388,6 +390,7 @@ class OrderCheckoutService:
         order.save(update_fields=["total_price", "modified"])
         order = OrderService.get_order(order.pk)
         OrderCheckoutService._create_checkout_events(order)
+        OrderCheckoutService._create_checkout_notifications(order)
         return OrderService.get_order(order.pk)
 
     @staticmethod
@@ -418,6 +421,22 @@ class OrderCheckoutService:
             for item in order.items.all()
         )
         OrderEvent.objects.bulk_create(events)
+
+    @staticmethod
+    def _create_checkout_notifications(order):
+        for item in order.items.all():
+            NotificationService.create(
+                profile=item.seller,
+                kind=NotificationKind.ORDER,
+                title="New order item",
+                body="A customer placed an order for one of your items.",
+                metadata={
+                    "order_id": order.pk,
+                    "order_item_id": item.pk,
+                    "asset_id": item.asset_id,
+                },
+                profile_type="Seller",
+            )
 
 
 class OrderItemService:
@@ -474,6 +493,7 @@ class OrderItemService:
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)
         OrderItemService._create_seller_approved_event(item)
+        OrderItemService._create_seller_approved_notification(item)
 
         return OrderItemService.get_item(item.pk)
 
@@ -495,6 +515,7 @@ class OrderItemService:
         item.status = OrderItemStatus.REJECTED
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)
+        OrderItemService._create_seller_rejected_notification(item)
 
         return OrderItemService.get_item(item.pk)
 
@@ -513,6 +534,10 @@ class OrderItemService:
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)
         OrderItemService._create_seller_auto_cancelled_event(
+            item,
+            timeout_days=timeout_days,
+        )
+        OrderItemService._create_seller_auto_cancelled_notification(
             item,
             timeout_days=timeout_days,
         )
@@ -550,6 +575,36 @@ class OrderItemService:
         )
 
     @staticmethod
+    def _create_seller_approved_notification(item):
+        NotificationService.create(
+            profile=item.order.owner,
+            kind=NotificationKind.ORDER,
+            title="Order item approved",
+            body="Seller approved your order item. Complete the payment request.",
+            metadata={
+                "order_id": item.order_id,
+                "order_item_id": item.pk,
+                "asset_id": item.asset_id,
+            },
+            profile_type="Customer",
+        )
+
+    @staticmethod
+    def _create_seller_rejected_notification(item):
+        NotificationService.create(
+            profile=item.order.owner,
+            kind=NotificationKind.ORDER,
+            title="Order item rejected",
+            body="Seller rejected your order item.",
+            metadata={
+                "order_id": item.order_id,
+                "order_item_id": item.pk,
+                "asset_id": item.asset_id,
+            },
+            profile_type="Customer",
+        )
+
+    @staticmethod
     def _create_seller_auto_cancelled_event(item, *, timeout_days):
         OrderEvent.objects.create(
             order=item.order,
@@ -562,4 +617,21 @@ class OrderItemService:
                 "seller_id": item.seller_id,
                 "timeout_days": timeout_days,
             },
+        )
+
+    @staticmethod
+    def _create_seller_auto_cancelled_notification(item, *, timeout_days):
+        NotificationService.create(
+            profile=item.order.owner,
+            kind=NotificationKind.ORDER,
+            title="Order item cancelled",
+            body="Order item was cancelled because the seller did not act in time.",
+            metadata={
+                "order_id": item.order_id,
+                "order_item_id": item.pk,
+                "asset_id": item.asset_id,
+                "seller_id": item.seller_id,
+                "timeout_days": timeout_days,
+            },
+            profile_type="Customer",
         )

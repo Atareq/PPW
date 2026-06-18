@@ -3,6 +3,8 @@ from apps.authentication.models import UserAccount
 from apps.users.models import Profile
 from rest_framework.exceptions import ValidationError
 
+from apps.core.models import NotificationKind
+from apps.core.services import NotificationService
 from apps.loyalty.constants import (
     BADGE_DEFINITIONS,
     BadgeType,
@@ -280,7 +282,7 @@ class BadgeService:
             "metadata": metadata or {},
         }
         try:
-            award, _ = BadgeAward.objects.get_or_create(
+            award, created = BadgeAward.objects.get_or_create(
                 profile=profile,
                 badge_type=badge_type,
                 defaults=defaults,
@@ -289,6 +291,20 @@ class BadgeService:
             award = BadgeAward.objects.get(
                 profile=profile,
                 badge_type=badge_type,
+            )
+            created = False
+        if created:
+            badge_title = BADGE_DEFINITIONS[badge_type]["title"]
+            NotificationService.create(
+                profile=profile,
+                kind=NotificationKind.NEW_BADGE,
+                title="Badge awarded",
+                body=str(badge_title),
+                metadata={
+                    "badge_type": badge_type,
+                    "badge_award_id": award.pk,
+                },
+                profile_type=profile.type,
             )
         return award
 

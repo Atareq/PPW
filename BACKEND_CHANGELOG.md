@@ -6,6 +6,32 @@
 
 ---
 
+## 2026-06-18 — Notifications backend implementation
+
+### `apps/core/models.py`, `apps/core/services.py`, `apps/core/serializers.py`, `apps/core/views.py`, `apps/core/urls.py`, `apps/core/migrations/0001_initial.py`
+**What:** Added the `apps.core` notification module with `Notification`, `NotificationKind`, read/create serializers, `NotificationService`, list/create/mark-read/unread-count/destroy viewset actions, URL routes under `/api/core/notifications/`, and an initial migration.
+**Why:** Mobile notification center was wired but the backend `/api/core/notifications/` endpoints did not exist.
+
+### `ppw/settings/base.py`, `ppw/urls.py`
+**What:** Registered `apps.core` in `APPS` and included `apps.core.urls` at `api/core/`.
+**Why:** Makes the notification endpoints available to the mobile API.
+
+### `apps/general/constants.py`
+**What:** Added `NOTIFICATION: ["list", "mark_read", "unread_count"]` to both seller and customer permission matrices.
+**Why:** Seller/customer mobile users need scoped access to their own notifications and unread count.
+
+### Programmatic notification triggers
+**What:** Created notifications for order checkout seller alerts, seller approve/reject/timeout customer alerts, payment approve/reject customer alerts, new auction bids, auction won/buy-now, chat message delivery, and new badge awards.
+**Why:** The notification center needs real records from existing customer/seller workflows, not only manager-created manual records.
+
+### `../MOBILE_BACKEND_AUDIT.md`
+**What:** Marked Notifications complete, removed the open backend gap, and updated the module section and implementation priority.
+**Why:** Notifications are no longer a mock-ready/mobile-only feature; the backend module is implemented.
+
+**Verification:** `python manage.py check` passes. `python manage.py makemigrations --check --dry-run` shows no pending `core` migration changes; it still reports an unrelated pre-existing complaints migration drift.
+
+---
+
 ## 2026-06-18 — Mobile promotions parity audit (customer scope)
 
 ### Promotions mobile-facing endpoints

@@ -4,6 +4,8 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import AuctionItem, AuctionItemStatus
+from apps.core.models import NotificationKind
+from apps.core.services import NotificationService
 from apps.feed.services import BlockService
 from apps.orders.models import OrderItem, OrderItemStatus
 from apps.orders.services import OrderService
@@ -232,6 +234,7 @@ class PaymentRequestService:
             PaymentRequestEventType.APPROVED,
             actor=seller_profile,
         )
+        PaymentRequestService._create_approved_notification(payment_request)
         return PaymentRequestService.get_request(payment_request.pk)
 
     @staticmethod
@@ -270,6 +273,7 @@ class PaymentRequestService:
             PaymentRequestEventType.REJECTED,
             actor=seller_profile,
         )
+        PaymentRequestService._create_rejected_notification(payment_request)
         return PaymentRequestService.get_request(payment_request.pk)
 
     @staticmethod
@@ -438,4 +442,34 @@ class PaymentRequestService:
             event_type=event_type,
             actor=actor,
             metadata=metadata or {},
+        )
+
+    @staticmethod
+    def _create_approved_notification(payment_request):
+        NotificationService.create(
+            profile=payment_request.buyer,
+            kind=NotificationKind.PAYMENT,
+            title="Payment approved",
+            body="Seller approved your payment request.",
+            metadata={
+                "payment_request_id": payment_request.pk,
+                "asset_id": payment_request.asset_id,
+                "request_type": payment_request.request_type,
+            },
+            profile_type="Customer",
+        )
+
+    @staticmethod
+    def _create_rejected_notification(payment_request):
+        NotificationService.create(
+            profile=payment_request.buyer,
+            kind=NotificationKind.PAYMENT,
+            title="Payment rejected",
+            body="Seller rejected your payment request.",
+            metadata={
+                "payment_request_id": payment_request.pk,
+                "asset_id": payment_request.asset_id,
+                "request_type": payment_request.request_type,
+            },
+            profile_type="Customer",
         )

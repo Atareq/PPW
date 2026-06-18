@@ -39,6 +39,8 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
+from apps.core.models import NotificationKind
+from apps.core.services import NotificationService
 from apps.packages.models import PackageUsageType
 from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
@@ -750,6 +752,19 @@ class BiddingService:
             bid=bid,
             metadata={"amount": str(amount)},
         )
+        NotificationService.create(
+            profile=auction.owner,
+            kind=NotificationKind.NEW_BID,
+            title="New bid",
+            body="A customer placed a new bid on your auction item.",
+            metadata={
+                "auction_id": auction.pk,
+                "item_id": item.pk,
+                "bid_id": bid.pk,
+                "amount": str(amount),
+            },
+            profile_type="Seller",
+        )
 
         return bid
 
@@ -802,6 +817,9 @@ class SettlementService:
     def _settle_item(item: AuctionItem) -> None:
         """Determine winner and mark item status"""
 
+        previous_status = item.status
+        previous_winner_bid_id = item.winner_bid_id
+
         # Get highest bid
         winning_bid = item.bids.order_by("-amount").first()
 
@@ -817,6 +835,26 @@ class SettlementService:
             item.winner_bid = None
 
         item.save()
+        if (
+            winning_bid
+            and (
+                previous_status != AuctionItemStatus.SOLD
+                or previous_winner_bid_id != winning_bid.pk
+            )
+        ):
+            NotificationService.create(
+                profile=winning_bid.bidder,
+                kind=NotificationKind.AUCTION_WON,
+                title="Auction won",
+                body="You won an auction item.",
+                metadata={
+                    "auction_id": item.auction_id,
+                    "item_id": item.pk,
+                    "bid_id": winning_bid.pk,
+                    "amount": str(winning_bid.amount),
+                },
+                profile_type="Customer",
+            )
 
     @staticmethod
     def trigger_buy_now(
@@ -873,6 +911,19 @@ class SettlementService:
                 item=item,
                 bid=bid,
                 metadata={"buy_now_price": str(auction.buy_now_price)},
+            )
+            NotificationService.create(
+                profile=buyer,
+                kind=NotificationKind.AUCTION_WON,
+                title="Auction won",
+                body="You bought this auction item with buy now.",
+                metadata={
+                    "auction_id": auction.pk,
+                    "item_id": item.pk,
+                    "bid_id": bid.pk,
+                    "amount": str(auction.buy_now_price),
+                },
+                profile_type="Customer",
             )
 
         return bid
