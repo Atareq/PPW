@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
@@ -47,7 +48,7 @@ class PaymentRequestViewSet(
 ):
     """Role-scoped payment request list plus buyer note resubmission."""
 
-    permission_classes = [HasAppAccess]
+    permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
     queryset = PaymentRequest.objects.all()
     http_method_names = ["get", "patch"]
@@ -98,7 +99,7 @@ class PaymentRequestViewSet(
 class PaymentRequestCreateViewSet(viewsets.GenericViewSet):
     """Create buyer payment requests for either auction or market sources."""
 
-    permission_classes = [HasAppAccess]
+    permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
     queryset = PaymentRequest.objects.all()
     http_method_names = ["post"]
@@ -142,7 +143,7 @@ class PaymentRequestCreateViewSet(viewsets.GenericViewSet):
 class PaymentRequestDecisionViewSet(viewsets.GenericViewSet):
     """Seller approve/reject commands for pending manual payment requests."""
 
-    permission_classes = [HasAppAccess]
+    permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
     queryset = PaymentRequest.objects.all()
     http_method_names = ["post"]

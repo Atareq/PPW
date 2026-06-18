@@ -131,7 +131,23 @@ class ProductAssetCreationService:
                 PackageUsageType.PRODUCT_CREATED,
                 related_object=product,
             )
+            ProductAssetCreationService._handle_market_item_reward(
+                product,
+                owner,
+            )
             return product
+
+    @staticmethod
+    def _handle_market_item_reward(product, owner):
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        RewardEngine.handle_event(
+            RewardEventType.MARKET_ITEM_LISTED,
+            actor=owner,
+            profile=owner,
+            context={"asset": product},
+        )
 
 
 class AssetMediaWriteService:

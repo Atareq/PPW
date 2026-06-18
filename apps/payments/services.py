@@ -232,6 +232,7 @@ class PaymentRequestService:
             PaymentRequestEventType.APPROVED,
             actor=seller_profile,
         )
+        PaymentRequestService._handle_approved_rewards(payment_request)
         return PaymentRequestService.get_request(payment_request.pk)
 
     @staticmethod
@@ -438,4 +439,27 @@ class PaymentRequestService:
             event_type=event_type,
             actor=actor,
             metadata=metadata or {},
+        )
+
+    @staticmethod
+    def _handle_approved_rewards(payment_request):
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        event_type = {
+            PaymentRequestType.AUCTION: (
+                RewardEventType.AUCTION_PAYMENT_REQUEST_APPROVED
+            ),
+            PaymentRequestType.MARKET: (
+                RewardEventType.MARKET_PAYMENT_REQUEST_APPROVED
+            ),
+        }.get(payment_request.request_type)
+        if event_type is None:
+            return
+
+        RewardEngine.handle_event(
+            event_type,
+            actor=payment_request.seller,
+            profile=payment_request.seller,
+            context={"payment_request": payment_request},
         )

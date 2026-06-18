@@ -110,6 +110,7 @@ def create_asset_rating(customer_profile, asset_id, stars, comment_data=None):
         comment=comment,
     )
     update_asset_rating(asset)
+    _handle_rating_reward(customer_profile, rating)
     return rating
 
 
@@ -140,4 +141,17 @@ def create_seller_rating(
         comment=comment,
     )
     update_seller_rating(seller)
+    _handle_rating_reward(customer_profile, rating)
     return rating
+
+
+def _handle_rating_reward(customer_profile, rating):
+    from apps.loyalty.constants import RewardEventType
+    from apps.loyalty.reward_engine import RewardEngine
+
+    RewardEngine.handle_event(
+        RewardEventType.RATING_CREATED,
+        actor=customer_profile,
+        profile=customer_profile,
+        context={"rating": rating},
+    )

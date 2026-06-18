@@ -56,10 +56,18 @@ class CustomerRegisterSerializer(
 
         with transaction.atomic():
             user = UserAccount.objects.create_user(**validated_data)
-            CustomerProfile.objects.create(
+            customer_profile = CustomerProfile.objects.create(
                 user=user,
                 is_active=True,  # The user's first profile
                 **profile_data
+            )
+            from apps.loyalty.constants import RewardEventType
+            from apps.loyalty.reward_engine import RewardEngine
+
+            RewardEngine.handle_event(
+                RewardEventType.CUSTOMER_PROFILE_CREATED,
+                actor=customer_profile,
+                profile=customer_profile,
             )
 
         return user

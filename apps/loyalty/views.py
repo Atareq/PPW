@@ -134,6 +134,12 @@ class BadgeViewSet(viewsets.GenericViewSet):
         responses={200: BadgeAwardSerializer(many=True)},
     )
     def my(self, request):
-        queryset = BadgeService.get_earned_badges(request.user.active_profile)
+        include_expired = (
+            request.query_params.get("include_expired", "").lower() == "true"
+        )
+        queryset = BadgeService.get_earned_badges(
+            request.user.active_profile,
+            include_expired=include_expired,
+        )
         serializer = BadgeAwardSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

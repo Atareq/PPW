@@ -36,7 +36,9 @@ class PedigreeDocument(OwnerBaseModel):
     reviewed_bird_ring_number = models.CharField(max_length=100, blank=True)
     reviewed_description = models.TextField(blank=True)
     processing_error = models.TextField(blank=True)
+    extracted_boxes = models.JSONField(default=list, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
+
 
     class Meta:
         ordering = ["-created"]

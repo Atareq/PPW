@@ -50,7 +50,19 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
-        serializer.save(user=user, is_active=False, type=ProfileType.SELLER)
+        seller_profile = serializer.save(
+            user=user,
+            is_active=False,
+            type=ProfileType.SELLER,
+        )
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        RewardEngine.handle_event(
+            RewardEventType.SELLER_PROFILE_CREATED,
+            actor=seller_profile,
+            profile=seller_profile,
+        )
 
         return Response(
             {"message": "Seller profile created successfully"},

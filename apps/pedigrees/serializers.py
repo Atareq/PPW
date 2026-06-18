@@ -43,6 +43,7 @@ class PedigreeDocumentDetailSerializer(serializers.ModelSerializer):
             "bird_id",
             "status",
             "raw_ocr_text",
+            "extracted_boxes",
             "extracted_bird_ring_number",
             "extracted_description",
             "reviewed_bird_ring_number",
