@@ -1,5 +1,6 @@
-# Uncommitted Changes — Staff Roles, Audit Log, Manager Permissions
-**Status:** Unstaged / uncommitted as of 2026-06-20
+# Commit: b5d017a — added final changes
+**Date:** 2026-06-20  
+**Author:** Ahmed Ali
 
 ---
 
@@ -21,6 +22,8 @@
 | General (Services) | New | `AuditLogService.log()` — never-raising audit writer |
 | General (Views/URLs) | New | `GET /api/audit-logs/` — filtered, paginated audit log list |
 | Feed (Serializers) | Updated | `SellerListSerializer` adds `user_id` and `description` |
+| Migrations | New | `general/0002_auditlog`, `users/0003` (remove unique_together + description), `users/0004` (staff_role) |
+| Tests | Updated | Manager registration tests updated for Super Admin guard; new `super_admin_user`/`super_admin_client` fixtures |
 
 ---
 
@@ -376,5 +379,40 @@ GET /api/audit-logs/
 ```json
 { "id": 7, "user_id": 14, "nickname": "FalconBreeder", "description": "Champion pigeon breeder.", "country": "EG", "avg_rating": "4.50", "ratings_count": 23, "avatar_url": "..." }
 ```
+
+---
+
+## 17. Migrations
+
+| Migration | What |
+|-----------|------|
+| `general/0002_auditlog` | Creates `AuditLog` table |
+| `users/0003_alter_profile_unique_together_and_more` | Drops `unique_together ("user", "type")` on `Profile`; adds `description` TextField to `SellerProfile` |
+| `users/0004_managerprofile_staff_role` | Adds `staff_role` CharField to `ManagerProfile` (default `"admin"`) |
+
+---
+
+## 18. Tests
+
+**Files:** `tests/authentication/test_registration.py`, `tests/conftest.py`, `tests/factories.py`
+
+### `test_registration.py` — Manager tests updated
+All `TestManagerRegistration` tests switched from `api_client` (unauthenticated) to `super_admin_client`.  
+New test added: `test_register_manager_requires_super_admin` — asserts unauthenticated requests return `401`.
+
+### `conftest.py` — New fixtures
+
+```python
+@pytest.fixture
+def super_admin_user():
+    """Creates a UserAccount with is_staff=True and a ManagerProfile(staff_role='super_admin')."""
+
+@pytest.fixture
+def super_admin_client(super_admin_user):
+    """Returns an APIClient authenticated as the super_admin_user."""
+```
+
+### `factories.py`
+`ManagerProfileFactory` now sets `staff_role = "admin"` by default. Override with `staff_role="super_admin"` for super admin fixtures.
 
 ---
