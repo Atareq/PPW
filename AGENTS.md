@@ -35,7 +35,18 @@ The platform currently supports and will continue to expand around:
 - internal pedigree certificate OCR extraction MVP with a null local OCR adapter
 - future media, pedigree, expanded QR, reviews, reward point automation, realtime chat, and expanded promotion modules
 
-PPW is a marketplace coordination system, not a fintech system and not a shipping-integrated platform.
+PPW is currently a marketplace coordination platform.
+
+It is not currently:
+
+- a payment processor
+- an escrow platform
+- a wallet provider for buyer-seller marketplace sales
+- a shipping or logistics platform
+- a real-time social network
+- a full media verification system
+
+Current implementation is the source of truth for present behavior. If an original brief, roadmap note, or future prompt conflicts with current implementation or this `AGENTS.md` policy, follow current code and this guide unless the task explicitly asks for a product-policy change.
 
 Core business reality and intended product policy:
 
@@ -275,7 +286,7 @@ Future home:
 
 Important note:
 
-This app currently models domain assets and simple image references, not a full media pipeline.
+This app currently models domain assets and simple URL/reference-based media records, not a full media pipeline or media verification system.
 
 Current model shape:
 
@@ -303,6 +314,7 @@ Current model shape:
 - `Media.media_type` currently supports `image` and `video`; existing and omitted media types default to `image`
 - `apps.general.models.AssetMedia` is a concrete `Media` subclass linked to `Asset` through `asset.media`
 - `AssetMedia` adds `is_primary` and `order`; ordering is by `order`, then `created`
+- media upload processing, S3 upload orchestration, FFmpeg, watermarking, anti-fraud verification, mandatory controlled in-app video capture, minimum image-count validation, and MIME scanning are not implemented in the current MVP
 
 Current bird API:
 
@@ -480,7 +492,7 @@ Current responsibilities:
 
 Important note:
 
-This app is not a payment gateway, wallet, refund system, proof-upload flow, handoff model, shipping integration, or complaint/dispute system. It records manual buyer/seller confirmation state only. Complaint/dispute records are owned by `apps.complaints`.
+This app is not a payment gateway, Apple Pay / Google Pay / card-processing integration, escrow system, wallet, refund system, proof-upload flow, admin payment-approval flow, handoff model, shipping integration, or complaint/dispute system. It records manual buyer/seller confirmation state only. Complaint/dispute records are owned by `apps.complaints`.
 
 Current payment API:
 
@@ -507,6 +519,7 @@ Current payment behavior:
 - auction payment requests require a sold `AuctionItem`, the active customer profile must be the winner, and the auction owner must be a seller profile
 - auction payment request creation is rejected when an active `SellerCustomerBlock` exists between the winning customer and auction seller
 - auction payment request amount comes from `AuctionItem.current_price`
+- seller approval finalizes the internal auction sale and transfers the sold bird ownership; an auction item's `paired_bird` also transfers when present
 - marketplace payment requests require an approved `OrderItem` owned by the active customer profile
 - marketplace payment request creation is rejected when an active `SellerCustomerBlock` exists between the order customer and item seller
 - marketplace payment request amount comes from `OrderItem.total_price`
@@ -515,6 +528,7 @@ Current payment behavior:
 - approved and cancelled payment requests cannot be updated through the service
 - sellers can approve or reject only their own pending payment requests
 - seller approval marks the request approved and immutable
+- seller approval is the current MVP sale-completion signal; there is no separate shipping, handoff, delivery, buyer receipt confirmation, payment-proof, or admin payment approval step in the normal payment flow
 - seller approval completes the source marketplace `OrderItem` and refreshes the parent order status
 - seller approval for market requests locks the source asset, requires enough current stock, decrements `Asset.count`, and marks zero-count assets `sold` and unlisted
 - seller approval for market requests credits earned marketplace cashback once through `CashbackService.earn_for_completed_order_item()` after the source `OrderItem` is completed
@@ -536,7 +550,7 @@ Current responsibilities:
 
 Important note:
 
-This app is not a refund system, ownership rollback system, cashback reversal system, complaint chat, attachment upload flow, legal arbitration workflow, notification system, seller penalty system, or payment approval tool. It records manual dispute state only.
+This app is not a refund system, ownership rollback system, stock reversal system, cashback reversal system, complaint chat, attachment upload flow, legal arbitration workflow, notification system, seller penalty system, or payment approval tool. It records manual dispute review state only.
 
 Current complaint API:
 
@@ -571,6 +585,7 @@ Current complaint behavior:
 - managers can resolve or reject open and in-review complaints
 - only the complaint creator can cancel, and only while the complaint is `open`
 - complaint actions do not mutate `PaymentRequest`, asset ownership, product stock, orders, cashback, or ratings
+- complaint actions do not refund money, roll back ownership, reverse stock, reverse cashback, mutate approved payment requests, or delete orders, conversations, or messages
 - `ComplaintEvent` records are written for created, in-review, resolved, rejected, and cancelled transitions
 
 Current complaint service implementation names:
@@ -594,7 +609,7 @@ Current responsibilities:
 
 Important note:
 
-This app is not a realtime system. It does not implement WebSockets, Firebase, realtime database behavior, typing indicators, online presence, group chat, attachments, asset/order-linked conversations, moderation UI, blocking, message deletion, or frontend behavior.
+This app is not a realtime system. It does not implement WebSockets, Firebase, realtime database behavior, typing indicators, online presence, group chat, public auction chat, attachments, asset/order-linked conversations, moderation UI, message deletion, or frontend behavior.
 
 Current chat API:
 
@@ -659,7 +674,7 @@ Current responsibilities:
 
 Important note:
 
-This app is not a recommendation engine, notification system, realtime feed, seen-item tracker, ads/sponsored-content system, seller-room feed, frontend module, or public unauthenticated discovery feed.
+This app is named `feed`, not `social`. It is not a recommendation engine, notification system, realtime feed, seen-item tracker, ads/sponsored-content system, seller-room feed, frontend module, or public unauthenticated discovery feed.
 
 Current feed API:
 
@@ -743,7 +758,7 @@ Current responsibilities:
 
 Important note:
 
-This app is not a full reporting system, recommendation engine, analytics export, admin dashboard, deduplicated view tracker, device/IP tracker, notification system, frontend module, or Celery rollup pipeline.
+Seller insights are MVP dashboard summaries over current marketplace data. This app is not a full reporting system, advanced charting module, recommendation engine, analytics export, admin analytics dashboard, deduplicated view tracker, device/IP tracker, notification system, frontend module, or Celery rollup pipeline.
 
 Current insights API:
 
@@ -1567,7 +1582,12 @@ Mounted API roots:
 - `/api/race-results/`
 - `/api/packages/`
 - `/api/seller-packages/`
+- `/api/payments/`
+- `/api/complaints/`
 - `/api/promotions/`
+- `/api/chat/`
+- `/api/feed/`
+- `/api/insights/`
 - `/api/pedigrees/`
 
 Current internal API docs endpoints:
@@ -1611,15 +1631,19 @@ Current schema/auth documentation behavior:
 
 ### Payments
 
-There is no gateway payment integration.
+There is no gateway payment integration for buyer-seller marketplace sales.
 
 Current approach:
 
+- PPW does not process real money for buyer-seller marketplace sales
+- no payment gateways, Apple Pay, Google Pay, card processing, escrow, or wallet behavior exists for marketplace sales
+- payment happens manually outside the app between buyer and seller
 - buyer creates a manual `PaymentRequest` for a won auction item or approved market order item
 - seller approves or rejects the request manually
 - seller approval finalizes the sale inside the system
-- no automated settlement, no capture, no refund engine
-- no admin payment review, no proof upload, no handoff model
+- auction flow is: customer wins auction item, customer creates `AuctionPaymentRequest`, seller approves or rejects, seller approval finalizes the internal sale, bird ownership transfers, and paired birds transfer when applicable
+- market flow is: customer creates an order/order item, seller approves the `OrderItem`, customer creates `MarketPaymentRequest`, seller approves or rejects, seller approval finalizes the internal sale, product stock is reduced, and non-bird product ownership does not transfer
+- normal payment flow has no automated settlement, capture, payment gateway, admin approval, payment proof upload, escrow, refund automation, shipping confirmation, buyer receipt confirmation, or handoff model
 
 ### Promotions / Cashback
 
@@ -1630,7 +1654,9 @@ Current approach:
 - cashback redemption deducts from `CustomerProfile.cashback_balance` when a seller approves an order item
 - cashback earning credits `CustomerProfile.cashback_balance` only after the related market `PaymentRequest` is approved
 - every cashback balance change must have a `CashbackTransaction` with an idempotency key
-- cashback is not withdrawable money and is not connected to payment capture, refunds, or shipping
+- cashback is an internal customer app balance only, not withdrawable cash and not an external wallet
+- cashback is not connected to payment capture, refunds, or shipping
+- `DiscountOffer` and `CashbackOffer` are admin-managed and immutable after creation except activation/deactivation
 
 ### Handoff / Delivery
 
@@ -1639,8 +1665,24 @@ There is no shipping integration.
 Current approach:
 
 - no handoff or delivery model exists
+- no delivery tracking exists
+- no buyer receipt confirmation exists
 - no logistics provider integration exists
 - seller approval of a `PaymentRequest` is the MVP completion confirmation
+- do not implement shipping, handoff, delivery tracking, or buyer receipt confirmation as part of payment work unless the task explicitly requests that product-policy change
+
+### Notifications
+
+Full notification delivery is not implemented yet except where current code explicitly records lightweight event rows or enqueues safe placeholder tasks.
+
+Agreed future direction:
+
+- a `Notification` database table should be the source of truth when notification delivery is implemented
+- start with a polling API, unread count, mark read, and mark all read
+- add device tokens later
+- add FCM/APNs later for closed-phone push notifications
+- add WebSocket or SSE only if polling is no longer enough for the product requirement
+- do not treat current `OrderEvent`, `PaymentRequestEvent`, `ComplaintEvent`, `AuctionEvent`, or chat notification placeholder tasks as a full notification system
 
 ### Ownership
 
@@ -1653,9 +1695,21 @@ Current short-term approach:
 - non-bird product assets keep seller ownership even after market stock is reduced
 - do not mutate ownership casually from serializers or views
 
+### QR / Bird Identity
+
+Current approach:
+
+- `Bird.public_id` is the stable public UUID identity for public bird pages and QR payload URLs
+- public bird lookup must use `public_id`, not internal `Bird.id`
+- internal database ids must not be used as public QR identity
+- the backend exposes public-safe bird data by `public_id`
+- the backend returns `qr_payload_url` using `PUBLIC_FRONTEND_BASE_URL`
+- the backend does not store QR image files and does not generate QR images in the current MVP
+- frontend clients render QR codes from `qr_payload_url`
+
 ### Assets / Media
 
-Current assets app is domain modeling plus simple asset image URL references, not full file/media handling.
+Current assets app is domain modeling plus simple URL/reference-based asset media records, not full file/media handling or verification.
 
 Current e-commerce foundation:
 
@@ -1676,6 +1730,25 @@ Current e-commerce foundation:
 - seller rejection updates item/order statuses but does not change stock
 - lightweight order events exist as notification placeholders
 - manual PaymentRequest records complete approved market order items
+
+Current media implementation:
+
+- `Media`
+- `AssetMedia`
+- `media_url`
+- `media_type` values `image` and `video`
+- primary/order metadata through `is_primary` and `order`
+
+Not currently implemented:
+
+- upload processing
+- S3 pipeline orchestration
+- FFmpeg
+- watermarking
+- anti-fraud code
+- mandatory controlled in-app video capture
+- minimum four-image validation
+- MIME scanning
 
 Current product asset visibility:
 
@@ -2026,16 +2099,15 @@ Current API documentation coverage:
 
 The codebase does not yet fully implement:
 
-- media/file upload, storage, processing, or moderation subsystem beyond simple asset image URL references
+- media/file upload, storage, processing, or moderation subsystem beyond simple URL/reference-based asset media records
 - payment proof upload or admin payment review
 - handoff or shipping workflow
 - ownership history workflow
-- dispute flow
+- expanded dispute flow beyond the current simple complaint records
 - rating/comment moderation, replies, reports, likes, notifications, or analytics
 - full pedigree system beyond the current document OCR extraction MVP
 - pedigree reader
 - expanded QR generation, printing, and transfer flows beyond the current public identity URL
-- race results
 - reward point automation and richer rewards programs
 - promotion features beyond the current marketplace discount/cashback MVP, such as expiration, coupons, seller-created offers, auction cashback, usage caps, and complex campaign limits
 - realtime or expanded chat beyond the current REST-only direct chat MVP
@@ -2255,8 +2327,11 @@ Do not prioritize reward point automation, QR, realtime or expanded chat, or exp
 Important project decision:
 
 - no gateway integration
+- no Apple Pay, Google Pay, or card processing for buyer-seller marketplace sales
 - no automated charge or capture
 - no in-app financial processing
+- no escrow
+- no marketplace wallet
 - no admin payment approval in the current MVP
 
 Current expected flow:
@@ -2275,13 +2350,15 @@ This project should behave as a marketplace coordination system, not a payment p
 
 Important project decision:
 
-There is no logistics provider integration and no shipping orchestration inside the app.
+There is no shipping or handoff model in the current MVP.
 
-Planned expected flow:
+Current MVP policy:
 
-- seller confirms that the item or bird has been handed over
-- optional buyer confirmation may be introduced later
-- system then completes ownership change
+- no delivery tracking
+- no buyer receipt confirmation
+- no logistics provider integration
+- seller `PaymentRequest` approval is the current MVP sale-completion signal
+- do not let future payment prompts implement shipping or handoff work unless explicitly requested
 
 The platform records business confirmation states; it does not manage real shipping execution.
 
