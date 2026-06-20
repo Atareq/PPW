@@ -4,8 +4,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.assets.models import Bird
-from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
-from apps.auctions.services import AuctionService, SettlementService
+from apps.auctions.models import Auction, AuctionComment, AuctionEvent, AuctionItem, Bid
+from apps.auctions.services import AuctionChatService, AuctionService, SettlementService
 from apps.general.serializers import AssetMediaSerializer
 from apps.users.constants import ProfileType
 
@@ -235,6 +235,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "deposit_required",
             "payment_deadline_days",
             "is_visible",
+            "chat_enabled",
             "tags",
             "status",
             "time_remaining",
@@ -530,6 +531,7 @@ class AuctionUpdateSerializer(serializers.ModelSerializer):
             "description",
             "tags",
             "is_visible",
+            "chat_enabled",
         ]
 
     def validate(self, data):
@@ -546,6 +548,12 @@ class AuctionUpdateSerializer(serializers.ModelSerializer):
         if is_visible is not None:
             instance.is_visible = is_visible
             instance.save(update_fields=["is_visible", "modified"])
+
+        chat_enabled = validated_data.pop("chat_enabled", None)
+        if chat_enabled is not None:
+            instance.chat_enabled = chat_enabled
+            instance.save(update_fields=["chat_enabled", "modified"])
+
         if validated_data:
             instance = AuctionService.update_auction(instance, validated_data)
         return instance
@@ -598,3 +606,66 @@ class CancelAuctionSerializer(serializers.Serializer):
             return auction
         except serializers.ValidationError:
             raise
+
+
+# ============================================================================
+# AUCTION COMMENT SERIALIZERS
+# ============================================================================
+
+
+class AuctionCommentSerializer(serializers.ModelSerializer):
+    """Response serializer for auction chat comments."""
+
+    sender_id = serializers.IntegerField(source="sender.pk", read_only=True)
+    sender_nickname = serializers.SerializerMethodField()
+    sender_type = serializers.CharField(source="sender.type", read_only=True)
+    is_mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuctionComment
+        fields = [
+            "id",
+            "body",
+            "is_announcement",
+            "sender_id",
+            "sender_nickname",
+            "sender_type",
+            "is_mine",
+            "created",
+        ]
+        read_only_fields = ["id", "created"]
+
+    def get_sender_nickname(self, obj) -> str:
+        try:
+            return obj.sender.sellerprofile.nickname or ""
+        except Exception:
+            return ""
+
+    def get_is_mine(self, obj) -> bool:
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.sender_id == request.user.active_profile.pk
+
+
+class AuctionCommentCreateSerializer(serializers.Serializer):
+    """Input serializer for posting an auction chat comment."""
+
+    auction_id = serializers.IntegerField()
+    body = serializers.CharField(max_length=500, allow_blank=False)
+    is_announcement = serializers.BooleanField(default=False)
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        try:
+            auction = Auction.objects.get(pk=validated_data["auction_id"])
+        except Auction.DoesNotExist:
+            raise serializers.ValidationError(
+                {"auction_id": "Auction not found."}
+            )
+        return AuctionChatService.post_comment(
+            auction=auction,
+            sender_profile=request.user.active_profile,
+            body=validated_data["body"],
+            is_announcement=validated_data.get("is_announcement", False),
+        )

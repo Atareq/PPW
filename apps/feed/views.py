@@ -13,6 +13,7 @@ from apps.feed.serializers import (
     SellerCustomerBlockSerializer,
     SellerFollowSerializer,
     SellerFollowSellerSerializer,
+    SellerListSerializer,
     SellerSuggestionQuerySerializer,
     SellerSuggestionSerializer,
     SellerUnfollowResponseSerializer,
@@ -205,6 +206,56 @@ class PeopleYouMayKnowViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         )
         return Response(
             SellerSuggestionSerializer(sellers, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class SellerListViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Paginated list of all active sellers for customer discovery."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = SellerListSerializer
+
+    def list(self, request, *args, **kwargs):
+        from apps.users.constants import ProfileType
+        from apps.users.models import SellerProfile
+
+        profile = active_profile(request)
+        blocked_ids = set()
+        if profile and profile.type == ProfileType.CUSTOMER:
+            blocked_ids = BlockService.get_blocked_seller_ids_for_customer(profile)
+
+        own_seller_ids = set(
+            SellerProfile.objects.filter(user=request.user)
+            .values_list("pk", flat=True)
+        )
+
+        queryset = (
+            SellerProfile.objects.filter(is_active=True, is_valid=True)
+            .exclude(pk__in=blocked_ids)
+            .exclude(pk__in=own_seller_ids)
+            .order_by("-avg_rating", "-created")
+        )
+
+        try:
+            page_size = min(max(int(request.query_params.get("page_size", 20)), 1), 50)
+            page = max(int(request.query_params.get("page", 1)), 1)
+        except (TypeError, ValueError):
+            page_size, page = 20, 1
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        total = queryset.count()
+        sellers = list(queryset[start:end])
+
+        return Response(
+            {
+                "results": SellerListSerializer(sellers, many=True).data,
+                "count": total,
+                "page": page,
+                "page_size": page_size,
+                "has_more": end < total,
+            },
             status=status.HTTP_200_OK,
         )
 

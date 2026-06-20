@@ -93,6 +93,10 @@ SELLER_PERMISSIONS = {
         "mark_read",
         "unread_count",
     ],
+    "AUCTION_COMMENT": [
+        "list",
+        "create",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -190,5 +194,9 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "mark_read",
         "unread_count",
+    ],
+    "AUCTION_COMMENT": [
+        "list",
+        "create",
     ],
 }

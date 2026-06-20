@@ -294,6 +294,15 @@ class SellerFollowService:
         return queryset
 
     @staticmethod
+    def is_following(customer_profile, seller_profile):
+        """Return True if the customer actively follows the seller."""
+        return SellerFollow.objects.filter(
+            follower_id=getattr(customer_profile, "pk", customer_profile),
+            seller_id=getattr(seller_profile, "pk", seller_profile),
+            is_active=True,
+        ).exists()
+
+    @staticmethod
     def followed_seller_ids(customer_profile):
         blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
             customer_profile

@@ -15,6 +15,8 @@ from rest_framework.response import Response
 
 from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
 from apps.auctions.serializers import (
+    AuctionCommentCreateSerializer,
+    AuctionCommentSerializer,
     AuctionCreateSerializer,
     AuctionDetailSerializer,
     AuctionEventSerializer,
@@ -30,6 +32,7 @@ from apps.auctions.serializers import (
 )
 from apps.auctions.services import (
     AuctionBusinessValidator,
+    AuctionChatService,
     AuctionService,
     BidBusinessValidator,
     BiddingService,
@@ -594,3 +597,62 @@ class AuctionEventViewSet(viewsets.ReadOnlyModelViewSet):
         if auction_id:
             queryset = queryset.filter(auction_id=auction_id)
         return queryset
+
+
+class AuctionCommentViewSet(viewsets.GenericViewSet):
+    """
+    Auction public chat comment thread.
+
+    - GET  /auctions/comments/?auction_id=<id>  — list comments (newest last)
+    - POST /auctions/comments/                  — post a comment
+
+    POST body:
+        { "auction_id": <int>, "body": "<str>", "is_announcement": <bool> }
+
+    Access:
+    - list:   any authenticated customer or seller
+    - create: auction owner (seller) or any customer who has placed a bid
+    """
+
+    permission_resource = "AUCTION_COMMENT"
+    allow_scoped_read_access = True
+    serializer_class = AuctionCommentSerializer
+    permission_classes = [IsAuthenticated, HasAppAccess]
+
+    # Required by HasAppAccess to resolve the app_label for the permission check.
+    @property
+    def queryset(self):
+        from apps.auctions.models import AuctionComment
+        return AuctionComment.objects.all()
+
+    def get_queryset(self):
+        from apps.auctions.models import AuctionComment
+        auction_id = self.request.query_params.get("auction_id")
+        if auction_id:
+            return AuctionChatService.list_comments(auction_id)
+        return AuctionComment.objects.none()
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = AuctionCommentSerializer(
+                page, many=True, context={"request": request}
+            )
+            return self.get_paginated_response(serializer.data)
+        return Response(
+            AuctionCommentSerializer(
+                queryset, many=True, context={"request": request}
+            ).data
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = AuctionCommentCreateSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save()
+        return Response(
+            AuctionCommentSerializer(comment, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )

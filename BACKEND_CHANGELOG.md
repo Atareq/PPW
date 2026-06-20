@@ -4,6 +4,72 @@
 > **What** — the file(s) changed and what was added/modified.
 > **Why** — the business or technical reason it was needed.
 
+## 2026-06-20 — GAP-BE-2 & GAP-BE-3: Auction chat system + block check on bids
+
+### GAP-BE-3: `apps/auctions/services.py`
+**What:** Added `from apps.feed.services import BlockService` import. In `BidBusinessValidator._validate_bidder()`, added `BlockService.is_blocked_between(self.bidder, self.auction.owner)` check — raises `ValidationError("You cannot bid on this auction while a block is active.")` if the customer is blocked by (or has blocked) the auction seller.
+**Why:** Requirement 9.4 — blocked buyer must not be able to bid. `BidBusinessValidator` had no block check; a blocked customer could place bids unimpeded.
+
+### GAP-BE-2: `apps/auctions/models.py`
+**What:** Added `chat_enabled = BooleanField(default=False)` field to `Auction`. Added new `AuctionComment` model with fields `auction` (FK), `sender` (FK → Profile), `body` (CharField max 500), `is_announcement` (BooleanField), and indexed on `(auction, created)` and `(sender, auction)`.
+**Why:** Requirement 9.2 — seller-activatable side chat panel inside the auction page. No auction chat model existed.
+
+### GAP-BE-2: `apps/auctions/migrations/0003_auction_chat.py`
+**What:** Auto-generated migration adding `chat_enabled` to `Auction` and creating `AuctionComment`.
+**Why:** Schema changes from the model above.
+
+### GAP-BE-2: `apps/auctions/services.py`
+**What:** Added module-level `_AUCTION_CHAT_CONTACT_PATTERNS` (same 4 regex patterns as `apps/chat/services.py`). Added `AuctionChatService` with:
+- `list_comments(auction_id)` — returns queryset ordered by `(created, id)`
+- `post_comment(auction, sender_profile, body, is_announcement)` — validates `chat_enabled`, validates sender eligibility (seller owner or customer with ≥1 bid on the auction), rejects `is_announcement=True` from non-sellers, rejects contact-info body
+**Why:** Service layer encapsulates all auction chat business rules.
+
+### GAP-BE-2: `apps/auctions/serializers.py`
+**What:** Added `AuctionCommentSerializer` (response: `id`, `body`, `is_announcement`, `sender_id`, `sender_nickname`, `sender_type`, `is_mine`, `created`) and `AuctionCommentCreateSerializer` (input: `auction_id`, `body`, `is_announcement`). Added `chat_enabled` to `AuctionDetailSerializer.fields`. Added `chat_enabled` to `AuctionUpdateSerializer.fields`; its `update()` now pops and saves `chat_enabled` independently (sellers can toggle at any time, unlike title/description which are locked after auction starts).
+**Why:** API contracts for the new endpoints and client visibility of the `chat_enabled` flag.
+
+### GAP-BE-2: `apps/auctions/views.py`
+**What:** Added `AuctionCommentViewSet(GenericViewSet)` — `list` (`GET /auctions/comments/?auction_id=X`) and `create` (`POST /auctions/comments/`) actions. Uses `permission_resource = "AUCTION_COMMENT"` and a `queryset` property for `HasAppAccess` compatibility.
+**Why:** Exposes the auction chat endpoints.
+
+### GAP-BE-2: `apps/auctions/urls.py`
+**What:** Registered `AuctionCommentViewSet` at `r"comments"` in the router.
+**Why:** Makes `GET /api/auctions/comments/` and `POST /api/auctions/comments/` reachable.
+
+### GAP-BE-2: `apps/general/constants.py`
+**What:** Added `"AUCTION_COMMENT": ["list", "create"]` to both `SELLER_PERMISSIONS` and `CUSTOMER_PERMISSIONS`.
+**Why:** Both seller and customer profiles need access; without entries they'd get 403.
+
+---
+
+## 2026-06-20 — GAP-BE-1: Enforce follow check before chat conversation creation
+
+### `apps/feed/services.py`
+**What:** Added `SellerFollowService.is_following(customer_profile, seller_profile)` static method — a single `SellerFollow.objects.filter(..., is_active=True).exists()` query using `getattr` to accept both Profile instances and PKs.
+**Why:** `ChatService` needed a reusable, tested point to check follow status without coupling chat to the ORM query internals of feed.
+
+### `apps/chat/services.py`
+**What:** Added `SellerFollowService` to the import from `apps.feed.services`. In `ChatService.get_or_create_conversation()`, added a `SellerFollowService.is_following(customer, seller)` check immediately after the existing block check — raises `ValidationError({"receiver_profile_id": "You must follow this seller before starting a conversation."})` if the customer does not actively follow the seller.
+**Why:** Requirement 9.1d — "شرط المحادثة: أن يكون المشتري متابعاً للبائع". Previously the UI enforced this but a direct API call could bypass it. The backend now rejects unauthenticated conversation creation regardless of client behaviour.
+
+---
+
+## 2026-06-20 — Add seller discovery listing endpoint
+
+### `apps/feed/serializers.py`
+**What:** Added `SellerListSerializer` at the bottom of the file — fields: `id`, `nickname`, `country`, `avg_rating`, `ratings_count`, `avatar_url` (source=`photo`).
+**Why:** New public seller listing endpoint needs a flat serializer; the existing `UserProfileSerializer` is too heavy for a grid card.
+
+### `apps/feed/views.py`
+**What:** Added `SellerListViewSet` (list-only action). Filters `Profile.objects.filter(profile_type='Seller', is_active=True)`. For customer callers, additionally excludes sellers the customer has blocked or been blocked by. Paginates with `page`/`page_size` query params (max 50 per page); returns `{results, count, page, page_size, has_more}`.
+**Why:** No public sellers listing existed. `GET /api/users/mobile/sellers/` filters to the caller's own profile only (`get_queryset` uses `user=self.request.user`). The requirements and the غرف discovery tab both need a browseable directory of all active sellers.
+
+### `apps/feed/urls.py`
+**What:** Added `path("sellers/", SellerListViewSet.as_view(LIST_ACTION), name="seller-list")` inserted before the `people-you-may-know/` route.
+**Why:** Exposes the new viewset at `GET /api/feed/sellers/`.
+
+---
+
 ## 2026-06-18 — Fix ImproperlyConfigured error for AuctionListSerializer
 
 ### `apps/auctions/serializers.py`

@@ -73,3 +73,21 @@ When adding a new action or endpoint, add its permission entry here before testi
 ## Scope — Customer & Seller vs Manager
 
 Mobile app endpoints serve customers and sellers only. Manager-only endpoints are for the dashboard (`lotfy-dashboard`). When a change affects both, note which scope each part targets in the changelog.
+
+---
+
+## Requirements Audit Workflow
+
+When the user shares PDF requirement images and asks to compare a module:
+
+1. **Extract requirements** from the images — list every rule, condition, constraint verbatim.
+2. **Cross-check this AGENTS.md** section — identify which apps are involved (a single requirement can touch multiple Django apps).
+3. **Produce backend gap table** — compare each requirement against actual backend code. Cite exact file + line numbers for missing or incorrect behavior.
+4. **Write backend gaps to `../REQUIREMENTS_AUDIT.md`** under the module's section.
+5. **List Flutter/UI gaps in the chat** — Flutter gaps are reported conversationally, NOT written to the MD file.
+6. **Wait for confirmation** — do NOT change any backend code until the user approves.
+7. **Implement** — after approval, apply backend changes first, then Flutter.
+8. **Fill Post-Implementation Notes** in `../REQUIREMENTS_AUDIT.md` — backend only.
+9. **Update `BACKEND_CHANGELOG.md`** with every file touched.
+
+The `../REQUIREMENTS_AUDIT.md` file tracks backend gaps and post-implementation notes only. Flutter UI work is discussed in the chat.

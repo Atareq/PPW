@@ -206,3 +206,12 @@ class FeedQuerySerializer(serializers.Serializer):
 
 class SellerSuggestionQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(required=False, min_value=1)
+
+
+class SellerListSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    nickname = serializers.CharField(read_only=True, allow_blank=True)
+    country = serializers.CharField(read_only=True)
+    avg_rating = serializers.DecimalField(max_digits=3, decimal_places=2, read_only=True)
+    ratings_count = serializers.IntegerField(read_only=True)
+    avatar_url = serializers.URLField(source="photo", read_only=True, allow_blank=True)

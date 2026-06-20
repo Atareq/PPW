@@ -115,6 +115,12 @@ class Auction(OwnerBaseModel):
         default=True, help_text="Whether this auction is visible to the public"
     )
 
+    # Auction side chat — seller activates per auction
+    chat_enabled = models.BooleanField(
+        default=False,
+        help_text="Seller can enable a public comment panel for this auction",
+    )
+
     # Metadata
     tags = models.CharField(max_length=500, blank=True)
     seller_package = models.ForeignKey(
@@ -378,3 +384,39 @@ class AuctionEvent(BaseModel):
     def __str__(self):
         return f" #{self.pk} AuctionEvent {self.get_event_type_display()}"
         " - {self.auction.title}"
+
+
+class AuctionComment(BaseModel):
+    """
+    Public comment thread attached to an auction when chat_enabled=True.
+
+    Seller can post announcements; bidders (customers who have bid at least
+    once on any item in this auction) can post short comments.
+    Contact-info sharing is rejected at creation time.
+    """
+
+    auction = models.ForeignKey(
+        Auction,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    sender = models.ForeignKey(
+        Profile,
+        on_delete=models.CASCADE,
+        related_name="auction_comments",
+    )
+    body = models.CharField(max_length=500)
+    is_announcement = models.BooleanField(
+        default=False,
+        help_text="True only for seller-posted announcements",
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["auction", "created"]),
+            models.Index(fields=["sender", "auction"]),
+        ]
+        ordering = ["created", "id"]
+
+    def __str__(self):
+        return f"AuctionComment #{self.pk} on Auction #{self.auction_id}"

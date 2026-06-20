@@ -7,6 +7,7 @@ from apps.feed.views import (
     SellerCustomerBlockViewSet,
     SellerFollowCreateViewSet,
     SellerFollowingViewSet,
+    SellerListViewSet,
     SellerUnfollowCreateViewSet,
 )
 
@@ -42,6 +43,11 @@ urlpatterns = [
         "sellers/following/",
         SellerFollowingViewSet.as_view(LIST_ACTION),
         name="seller-following",
+    ),
+    path(
+        "sellers/",
+        SellerListViewSet.as_view(LIST_ACTION),
+        name="seller-list",
     ),
     path(
         "people-you-may-know/",

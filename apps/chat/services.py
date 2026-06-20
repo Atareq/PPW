@@ -8,7 +8,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.chat.models import Conversation, Message
 from apps.chat.tasks import send_chat_message_notification
-from apps.feed.services import BlockService
+from apps.feed.services import BlockService, SellerFollowService
 from apps.users.constants import ProfileType
 from apps.users.models import Profile
 
@@ -86,6 +86,15 @@ class ChatService:
                 {
                     "receiver_profile_id": (
                         "Cannot create a conversation while a block is active."
+                    )
+                }
+            )
+        if not SellerFollowService.is_following(customer, seller):
+            raise ValidationError(
+                {
+                    "receiver_profile_id": (
+                        "You must follow this seller before starting a "
+                        "conversation."
                     )
                 }
             )

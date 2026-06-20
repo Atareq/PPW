@@ -28,9 +28,12 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+import re
+
 from apps.assets.models import Bird
 from apps.auctions.models import (
     Auction,
+    AuctionComment,
     AuctionEvent,
     AuctionItem,
     AuctionItemStatus,
@@ -41,6 +44,7 @@ from apps.auctions.models import (
 from apps.authentication.models import UserAccount
 from apps.core.models import NotificationKind
 from apps.core.services import NotificationService
+from apps.feed.services import BlockService
 from apps.packages.models import PackageUsageType
 from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
@@ -644,10 +648,15 @@ class BidBusinessValidator:
             )
 
     def _validate_bidder(self) -> None:
-        """Validate bidder is not a Seller"""
+        """Validate bidder is not a Seller and is not blocked by the auction owner."""
 
         if self.bidder.type != ProfileType.CUSTOMER:
             raise ValidationError("Only customers can place bids")
+
+        if BlockService.is_blocked_between(self.bidder, self.auction.owner):
+            raise ValidationError(
+                "You cannot bid on this auction while a block is active."
+            )
 
     def _validate_bid_amount(self) -> None:
         """Validate bid amount meets all requirements"""
@@ -927,3 +936,107 @@ class SettlementService:
             )
 
         return bid
+
+
+# ============================================================================
+# AUCTION CHAT SERVICE
+# ============================================================================
+
+# Mirror the same patterns used in apps/chat/services.py for consistency.
+_AUCTION_CHAT_CONTACT_PATTERNS = [
+    re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", re.IGNORECASE),
+    re.compile(
+        r"https?://|www\.|(?:^|\s)[\w-]+\.[a-z]{2,}(?:/|\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:whats\s*app|whatsapp|wa\.me|telegram|t\.me)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?<!\w)\+?\d[\d\s().-]{6,}\d(?!\w)"),
+]
+
+
+class AuctionChatService:
+    """
+    Manages the optional public comment thread on an auction.
+
+    Access rules:
+    - chat_enabled must be True on the auction
+    - Seller (auction owner): can post at any time; may mark is_announcement=True
+    - Customer: must have at least one bid on any item in this auction
+    - Contact info in body is rejected with a validation error
+    """
+
+    @staticmethod
+    def list_comments(auction_id):
+        return (
+            AuctionComment.objects.filter(auction_id=auction_id)
+            .select_related("sender")
+            .order_by("created", "id")
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def post_comment(auction, sender_profile, body, is_announcement=False):
+        is_seller = sender_profile.pk == auction.owner_id
+
+        if not auction.chat_enabled:
+            raise ValidationError(
+                {"auction": "Chat is not enabled for this auction."}
+            )
+
+        if not is_seller:
+            if sender_profile.type != ProfileType.CUSTOMER:
+                raise ValidationError(
+                    {
+                        "sender": (
+                            "Only the auction seller and registered bidders "
+                            "can post in the auction chat."
+                        )
+                    }
+                )
+            has_bid = Bid.objects.filter(
+                item__auction=auction,
+                bidder_id=sender_profile.pk,
+            ).exists()
+            if not has_bid:
+                raise ValidationError(
+                    {
+                        "sender": (
+                            "You must place a bid before participating in "
+                            "the auction chat."
+                        )
+                    }
+                )
+
+        if is_announcement and not is_seller:
+            raise ValidationError(
+                {
+                    "is_announcement": (
+                        "Only the auction seller can post announcements."
+                    )
+                }
+            )
+
+        AuctionChatService._validate_body(body)
+
+        return AuctionComment.objects.create(
+            auction=auction,
+            sender_id=sender_profile.pk,
+            body=body,
+            is_announcement=is_announcement,
+        )
+
+    @staticmethod
+    def _validate_body(body):
+        for pattern in _AUCTION_CHAT_CONTACT_PATTERNS:
+            if pattern.search(body):
+                raise ValidationError(
+                    {
+                        "body": (
+                            "Sharing contact details or external links is not "
+                            "allowed in auction chat."
+                        )
+                    }
+                )
