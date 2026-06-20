@@ -210,7 +210,9 @@ class SellerSuggestionQuerySerializer(serializers.Serializer):
 
 class SellerListSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
     nickname = serializers.CharField(read_only=True, allow_blank=True)
+    description = serializers.CharField(read_only=True, allow_blank=True)
     country = serializers.CharField(read_only=True)
     avg_rating = serializers.DecimalField(max_digits=3, decimal_places=2, read_only=True)
     ratings_count = serializers.IntegerField(read_only=True)

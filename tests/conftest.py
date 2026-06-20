@@ -135,6 +135,31 @@ def manager_user():
 
 
 @pytest.fixture
+def super_admin_user():
+    """Create a Super Admin manager user."""
+    from apps.users.models import ManagerProfile
+    user = UserAccountFactory(with_profile=False)
+    user.is_staff = True
+    user.save()
+    ManagerProfile.objects.create(
+        user=user,
+        is_active=True,
+        activated=True,
+        staff_role="super_admin",
+    )
+    return user
+
+
+@pytest.fixture
+def super_admin_client(super_admin_user):
+    """Return authenticated API client for a Super Admin."""
+    client = APIClient()
+    refresh = build_token_for_user(super_admin_user)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    return client
+
+
+@pytest.fixture
 def profile(user):
     """Get the active profile of a user."""
     return user.active_profile

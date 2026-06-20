@@ -6,26 +6,43 @@ from apps.users.models import Profile
 
 
 def switch_user_profile(user, new_profile_type: str) -> tuple[bool, str]:
-    """Move a non-manager user to another profile type in one transaction."""
+    """Switch by profile type — targets the earliest-created profile of that type."""
 
     with transaction.atomic():
-
-        if user.role != new_profile_type and user.role != ProfileType.MANAGER:
-            Profile.objects.filter(user=user, is_active=True).update(
-                is_active=False
-            )
-            profile = Profile.objects.filter(
-                user=user, type=new_profile_type
-            ).first()
-            if profile:
-                profile.is_active = True
-                profile.save(update_fields=["is_active"])
-                return True, profile.type
-            else:
-                transaction.set_rollback(True)
-                return False, None
-        else:
+        if user.role == new_profile_type and new_profile_type != ProfileType.MANAGER:
             return False, None
+
+        Profile.objects.filter(user=user, is_active=True).update(is_active=False)
+        profile = (
+            Profile.objects.filter(user=user, type=new_profile_type)
+            .order_by("created")
+            .first()
+        )
+        if profile:
+            profile.is_active = True
+            profile.save(update_fields=["is_active"])
+            return True, profile.type
+        else:
+            transaction.set_rollback(True)
+            return False, None
+
+
+def switch_user_profile_by_id(user, profile_id: int) -> tuple[bool, str]:
+    """Switch to a specific profile by ID — used for room switching."""
+
+    with transaction.atomic():
+        profile = (
+            Profile.objects.filter(user=user, id=profile_id)
+            .select_for_update()
+            .first()
+        )
+        if not profile:
+            return False, None
+
+        Profile.objects.filter(user=user, is_active=True).update(is_active=False)
+        profile.is_active = True
+        profile.save(update_fields=["is_active"])
+        return True, profile.type
 
 
 def build_token_for_user(user):
@@ -41,4 +58,11 @@ def build_token_for_user_role(user, profile):
     token["profile"] = profile.type
     token["user_id"] = user.id
     token["is_activated"] = profile.activated
+
+    from apps.users.constants import ProfileType
+    if profile.type == ProfileType.MANAGER:
+        from apps.users.models import ManagerProfile
+        mp = ManagerProfile.objects.filter(pk=profile.pk).values("staff_role").first()
+        token["staff_role"] = mp["staff_role"] if mp else ""
+
     return token

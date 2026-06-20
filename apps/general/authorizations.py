@@ -3,7 +3,34 @@ from typing import Optional
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from apps.general.constants import CUSTOMER_PERMISSIONS, SELLER_PERMISSIONS
-from apps.users.constants import ProfileType
+from apps.users.constants import ProfileType, StaffRole, STAFF_ROLE_PERMISSIONS
+
+
+class StaffPermissions:
+    """Pure helper — checks whether a staff_role may perform action on resource."""
+
+    @staticmethod
+    def can_access(staff_role: str, resource: Optional[str], action: Optional[str]) -> bool:
+        role_rules = STAFF_ROLE_PERMISSIONS.get(staff_role)
+
+        if role_rules is None:
+            return False
+
+        if role_rules == "__all__":
+            # Admin blocks destroy; Super Admin allows everything
+            if staff_role == StaffRole.ADMIN and action == "destroy":
+                return False
+            return True
+
+        # Fine-grained resource/action dict
+        if resource is None:
+            return False
+
+        allowed_actions = role_rules.get(resource)
+        if allowed_actions is None:
+            return False
+
+        return (action or "list") in allowed_actions
 
 
 class AuthorizationService:
@@ -22,7 +49,25 @@ class AuthorizationService:
         role = user.role
 
         if role == ProfileType.MANAGER:
-            return True
+            from apps.users.models import ManagerProfile
+            try:
+                active = user.active_profile
+            except Exception:
+                return False
+
+            manager_profile = ManagerProfile.objects.filter(
+                pk=active.pk,
+                deleted__isnull=True,
+            ).first()
+
+            if not manager_profile:
+                return False
+
+            return StaffPermissions.can_access(
+                staff_role=manager_profile.staff_role,
+                resource=resource,
+                action=action,
+            )
 
         if user.is_superuser:
             return False
@@ -99,3 +144,45 @@ class HasAppAccess(BasePermission):
             obj=obj,
             owner_field=getattr(view, "permission_owner_field", "owner_id"),
         )
+
+
+class HasStaffRole(BasePermission):
+    """
+    Requires an authenticated Manager profile with a role listed in
+    view.required_staff_roles (writes) or view.read_staff_roles (SAFE_METHODS).
+    If read_staff_roles is not set, required_staff_roles is used for reads too.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        try:
+            role = user.role
+        except Exception:
+            return False
+
+        if role != ProfileType.MANAGER:
+            return False
+
+        from apps.users.models import ManagerProfile
+        try:
+            active = user.active_profile
+        except Exception:
+            return False
+
+        manager_profile = ManagerProfile.objects.filter(
+            pk=active.pk,
+            deleted__isnull=True,
+        ).first()
+
+        if not manager_profile:
+            return False
+
+        if request.method in SAFE_METHODS:
+            allowed = getattr(view, "read_staff_roles", None) or getattr(view, "required_staff_roles", [])
+        else:
+            allowed = getattr(view, "required_staff_roles", [])
+
+        return manager_profile.staff_role in allowed

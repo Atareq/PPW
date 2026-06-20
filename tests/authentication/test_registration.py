@@ -210,10 +210,26 @@ class TestCustomerRegistration:
 
 @pytest.mark.django_db
 class TestManagerRegistration:
-    """Tests for manager user registration endpoint."""
+    """Tests for manager user registration endpoint (Super Admin only)."""
 
-    def test_register_valid_manager(self, api_client):
-        """Test successful manager registration."""
+    def test_register_valid_manager(self, super_admin_client):
+        """Test successful manager registration by Super Admin."""
+        data = {
+            "username": "testmanager",
+            "phone_number": "+201001234567",
+            "password": "SecurePass123!@",
+            "manager_profile": {},
+        }
+
+        response = super_admin_client.post(
+            "/api/auth/register/manager/", data, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["message"] == "User created successfully"
+
+    def test_register_manager_requires_super_admin(self, api_client):
+        """Unauthenticated requests are rejected."""
         data = {
             "username": "testmanager",
             "phone_number": "+201001234567",
@@ -225,10 +241,9 @@ class TestManagerRegistration:
             "/api/auth/register/manager/", data, format="json"
         )
 
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data["message"] == "User created successfully"
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_register_manager_creates_manager_profile(self, api_client):
+    def test_register_manager_creates_manager_profile(self, super_admin_client):
         """Test that manager registration creates ManagerProfile."""
         data = {
             "username": "testmanager",
@@ -237,7 +252,7 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
         assert response.status_code == status.HTTP_201_CREATED
@@ -254,7 +269,7 @@ class TestManagerRegistration:
         assert profile.type == ProfileType.MANAGER
         assert profile.activated is True
 
-    def test_register_manager_duplicate_phone(self, api_client, customer_user):
+    def test_register_manager_duplicate_phone(self, super_admin_client, customer_user):
         """Test manager registration fails with duplicate phone number."""
         data = {
             "username": "another_manager",
@@ -263,14 +278,14 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "phone_number" in response.data
 
-    def test_register_manager_weak_password(self, api_client):
+    def test_register_manager_weak_password(self, super_admin_client):
         """Test manager registration validates password strength."""
         data = {
             "username": "testmanager",
@@ -279,14 +294,14 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "password" in response.data
 
-    def test_register_manager_missing_username(self, api_client):
+    def test_register_manager_missing_username(self, super_admin_client):
         """Test manager registration fails with missing username."""
         data = {
             "phone_number": "+201001234567",
@@ -294,13 +309,13 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_register_manager_missing_phone_number(self, api_client):
+    def test_register_manager_missing_phone_number(self, super_admin_client):
         """Test manager registration fails with missing phone number."""
         data = {
             "username": "testmanager",
@@ -308,13 +323,13 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_register_manager_missing_password(self, api_client):
+    def test_register_manager_missing_password(self, super_admin_client):
         """Test manager registration fails with missing password."""
         data = {
             "username": "testmanager",
@@ -322,13 +337,13 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_register_manager_invalid_phone_format(self, api_client):
+    def test_register_manager_invalid_phone_format(self, super_admin_client):
         """Test manager registration fails with invalid phone number."""
         data = {
             "username": "testmanager",
@@ -337,7 +352,7 @@ class TestManagerRegistration:
             "manager_profile": {},
         }
 
-        response = api_client.post(
+        response = super_admin_client.post(
             "/api/auth/register/manager/", data, format="json"
         )
 

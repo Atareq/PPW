@@ -6,7 +6,7 @@ from django.db.models import Q, UniqueConstraint
 
 from apps.authentication.models import UserAccount
 from apps.general.models import BaseModel
-from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
+from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType, StaffRole
 
 
 class Profile(BaseModel):
@@ -32,7 +32,6 @@ class Profile(BaseModel):
     )
 
     class Meta:
-        unique_together = ("user", "type")
         constraints = [
             UniqueConstraint(
                 fields=["user"],
@@ -60,6 +59,7 @@ class SellerProfile(Profile):
         max_digits=10, decimal_places=2, default=0.00
     )
     nickname = models.CharField(max_length=150, blank=True)
+    description = models.TextField(blank=True)
     recoded_voice = models.CharField(max_length=150, blank=True)
     country = models.CharField(max_length=2, choices=CountryOptions.choices)
     currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
@@ -94,4 +94,8 @@ class CustomerProfile(Profile):
 
 
 class ManagerProfile(Profile):
-    pass
+    staff_role = models.CharField(
+        max_length=30,
+        choices=StaffRole.choices,
+        default=StaffRole.ADMIN,
+    )

@@ -125,6 +125,7 @@ class ManagerProfileFactory(BaseProfileFactory):
         model = ManagerProfile
 
     type = ProfileType.MANAGER
+    staff_role = "admin"  # default; override with staff_role="super_admin" for super admin fixtures
 
 
 # ============================================================================

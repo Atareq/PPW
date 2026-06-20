@@ -56,6 +56,27 @@ class AssetMedia(Media):
         ]
 
 
+class AuditLog(BaseModel):
+    actor = models.ForeignKey(
+        "authentication.UserAccount",
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="audit_logs",
+    )
+    actor_staff_role = models.CharField(max_length=30, blank=True)
+    action = models.CharField(max_length=100)
+    resource_type = models.CharField(max_length=100)
+    resource_id = models.CharField(max_length=100, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self):
+        return f"{self.actor_staff_role} — {self.action} — {self.resource_type}:{self.resource_id}"
+
+
 class ResourcePermission(models.Model):
     resource = models.CharField(max_length=100, unique=True)
     owner = models.ForeignKey(

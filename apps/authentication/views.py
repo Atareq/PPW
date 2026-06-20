@@ -18,8 +18,10 @@ from apps.authentication.serializers import (
 from apps.authentication.services import (
     build_token_for_user,
     switch_user_profile,
+    switch_user_profile_by_id,
 )
-from apps.users.constants import ProfileType
+from apps.general.authorizations import HasStaffRole
+from apps.users.constants import ProfileType, StaffRole
 
 auth_message_response_schema = inline_serializer(
     name="AuthMessageResponse",
@@ -88,9 +90,10 @@ class CustomerRegisterAPIView(APIView):
     )
 )
 class ManagerRegisterAPIView(APIView):
-    """Public manager registration endpoint; intentionally documents a known gap."""
+    """Create a new manager account. Requires Super Admin authentication."""
 
-    permission_classes = []
+    permission_classes = [HasStaffRole]
+    required_staff_roles = [StaffRole.SUPER_ADMIN]
 
     def post(self, request):
         with transaction.atomic():
@@ -137,9 +140,20 @@ class SwitchProfileAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        profile_id = request.data.get("profile_id")
         new_profile = request.data.get("new_profile")
 
-        switched, profile_type = switch_user_profile(request.user, new_profile)
+        if profile_id is not None:
+            try:
+                profile_id = int(profile_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"message": "Invalid profile_id."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            switched, profile_type = switch_user_profile_by_id(request.user, profile_id)
+        else:
+            switched, profile_type = switch_user_profile(request.user, new_profile)
 
         if not switched:
             return Response(

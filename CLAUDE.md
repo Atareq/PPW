@@ -78,16 +78,20 @@ Mobile app endpoints serve customers and sellers only. Manager-only endpoints ar
 
 ## Requirements Audit Workflow
 
-When the user shares PDF requirement images and asks to compare a module:
+When the user shares PDF requirement images or pastes requirement text and asks to compare a module:
 
-1. **Extract requirements** from the images — list every rule, condition, constraint verbatim.
-2. **Cross-check this AGENTS.md** section — identify which apps are involved (a single requirement can touch multiple Django apps).
+1. **Extract requirements** from the images/text — list every rule, condition, constraint verbatim.
+2. **Cross-check AGENTS.md** — identify which Django apps are involved (one requirement can span multiple apps).
 3. **Produce backend gap table** — compare each requirement against actual backend code. Cite exact file + line numbers for missing or incorrect behavior.
-4. **Write backend gaps to `../REQUIREMENTS_AUDIT.md`** under the module's section.
-5. **List Flutter/UI gaps in the chat** — Flutter gaps are reported conversationally, NOT written to the MD file.
-6. **Wait for confirmation** — do NOT change any backend code until the user approves.
-7. **Implement** — after approval, apply backend changes first, then Flutter.
-8. **Fill Post-Implementation Notes** in `../REQUIREMENTS_AUDIT.md` — backend only.
-9. **Update `BACKEND_CHANGELOG.md`** with every file touched.
+4. **Write backend gaps to a dedicated file** — create (or update) `../backend remainings/REQUIREMENTS_AUDIT_<MODULE_SLUG>.md` (e.g. `REQUIREMENTS_AUDIT_LOYALTY.md`, `REQUIREMENTS_AUDIT_AUCTIONS.md`). One file per feature, not one monolithic file.
+   - File naming: SCREAMING_SNAKE slug matching the module name.
+   - File header: module name, PDF section reference, audit date, status line.
+   - Content: extracted requirements table + backend gap table + Post-Implementation Notes section (filled after approval).
+5. **Flag related modules** — if implementing a gap will require touching a different Django app or another feature's file, call it out explicitly in chat before any code is written (e.g. "this also touches `apps.loyalty` and `REQUIREMENTS_AUDIT_LOYALTY.md`").
+6. **List Flutter/UI gaps in chat only** — never write Flutter gaps to the MD files.
+7. **Wait for confirmation** — do NOT change any backend code until the user approves.
+8. **Implement** — after approval, apply backend changes first, then Flutter.
+9. **Fill Post-Implementation Notes** in the feature's MD file — backend only.
+10. **Update `BACKEND_CHANGELOG.md`** with every file touched.
 
-The `../REQUIREMENTS_AUDIT.md` file tracks backend gaps and post-implementation notes only. Flutter UI work is discussed in the chat.
+The per-feature MD files in `../backend remainings/` are the single source of truth for backend gaps and post-implementation notes for that module.

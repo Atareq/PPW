@@ -6,6 +6,7 @@ from apps.users.views import (
     CustomerProfileMobileViewSet,
     SellerProfileAdminViewSet,
     SellerProfileMobileViewSet,
+    StaffManagementViewSet,
 )
 
 router = DefaultRouter()
@@ -16,6 +17,9 @@ router.register(
 )
 router.register(
     "admin/customers", CustomerProfileAdminViewSet, basename="admin-customers"
+)
+router.register(
+    "admin/staff", StaffManagementViewSet, basename="admin-staff"
 )
 
 # Mobile / user
