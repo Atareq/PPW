@@ -474,6 +474,16 @@ class OrderItemService:
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)
         OrderItemService._create_seller_approved_event(item)
+        OrderItemService._schedule_seller_decision_notification(
+            item,
+            notification_type="order_item_approved",
+            title="Order item approved",
+            body=(
+                "The seller approved your order item. "
+                "You can now create a payment request."
+            ),
+            idempotency_key=f"order_item_approved:{item.pk}",
+        )
 
         return OrderItemService.get_item(item.pk)
 
@@ -495,6 +505,13 @@ class OrderItemService:
         item.status = OrderItemStatus.REJECTED
         item.save(update_fields=["status", "modified"])
         OrderService.refresh_order_status(item.order_id)
+        OrderItemService._schedule_seller_decision_notification(
+            item,
+            notification_type="order_item_rejected",
+            title="Order item rejected",
+            body="The seller rejected your order item.",
+            idempotency_key=f"order_item_rejected:{item.pk}",
+        )
 
         return OrderItemService.get_item(item.pk)
 
@@ -562,4 +579,28 @@ class OrderItemService:
                 "seller_id": item.seller_id,
                 "timeout_days": timeout_days,
             },
+        )
+
+    @staticmethod
+    def _schedule_seller_decision_notification(
+        item,
+        *,
+        notification_type,
+        title,
+        body,
+        idempotency_key,
+    ):
+        from apps.notifications.services import NotificationService
+
+        transaction.on_commit(
+            lambda: NotificationService.create_notification(
+                recipient_profile=item.order.owner,
+                actor_profile=item.seller,
+                notification_type=notification_type,
+                title=title,
+                body=body,
+                object_type="order_item",
+                object_id=item.pk,
+                idempotency_key=idempotency_key,
+            )
         )

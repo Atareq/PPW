@@ -113,6 +113,13 @@ class ComplaintService:
             ComplaintEventType.IN_REVIEW,
             actor=manager_profile,
         )
+        ComplaintService._schedule_status_notifications(
+            complaint,
+            actor=manager_profile,
+            title="Complaint in review",
+            body="Your complaint is now in review.",
+            idempotency_suffix=complaint.status,
+        )
         return ComplaintService.get_complaint(complaint.pk)
 
     @staticmethod
@@ -144,6 +151,13 @@ class ComplaintService:
             ComplaintEventType.RESOLVED,
             actor=manager_profile,
         )
+        ComplaintService._schedule_status_notifications(
+            complaint,
+            actor=manager_profile,
+            title="Complaint resolved",
+            body="A manager resolved the complaint tied to your payment request.",
+            idempotency_suffix=complaint.status,
+        )
         return ComplaintService.get_complaint(complaint.pk)
 
     @staticmethod
@@ -173,6 +187,13 @@ class ComplaintService:
             complaint,
             ComplaintEventType.REJECTED,
             actor=manager_profile,
+        )
+        ComplaintService._schedule_status_notifications(
+            complaint,
+            actor=manager_profile,
+            title="Complaint rejected",
+            body="A manager rejected the complaint tied to your payment request.",
+            idempotency_suffix=complaint.status,
         )
         return ComplaintService.get_complaint(complaint.pk)
 
@@ -256,3 +277,32 @@ class ComplaintService:
             actor=actor,
             metadata=metadata or {},
         )
+
+    @staticmethod
+    def _schedule_status_notifications(
+        complaint,
+        *,
+        actor,
+        title,
+        body,
+        idempotency_suffix,
+    ):
+        from apps.notifications.services import NotificationService
+
+        def notify():
+            for recipient in (complaint.buyer, complaint.seller):
+                NotificationService.create_notification(
+                    recipient_profile=recipient,
+                    actor_profile=actor,
+                    notification_type="complaint_status_updated",
+                    title=title,
+                    body=body,
+                    object_type="complaint",
+                    object_id=complaint.pk,
+                    idempotency_key=(
+                        f"complaint_status_updated:{complaint.pk}:"
+                        f"{idempotency_suffix}:{recipient.pk}"
+                    ),
+                )
+
+        transaction.on_commit(notify)

@@ -56,6 +56,7 @@ APPS = [
     "apps.races",
     "apps.packages",
     "apps.loyalty",
+    "apps.notifications",
     "apps.payments",
     "apps.promotions",
     "apps.complaints",

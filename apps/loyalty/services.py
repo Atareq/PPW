@@ -279,6 +279,7 @@ class BadgeService:
         profile = Profile.objects.get(pk=profile.pk)
         BadgeValidator.validate_badge_eligibility(profile, badge_type)
         idempotency_key = normalize_idempotency_key(idempotency_key)
+        created_new = False
 
         if idempotency_key is not None:
             existing = BadgeAward.objects.filter(
@@ -313,6 +314,7 @@ class BadgeService:
                 badge_type=badge_type,
                 **defaults,
             )
+            created_new = True
         except IntegrityError:
             if idempotency_key is not None:
                 award = BadgeAward.objects.get(
@@ -326,6 +328,8 @@ class BadgeService:
                 ).first()
                 if award is None:
                     raise
+        if created_new:
+            BadgeService._schedule_badge_awarded_notification(award)
         return award
 
     @staticmethod
@@ -355,3 +359,20 @@ class BadgeService:
     def evaluate_badges(profile):
         Profile.objects.get(pk=profile.pk)
         return []
+
+    @staticmethod
+    def _schedule_badge_awarded_notification(award):
+        from apps.notifications.services import NotificationService
+
+        badge_name = BADGE_DEFINITIONS[award.badge_type]["name"]
+        transaction.on_commit(
+            lambda: NotificationService.create_notification(
+                recipient_profile=award.profile,
+                notification_type="badge_awarded",
+                title="Badge awarded",
+                body=f"You earned the {badge_name} badge.",
+                object_type="badge_award",
+                object_id=award.pk,
+                idempotency_key=f"badge_awarded:{award.pk}",
+            )
+        )

@@ -566,7 +566,10 @@ class TestChatApi:
 
 
 class TestChatNotifications:
-    def test_sending_message_triggers_celery_task(self):
+    def test_sending_message_triggers_celery_task(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
         sender, receiver, _ = create_users()
         conversation = ChatService.get_or_create_conversation(
             sender.active_profile,
@@ -576,11 +579,12 @@ class TestChatNotifications:
         with mock.patch(
             "apps.chat.services.send_chat_message_notification.delay"
         ) as delay:
-            message = ChatService.send_message(
-                conversation.pk,
-                sender.active_profile,
-                "Hello",
-            )
+            with django_capture_on_commit_callbacks(execute=True):
+                message = ChatService.send_message(
+                    conversation.pk,
+                    sender.active_profile,
+                    "Hello",
+                )
 
         delay.assert_called_once_with(message.pk)
 
@@ -601,7 +605,10 @@ class TestChatNotifications:
         assert result["receiver_id"] == receiver.active_profile.pk
         assert result["sender_id"] == sender.active_profile.pk
 
-    def test_notification_failure_does_not_rollback_message_creation(self):
+    def test_notification_failure_does_not_rollback_message_creation(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
         sender, receiver, _ = create_users()
         conversation = ChatService.get_or_create_conversation(
             sender.active_profile,
@@ -612,10 +619,11 @@ class TestChatNotifications:
             "apps.chat.services.send_chat_message_notification.delay",
             side_effect=RuntimeError("queue down"),
         ):
-            message = ChatService.send_message(
-                conversation.pk,
-                sender.active_profile,
-                "Still saved",
-            )
+            with django_capture_on_commit_callbacks(execute=True):
+                message = ChatService.send_message(
+                    conversation.pk,
+                    sender.active_profile,
+                    "Still saved",
+                )
 
         assert Message.objects.filter(pk=message.pk).exists()

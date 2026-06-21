@@ -250,10 +250,13 @@ class ChatService:
 
     @staticmethod
     def _enqueue_message_notification(message_id):
-        try:
-            send_chat_message_notification.delay(message_id)
-        except Exception:
-            logger.exception(
-                "Failed to enqueue chat message notification for message %s.",
-                message_id,
-            )
+        def enqueue():
+            try:
+                send_chat_message_notification.delay(message_id)
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue chat message notification for message %s.",
+                    message_id,
+                )
+
+        transaction.on_commit(enqueue)

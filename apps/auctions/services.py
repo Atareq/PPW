@@ -852,6 +852,8 @@ class SettlementService:
             item.winner_bid = None
 
         item.save()
+        if winning_bid and item.winner_id:
+            SettlementService._schedule_auction_won_notification(item)
 
     @staticmethod
     def trigger_buy_now(
@@ -899,6 +901,7 @@ class SettlementService:
             item.winner_bid = bid
             item.current_price = auction.buy_now_price
             item.save()
+            SettlementService._schedule_auction_won_notification(item)
 
             # Log event
             AuctionService._log_event(
@@ -910,4 +913,21 @@ class SettlementService:
                 metadata={"buy_now_price": str(auction.buy_now_price)},
             )
 
-        return bid
+            return bid
+
+    @staticmethod
+    def _schedule_auction_won_notification(item):
+        from apps.notifications.services import NotificationService
+
+        transaction.on_commit(
+            lambda: NotificationService.create_notification(
+                recipient_profile=item.winner,
+                actor_profile=item.auction.owner,
+                notification_type="auction_won",
+                title="Auction won",
+                body="You won the auction item.",
+                object_type="auction_item",
+                object_id=item.pk,
+                idempotency_key=f"auction_won:{item.pk}:{item.winner_id}",
+            )
+        )

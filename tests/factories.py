@@ -19,6 +19,7 @@ from apps.authentication.models import UserAccount
 from apps.general.models import AssetMedia
 from apps.loyalty.constants import BadgeType, PointTransactionType
 from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
+from apps.notifications.models import Notification, NotificationType
 from apps.orders.models import (
     Cart,
     CartItem,
@@ -243,6 +244,23 @@ class BadgeAwardFactory(factory.django.DjangoModelFactory):
     source_type = ""
     source_id = ""
     metadata = factory.LazyFunction(dict)
+
+
+class NotificationFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Notification
+
+    recipient_profile = factory.SubFactory(CustomerProfileFactory)
+    actor_profile = None
+    notification_type = NotificationType.CHAT_MESSAGE_RECEIVED
+    title = "Test notification"
+    body = "Notification body"
+    object_type = ""
+    object_id = None
+    target_url = ""
+    is_read = False
+    read_at = None
+    idempotency_key = None
 
 
 # ============================================================================

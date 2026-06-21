@@ -63,7 +63,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
             actor=seller_profile,
             profile=seller_profile,
         )
-
+now as we have done the notifications but still i didinot push it...me FE and Flutter friend reported me the misses inside the backend to still needs implementing ..but from overvire of FE developer and i don't think it holds our design pattern for our project ...now  i need you to match what is implemented and what is not ... and then rewrite them according to our project pattern:
         return Response(
             {"message": "Seller profile created successfully"},
             status=status.HTTP_201_CREATED,

@@ -86,6 +86,10 @@ SELLER_PERMISSIONS = {
         "retrieve",
         "partial_update",
     ],
+    "NOTIFICATION": [
+        "list",
+        "create",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -177,5 +181,9 @@ CUSTOMER_PERMISSIONS = {
         "create",
         "retrieve",
         "partial_update",
+    ],
+    "NOTIFICATION": [
+        "list",
+        "create",
     ],
 }

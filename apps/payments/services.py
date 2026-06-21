@@ -104,6 +104,15 @@ class PaymentRequestService:
             PaymentRequestEventType.CREATED,
             actor=buyer_profile,
         )
+        PaymentRequestService._schedule_notification(
+            payment_request=payment_request,
+            recipient_profile=seller,
+            actor_profile=buyer_profile,
+            notification_type="payment_request_created",
+            title="New payment request",
+            body="A buyer created a payment request for your auction item.",
+            idempotency_key=f"payment_request_created:{payment_request.pk}",
+        )
         return PaymentRequestService.get_request(payment_request.pk)
 
     @staticmethod
@@ -147,6 +156,15 @@ class PaymentRequestService:
             payment_request,
             PaymentRequestEventType.CREATED,
             actor=buyer_profile,
+        )
+        PaymentRequestService._schedule_notification(
+            payment_request=payment_request,
+            recipient_profile=item.seller,
+            actor_profile=buyer_profile,
+            notification_type="payment_request_created",
+            title="New payment request",
+            body="A buyer created a payment request for your order item.",
+            idempotency_key=f"payment_request_created:{payment_request.pk}",
         )
         return PaymentRequestService.get_request(payment_request.pk)
 
@@ -232,6 +250,15 @@ class PaymentRequestService:
             PaymentRequestEventType.APPROVED,
             actor=seller_profile,
         )
+        PaymentRequestService._schedule_notification(
+            payment_request=payment_request,
+            recipient_profile=payment_request.buyer,
+            actor_profile=seller_profile,
+            notification_type="payment_request_approved",
+            title="Payment request approved",
+            body="The seller approved your payment request.",
+            idempotency_key=f"payment_request_approved:{payment_request.pk}",
+        )
         PaymentRequestService._handle_approved_rewards(payment_request)
         return PaymentRequestService.get_request(payment_request.pk)
 
@@ -270,6 +297,15 @@ class PaymentRequestService:
             payment_request,
             PaymentRequestEventType.REJECTED,
             actor=seller_profile,
+        )
+        PaymentRequestService._schedule_notification(
+            payment_request=payment_request,
+            recipient_profile=payment_request.buyer,
+            actor_profile=seller_profile,
+            notification_type="payment_request_rejected",
+            title="Payment request rejected",
+            body="The seller rejected your payment request.",
+            idempotency_key=f"payment_request_rejected:{payment_request.pk}",
         )
         return PaymentRequestService.get_request(payment_request.pk)
 
@@ -462,4 +498,30 @@ class PaymentRequestService:
             actor=payment_request.seller,
             profile=payment_request.seller,
             context={"payment_request": payment_request},
+        )
+
+    @staticmethod
+    def _schedule_notification(
+        *,
+        payment_request,
+        recipient_profile,
+        actor_profile,
+        notification_type,
+        title,
+        body,
+        idempotency_key,
+    ):
+        from apps.notifications.services import NotificationService
+
+        transaction.on_commit(
+            lambda: NotificationService.create_notification(
+                recipient_profile=recipient_profile,
+                actor_profile=actor_profile,
+                notification_type=notification_type,
+                title=title,
+                body=body,
+                object_type="payment_request",
+                object_id=payment_request.pk,
+                idempotency_key=idempotency_key,
+            )
         )
