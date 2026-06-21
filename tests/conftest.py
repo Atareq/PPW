@@ -135,6 +135,15 @@ def manager_user():
 
 
 @pytest.fixture
+def superuser_manager():
+    user = UserAccountFactory(with_profile=ProfileType.MANAGER)
+    user.is_staff = True
+    user.is_superuser = True
+    user.save()
+    return user
+
+
+@pytest.fixture
 def profile(user):
     """Get the active profile of a user."""
     return user.active_profile

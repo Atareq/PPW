@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q, UniqueConstraint
@@ -7,6 +8,7 @@ from django.db.models import Q, UniqueConstraint
 from apps.authentication.models import UserAccount
 from apps.general.models import BaseModel
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
+from apps.users.manager_permissions import normalize_manager_permissions
 
 
 class Profile(BaseModel):
@@ -47,8 +49,48 @@ class Profile(BaseModel):
             self.type = ProfileType.CUSTOMER
         elif isinstance(self, ManagerProfile):
             self.type = ProfileType.MANAGER
+            self.permissions = normalize_manager_permissions(
+                getattr(self, "permissions", None)
+            )
+
+        self.clean()
 
         super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if not self.user_id or not self.type:
+            return
+
+        live_profiles = Profile.all_objects.filter(user_id=self.user_id).exclude(
+            pk=self.pk
+        )
+        other_live_types = set(
+            live_profiles.filter(deleted__isnull=True).values_list("type", flat=True)
+        )
+
+        if self.type == ProfileType.MANAGER and (
+            ProfileType.CUSTOMER in other_live_types
+            or ProfileType.SELLER in other_live_types
+        ):
+            raise ValidationError(
+                {
+                    "user": [
+                        "Manager accounts cannot coexist with customer or seller profiles."
+                    ]
+                }
+            )
+
+        if self.type in {ProfileType.CUSTOMER, ProfileType.SELLER} and (
+            ProfileType.MANAGER in other_live_types
+        ):
+            raise ValidationError(
+                {
+                    "user": [
+                        "Customer or seller profiles cannot be created for a manager account."
+                    ]
+                }
+            )
 
     def __str__(self):
         return f" #{self.pk} - {self.type} - {self.user.username}"
@@ -93,4 +135,8 @@ class CustomerProfile(Profile):
 
 
 class ManagerProfile(Profile):
-    pass
+    permissions = models.JSONField(default=list, blank=True)
+
+    def clean(self):
+        super().clean()
+        self.permissions = normalize_manager_permissions(self.permissions)

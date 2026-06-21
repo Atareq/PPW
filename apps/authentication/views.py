@@ -5,11 +5,12 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rest_framework import serializers, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from apps.general.permissions import IsSuperUser
 from apps.authentication.serializers import (
     CustomerRegisterSerializer,
     CustomerTokenSerializer,
@@ -90,7 +91,7 @@ class CustomerRegisterAPIView(APIView):
 class ManagerRegisterAPIView(APIView):
     """Public manager registration endpoint; intentionally documents a known gap."""
 
-    permission_classes = []
+    permission_classes = [ AllowAny]
 
     def post(self, request):
         with transaction.atomic():

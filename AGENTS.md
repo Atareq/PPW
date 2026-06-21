@@ -197,7 +197,7 @@ Current auth API:
 - `/api/auth/register/customer/`
   - `POST`: public customer registration
 - `/api/auth/register/manager/`
-  - `POST`: currently public manager registration; this is a known security gap
+  - `POST`: authenticated superuser-only protected manager creation path; it is no longer publicly usable and the main manager CRUD now lives under `/api/users/admin/managers/`
 - `/api/auth/login/`
   - `POST`: token pair login using the custom token serializer
 - `/api/auth/token/refresh/`
@@ -223,8 +223,8 @@ Current auth behavior:
 - if profile switching fails, authentication continues with the current active profile
 - `switch_user_profile()` returns a `(success, profile_type)` style result
 - `switch_user_profile()` switches by profile type, not profile id
-- `switch_user_profile()` currently refuses to switch away from a current `Manager` role
-- `switch_user_profile()` does not currently filter the target profile by `activated`, `is_valid`, or `deleted__isnull=True` before setting `is_active=True`
+- `switch_user_profile()` refuses any switch from or to `Manager`
+- `switch_user_profile()` filters target profiles by `activated=True`, `is_valid=True`, and `deleted__isnull=True` before setting `is_active=True`
 
 Must not own:
 
@@ -247,6 +247,17 @@ Current user/profile API:
   - admin/staff CRUD for seller profiles through `SellerProfileAdminViewSet`
 - `/api/users/admin/customers/`
   - admin/staff CRUD for customer profiles through `CustomerProfileAdminViewSet`
+- `/api/users/admin/managers/`
+  - `GET`: authenticated superuser lists manager accounts
+  - `POST`: authenticated superuser creates a manager-only account with validated permissions
+- `/api/users/admin/managers/<id>/`
+  - `GET`: authenticated superuser retrieves one manager
+  - `PATCH`: authenticated superuser updates manager account/profile fields
+  - `DELETE`: authenticated superuser deactivates the manager account and soft-deletes the manager profile
+- `/api/users/admin/managers/<id>/permissions/`
+  - `PATCH`: authenticated superuser replaces manager permissions with normalized validated codes
+- `/api/users/admin/manager-permissions/`
+  - `GET`: authenticated superuser lists the central manager permission registry
 - `/api/users/mobile/sellers/`
   - authenticated user-facing seller profile API
 - `/api/users/mobile/customers/`
@@ -256,13 +267,18 @@ Current profile behavior:
 
 - `active_profile` requires `is_active=True`, `is_valid=True`, `activated=True`, and a non-deleted profile
 - `active_profile` raises `PermissionDenied` when no current valid active profile exists
+- `active_profile` resolves the concrete subclass instance (`SellerProfile`, `CustomerProfile`, or `ManagerProfile`) before returning it
 - `Profile.is_valid` is the current punishment / disabled-profile flag
 - exactly one `is_active=True` profile per user is enforced through the active-profile uniqueness constraint
 - persisted profile type values are title-case strings: `Seller`, `Customer`, and `Manager`
 - `Profile.save()` derives `type` from the concrete subclass
+- live manager accounts are exclusive: a user with a live `ManagerProfile` cannot create live seller/customer profiles, and a live seller/customer user cannot create a live `ManagerProfile`
 - customer registration creates an active customer profile
-- manager registration creates an active, activated manager profile and sets `is_staff=True`
+- manager creation keeps the account manager-only, creates an active/activated `ManagerProfile`, and sets `is_staff=True`
+- `ManagerProfile.permissions` is the source of truth for manager authorization; legacy `UserAccount.permissions` is no longer consulted for manager access checks
+- manager permissions are centrally defined in `apps.users.manager_permissions` and currently cover assets, auctions, orders, users, managers, payments, complaints, packages, promotions, races, pedigrees, feed, chat, ratings, insights, and notifications with `list`, `edit`, and `full_control` levels
 - mobile seller profile creation creates an inactive seller profile and overwrites submitted `nickname` with `user.username`
+- mobile customer/seller profile creation rejects manager accounts
 - deleting active mobile customer or seller profiles marks them inactive/invalid, soft-deletes them, and attempts to switch to the first other profile
 
 Must not own:
@@ -1298,6 +1314,7 @@ Current responsibilities:
 - `apps.general.models.OwnerBaseModel`: common owner relation to `users.Profile`
 - `apps.general.models.ResourcePermission`: persisted resource/owner placeholder; current `HasAppAccess` does not consult this model
 - `apps.general.authorizations.HasAppAccess`: repo-specific permission gate used by app viewsets
+- `apps.users.services.ManagerPermissionService`: central manager permission normalizer/checker with HTTP-method-to-level mapping and superuser bypass
 - `HasAppAccess.allow_scoped_read_access`: opt-in read behavior for resources whose `get_queryset()` already scopes readable objects
 - `HasAppAccess.permission_owner_field`: optional view attribute for object checks that use a non-`owner_id` ownership field, such as `OrderItem.seller_id`
 - `apps.general.viewsets.CreateListViewSet`: shared DRF base for endpoints that only need `create` and `list`
@@ -2033,7 +2050,7 @@ Current order permission pattern:
 - checkout uses `CheckoutViewSet` plus `HasAppAccess` with `permission_resource = "CHECKOUT"`
 - current `CHECKOUT` customer action is `post`
 - cart schema tags are `Cart`; checkout schema tags are `Checkout`
-- managers currently pass `HasAppAccess` for cart and checkout because manager bypass remains global; service validation still requires a customer profile for cart/checkout execution
+- managers need `orders.<level>` permissions to pass `HasAppAccess` for cart and checkout, but service validation still requires a customer profile for cart/checkout execution
 - dynamic per-user resource permissions are planned after most resources are implemented
 - authenticated users with no active valid role are denied by `HasAppAccess` before resource action checks run
 - sellers must switch to customer mode before using cart or checkout endpoints
@@ -2041,7 +2058,7 @@ Current order permission pattern:
 - `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
 - order-item object checks use `permission_owner_field = "seller_id"`
 - sellers can list, approve, and reject only their own seller-side order items
-- managers can access all order and order-item actions through existing manager behavior
+- managers with `orders.<level>` permissions can access order and order-item endpoints, subject to the same view/service constraints as before
 
 Current ratings/comment permission pattern:
 
@@ -2061,7 +2078,7 @@ Current race permission pattern:
 - `RaceResultViewSet` uses `HasAppAccess` with `permission_resource = "RACE_RESULT"`
 - `RaceResultListCreateViewSet` uses `HasAppAccess` with `permission_resource = "RACE_RESULT"`
 - race and race-result viewsets set `allow_scoped_read_access = True` because readable race data is intentionally available to any authenticated role
-- managers can create, update, delete, and bulk-create race data through the global manager bypass
+- managers with `races.<level>` permissions can create, update, delete, and bulk-create race data
 - sellers and customers can list/retrieve races, list per-race results, and search race results only
 - race write validation and rank recalculation live in serializers/services, not in permission classes
 
@@ -2069,7 +2086,7 @@ Current package permission pattern:
 
 - `PackageViewSet` uses `HasAppAccess` with `permission_resource = "PACKAGE"`
 - sellers can list packages, but queryset scoping limits them to `is_available=True`
-- managers can list all packages and create/update package plans through the global manager bypass
+- managers with `packages.<level>` permissions can list all packages and create/update package plans
 - `MySellerPackageViewSet` uses `HasAppAccess` with `permission_resource = "MY_SELLER_PACKAGE"`
 - sellers can list and create only their own seller package requests
 - `ManagerSellerPackageViewSet` uses `HasAppAccess` with `permission_resource = "SELLER_PACKAGE"`
@@ -2091,7 +2108,7 @@ Current pedigree permission pattern:
 
 - `PedigreeDocumentViewSet` and `PedigreeDocumentReviewViewSet` use `HasAppAccess` with `permission_resource = "PEDIGREE_DOCUMENT"`
 - customers and sellers can create, retrieve, and review only their own pedigree documents
-- managers can access all pedigree document actions through existing manager behavior
+- managers with `pedigrees.<level>` permissions can access all pedigree document actions
 - retrieve uses scoped read access only after `get_queryset()` limits non-manager reads to the active profile owner
 - review relies on profile ownership through `owner_id` and service-level actor validation
 
@@ -2099,7 +2116,7 @@ Current auction permission pattern:
 
 - `AuctionViewSet` uses `IsAuthenticated` plus `HasAppAccess` with `permission_resource = "AUCTION"`
 - sellers can create and manage their own auctions through owner-scoped querysets for owner actions
-- managers bypass `AuthorizationService` checks when their active role is `Manager`
+- managers are authorized through `ManagerProfile.permissions`, `apps.users.manager_permissions`, and HTTP-method-to-level mapping inside `ManagerPermissionService`
 - customers can use configured auction read actions, but `AuctionViewSet` does not set `allow_scoped_read_access`
 - `AuctionItemViewSet`, `BidViewSet`, and `AuctionEventViewSet` use DRF read-only public permissions for list/retrieve and custom auth checks on write actions
 - `place_bid` requires authentication and is restricted to customer profiles by `BidBusinessValidator`
@@ -2208,13 +2225,11 @@ These risks are important and should be respected during future work.
 
 ### Auth / Permission Risks
 
-- manager registration must not remain publicly open
 - profile switching must respect activation and business constraints
-- current `switch_user_profile()` can set an inactive/invalid/deleted target type active because it does not filter target profile validity before assignment
 - token `profile` claim and active profile behavior must stay aligned
 - test JWTs must include `profile` unless testing missing-claim behavior
-- permission constants and object-level rules need tightening
-- current authorization behavior for managers, superusers, and JSON permissions is not yet fully intuitive
+- manager permission-resource mapping must stay synchronized with `HasAppAccess.permission_resource` usage across apps
+- manager permission checks are module-level only in this MVP; there is still no object-level manager permission system
 - `allow_scoped_read_access` can expose data if used without correct `get_queryset()` scoping
 - `BirdViewSet` list visibility is not scoped even though object checks are owner-based
 - `AuctionViewSet` visible list behavior and object-level retrieve behavior are not fully aligned because scoped safe reads are not enabled there
@@ -2275,7 +2290,7 @@ Current pedigree extraction is intentionally local/null and mockable only. It do
 
 ### Repo Cautions
 
-- the service / validator / factory pattern is strongest in `apps.auctions`; `apps.users/services.py` is currently empty
+- the service / validator / factory pattern is strongest in `apps.auctions`; `apps.users/services.py` now contains manager-permission helpers but `apps.users` still remains lighter than the auction domain
 - naming/style drift exists and should not be fixed opportunistically:
   - `apps/assets/serializer.py` is singular
   - `ManagerProfileadminSerializer` casing is inconsistent

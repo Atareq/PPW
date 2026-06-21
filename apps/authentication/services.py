@@ -9,13 +9,22 @@ def switch_user_profile(user, new_profile_type: str) -> tuple[bool, str]:
     """Move a non-manager user to another profile type in one transaction."""
 
     with transaction.atomic():
+        if user.role == ProfileType.MANAGER:
+            return False, None
 
-        if user.role != new_profile_type and user.role != ProfileType.MANAGER:
+        if new_profile_type == ProfileType.MANAGER:
+            return False, None
+
+        if user.role != new_profile_type:
             Profile.objects.filter(user=user, is_active=True).update(
                 is_active=False
             )
             profile = Profile.objects.filter(
-                user=user, type=new_profile_type
+                user=user,
+                type=new_profile_type,
+                activated=True,
+                is_valid=True,
+                deleted__isnull=True,
             ).first()
             if profile:
                 profile.is_active = True

@@ -76,14 +76,12 @@ def test_seller_mobile_list_returns_only_current_users_active_seller(
     response = authenticated_seller_client.get(SELLER_PROFILE_URL)
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["results"] == [
-        {
-            "country": own_profile.country,
-            "currency": own_profile.currency,
-            "recoded_voice": own_profile.recoded_voice,
-            "nickname": "current-seller",
-        }
-    ]
+    assert len(response.data["results"]) == 1
+    assert response.data["results"][0]["id"] == own_profile.id
+    assert response.data["results"][0]["country"] == own_profile.country
+    assert response.data["results"][0]["currency"] == own_profile.currency
+    assert response.data["results"][0]["recoded_voice"] == own_profile.recoded_voice
+    assert response.data["results"][0]["nickname"] == "current-seller"
 
 
 def test_customer_mobile_list_returns_only_current_users_customer_profile(

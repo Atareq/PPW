@@ -91,3 +91,28 @@ class TestProfileSwitching:
         response = authenticated_client.post("/api/auth/switch-profile/", data)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_customer_cannot_switch_to_manager(
+        self, authenticated_customer_client
+    ):
+        response = authenticated_customer_client.post(
+            "/api/auth/switch-profile/",
+            {"new_profile": ProfileType.MANAGER},
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_manager_cannot_switch_to_customer(self, manager_user):
+        from rest_framework.test import APIClient
+        from apps.authentication.services import build_token_for_user
+
+        client = APIClient()
+        refresh = build_token_for_user(manager_user)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+
+        response = client.post(
+            "/api/auth/switch-profile/",
+            {"new_profile": ProfileType.CUSTOMER},
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST

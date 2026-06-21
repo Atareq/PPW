@@ -103,6 +103,7 @@ class ManagerRegisterSerializer(
 
     def create(self, validated_data):
         profile_data = validated_data.pop("manager_profile")
+        permissions = profile_data.pop("permissions", [])
 
         with transaction.atomic():
             user = UserAccount.objects.create_user(
@@ -112,6 +113,7 @@ class ManagerRegisterSerializer(
                 user=user,
                 is_active=True,  # Already made by admins
                 activated=True,
+                permissions=permissions,
                 **profile_data
             )
 
