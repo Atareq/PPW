@@ -259,6 +259,13 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "Reject an open or in-review complaint.",
     ),
     _permission(
+        "complaints.reopen",
+        "complaints",
+        "Complaints",
+        "Reopen complaints",
+        "Reopen a resolved or rejected complaint.",
+    ),
+    _permission(
         "packages.list",
         "packages",
         "Packages",
@@ -383,6 +390,13 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "Cashback Transactions",
         "List cashback transactions",
         "View customer cashback transactions.",
+    ),
+    _permission(
+        "cashback.balance.retrieve",
+        "cashback",
+        "Cashback",
+        "View cashback balance",
+        "View a customer's cashback balance.",
     ),
     _permission(
         "cashback.adjustments.create",
@@ -565,6 +579,13 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "Notifications",
         "List notifications",
         "View notification records for the active profile.",
+    ),
+    _permission(
+        "notifications.create",
+        "notifications",
+        "Notifications",
+        "Create notifications",
+        "Create one manual in-app notification for a selected profile.",
     ),
     _permission(
         "notifications.retrieve",

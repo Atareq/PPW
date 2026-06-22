@@ -313,6 +313,18 @@ class SellerFollowService:
         return list(queryset.values_list("seller_id", flat=True))
 
     @staticmethod
+    def is_following(customer_profile, seller_profile):
+        return SellerFollow.objects.filter(
+            follower_id=getattr(customer_profile, "pk", customer_profile),
+            seller_id=getattr(seller_profile, "pk", seller_profile),
+            is_active=True,
+            seller__is_active=True,
+            seller__activated=True,
+            seller__is_valid=True,
+            seller__deleted__isnull=True,
+        ).exists()
+
+    @staticmethod
     def _require_customer(profile):
         if profile.type != ProfileType.CUSTOMER:
             raise PermissionDenied("Active profile must be a customer.")

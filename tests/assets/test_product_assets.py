@@ -19,6 +19,7 @@ from apps.assets.services import ProductAssetCreationService
 from apps.authentication.services import build_token_for_user
 from apps.general.models import AssetMedia, Media, MediaType
 from apps.packages.models import PackageUsageLog, PackageUsageType
+from apps.ratings.models import AssetRating
 from apps.users.constants import ProfileType
 from tests.factories import (
     ActiveAssetSellerPackageFactory,
@@ -140,6 +141,64 @@ def create_active_package(owner, remaining_points=50, product_cost=7):
         ),
         remaining_points=remaining_points,
     )
+
+
+@pytest.mark.django_db
+def test_bird_list_includes_fe_rating_fields(
+    authenticated_seller_client,
+    seller_user,
+    customer_user,
+):
+    bird = Bird.objects.create(
+        owner=seller_user.active_profile,
+        title="Rated bird",
+        description="",
+        status="available",
+        count=1,
+        price=Decimal("100.00"),
+        is_market_listed=True,
+        is_for_auction=False,
+        name="Rated",
+        ring_number="FE-BIRD-001",
+        gender="male",
+        colour="Blue",
+        achievements="",
+        stamina_ability="good",
+    )
+    AssetRating.objects.create(
+        owner=customer_user.active_profile,
+        asset=bird,
+        stars=5,
+    )
+
+    response = authenticated_seller_client.get("/api/assets/birds/")
+    result = next(item for item in response.data["results"] if item["id"] == bird.pk)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert result["seller_nickname"] == seller_user.active_profile.nickname
+    assert Decimal(result["rating"]) == Decimal("5.00")
+    assert result["review_count"] == 1
+
+
+@pytest.mark.django_db
+def test_product_list_includes_rating_fields_and_platform_supply_is_safe(
+    manager_user,
+    customer_user,
+):
+    manager_client = authenticated_client_for(manager_user)
+    supply = create_platform_supply(title="Rated platform supply")
+    AssetRating.objects.create(
+        owner=customer_user.active_profile,
+        asset=supply,
+        stars=4,
+    )
+
+    response = manager_client.get(product_url("supplies"))
+    result = next(item for item in response.data["results"] if item["id"] == supply.pk)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert Decimal(result["rating"]) == Decimal("4.00")
+    assert result["review_count"] == 1
 
 
 @pytest.mark.django_db

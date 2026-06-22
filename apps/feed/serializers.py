@@ -86,6 +86,7 @@ class SellerFollowSellerSerializer(serializers.Serializer):
     nickname = serializers.CharField(read_only=True, allow_blank=True)
     country = serializers.CharField(read_only=True)
     currency = serializers.CharField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     is_followed = serializers.BooleanField(read_only=True, default=True)
 
     def to_representation(self, instance):
@@ -94,9 +95,13 @@ class SellerFollowSellerSerializer(serializers.Serializer):
             "nickname": instance.nickname,
             "country": instance.country,
             "currency": instance.currency,
+            "avatar_url": self.get_avatar_url(instance),
             "is_followed": True,
         }
         return data
+
+    def get_avatar_url(self, obj):
+        return _seller_avatar_url(obj)
 
 
 class SellerSuggestionSerializer(serializers.Serializer):
@@ -110,10 +115,35 @@ class SellerSuggestionSerializer(serializers.Serializer):
         read_only=True,
     )
     ratings_count = serializers.IntegerField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     is_followed = serializers.SerializerMethodField()
 
     def get_is_followed(self, obj):
         return False
+
+    def get_avatar_url(self, obj):
+        return _seller_avatar_url(obj)
+
+
+class SellerDiscoverySerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+    nickname = serializers.CharField(read_only=True, allow_blank=True)
+    description = serializers.SerializerMethodField()
+    country = serializers.CharField(read_only=True)
+    avg_rating = serializers.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        read_only=True,
+    )
+    ratings_count = serializers.IntegerField(read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+
+    def get_description(self, obj):
+        return getattr(obj, "description", "") or ""
+
+    def get_avatar_url(self, obj):
+        return _seller_avatar_url(obj)
 
 
 class SellerFollowSerializer(serializers.ModelSerializer):
@@ -204,3 +234,11 @@ class FeedQuerySerializer(serializers.Serializer):
 
 class SellerSuggestionQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(required=False, min_value=1)
+
+
+def _seller_avatar_url(obj):
+    for field_name in ("avatar_url", "profile_photo_url", "photo_url", "image_url"):
+        value = getattr(obj, field_name, "")
+        if value:
+            return value
+    return ""

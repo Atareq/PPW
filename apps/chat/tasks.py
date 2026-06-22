@@ -28,7 +28,7 @@ def send_chat_message_notification(message_id):
         message.receiver_id,
         message.sender_id,
     )
-    NotificationService.create_notification(
+    NotificationService.safe_create_notification(
         recipient_profile=message.receiver,
         actor_profile=message.sender,
         notification_type=NotificationType.CHAT_MESSAGE_RECEIVED,
@@ -36,6 +36,10 @@ def send_chat_message_notification(message_id):
         body=message.body,
         object_type="message",
         object_id=message.pk,
+        metadata={
+            "conversation_id": message.conversation_id,
+            "message_id": message.pk,
+        },
         idempotency_key=f"chat_message:{message.pk}",
     )
     return {

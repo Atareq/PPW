@@ -10,6 +10,7 @@ from apps.authentication.services import build_token_for_user
 from apps.chat.models import Conversation, Message
 from apps.chat.services import ChatService
 from apps.chat.tasks import send_chat_message_notification
+from apps.feed.models import SellerFollow
 from apps.feed.services import BlockService
 from apps.users.constants import ProfileType
 from tests.factories import (
@@ -37,6 +38,10 @@ def create_users():
     sender = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     receiver = UserAccountFactory(with_profile=ProfileType.SELLER)
     other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    SellerFollow.objects.create(
+        follower=sender.active_profile,
+        seller=receiver.active_profile,
+    )
     return sender, receiver, other
 
 
@@ -53,6 +58,18 @@ class TestChatService:
         assert conversation.seller_id == seller.active_profile.pk
         assert conversation.created_by_id == customer.active_profile.pk
 
+    def test_customer_must_follow_seller_before_starting_conversation(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+
+        with pytest.raises(ValidationError) as exc_info:
+            ChatService.get_or_create_conversation(
+                customer.active_profile,
+                seller.active_profile,
+            )
+
+        assert "receiver_profile_id" in exc_info.value.detail
+
     def test_seller_can_start_conversation_with_customer(self):
         customer, seller, _ = create_users()
 
@@ -64,6 +81,24 @@ class TestChatService:
         assert conversation.customer_id == customer.active_profile.pk
         assert conversation.seller_id == seller.active_profile.pk
         assert conversation.created_by_id == seller.active_profile.pk
+
+    def test_existing_conversation_is_returned_even_without_active_follow(self):
+        customer, seller, _ = create_users()
+        conversation = ChatService.get_or_create_conversation(
+            customer.active_profile,
+            seller.active_profile,
+        )
+        SellerFollow.objects.filter(
+            follower=customer.active_profile,
+            seller=seller.active_profile,
+        ).update(is_active=False)
+
+        same_conversation = ChatService.get_or_create_conversation(
+            customer.active_profile,
+            seller.active_profile,
+        )
+
+        assert same_conversation.pk == conversation.pk
 
     def test_cannot_create_conversation_with_same_profile(self):
         sender, _, _ = create_users()
@@ -365,6 +400,22 @@ class TestChatApi:
         assert "participant_1" not in response.data
         assert "participant_2" not in response.data
 
+    def test_customer_create_conversation_requires_follow(self):
+        sender = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        receiver = UserAccountFactory(with_profile=ProfileType.SELLER)
+        client = authenticated_client(sender)
+
+        response = client.post(
+            "/api/chat/conversations/",
+            {"receiver_profile_id": receiver.active_profile.pk},
+            format="json",
+        )
+
+        assert response.status_code == 400
+        assert str(response.data["receiver_profile_id"]) == (
+            "You must follow this seller before starting a conversation."
+        )
+
     def test_duplicate_create_returns_same_conversation(self):
         sender, receiver, _ = create_users()
         client = authenticated_client(sender)
@@ -403,15 +454,45 @@ class TestChatApi:
         assert response.status_code == 200
         assert [item["id"] for item in results] == [own.pk]
 
+    def test_conversation_list_includes_unread_count(self):
+        sender, receiver, _ = create_users()
+        conversation = ChatService.get_or_create_conversation(
+            sender.active_profile,
+            receiver.active_profile,
+        )
+        ChatService.send_message(
+            conversation.pk,
+            sender.active_profile,
+            "Unread for seller",
+        )
+        ChatService.send_message(
+            conversation.pk,
+            receiver.active_profile,
+            "Read by seller because seller sent it",
+        )
+        client = authenticated_client(receiver)
+
+        response = client.get("/api/chat/conversations/")
+        results = response_results(response)
+
+        assert response.status_code == 200
+        assert results[0]["id"] == conversation.pk
+        assert results[0]["unread_count"] == 1
+
     def test_seller_sees_own_conversations(self):
         sender, receiver, other = create_users()
         own = ChatService.get_or_create_conversation(
             sender.active_profile,
             receiver.active_profile,
         )
+        other_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        SellerFollow.objects.create(
+            follower=other.active_profile,
+            seller=other_seller.active_profile,
+        )
         ChatService.get_or_create_conversation(
             other.active_profile,
-            UserAccountFactory(with_profile=ProfileType.SELLER).active_profile,
+            other_seller.active_profile,
         )
         client = authenticated_client(receiver)
 

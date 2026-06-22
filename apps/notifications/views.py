@@ -1,18 +1,23 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from rest_framework import mixins, status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
 from apps.notifications.filters import NotificationFilter
-from apps.notifications.models import Notification
+from apps.notifications.models import Notification, NotificationType
 from apps.notifications.serializers import (
+    ManualNotificationCreateSerializer,
     MarkAllReadSerializer,
     NotificationSerializer,
     UnreadCountSerializer,
 )
 from apps.notifications.services import NotificationService, notification_queryset
+from apps.users.constants import ProfileType
+from apps.users.models import Profile
 
 
 def active_profile(request):
@@ -30,16 +35,56 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_resource = "NOTIFICATION"
     manager_permission_map = {
         "list": "notifications.list",
+        "create": "notifications.create",
     }
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = NotificationFilter
-    http_method_names = ["get"]
+    http_method_names = ["get", "post"]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return ManualNotificationCreateSerializer
+        return NotificationSerializer
 
     def get_queryset(self):
         return notification_queryset().filter(
             recipient_profile_id=active_profile(self.request).pk
+        )
+
+    def create(self, request, *args, **kwargs):
+        actor_profile = None
+        if request.user.is_superuser:
+            try:
+                actor_profile = active_profile(request)
+            except DjangoPermissionDenied:
+                actor_profile = None
+        else:
+            actor_profile = active_profile(request)
+            if actor_profile.type != ProfileType.MANAGER:
+                raise PermissionDenied(
+                    "Only managers can create manual notifications."
+                )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        recipient = Profile.objects.get(pk=data["recipient_profile_id"])
+        notification = NotificationService.create_notification(
+            recipient_profile=recipient,
+            actor_profile=actor_profile,
+            notification_type=NotificationType.MANUAL_MANAGER_NOTIFICATION,
+            title=data["title"],
+            body=data["body"],
+            object_type=data.get("object_type"),
+            object_id=data.get("object_id"),
+            metadata=data.get("metadata") or {},
+            target_url=data.get("target_url"),
+        )
+        return Response(
+            NotificationSerializer(notification).data,
+            status=status.HTTP_201_CREATED,
         )
 
 

@@ -58,4 +58,12 @@ urlpatterns = [
         ),
         name="complaint-reject",
     ),
+    path(
+        "<int:pk>/reopen/",
+        ComplaintAdminActionViewSet.as_view(
+            CREATE_ACTION,
+            action_type="reopen",
+        ),
+        name="complaint-reopen",
+    ),
 ]

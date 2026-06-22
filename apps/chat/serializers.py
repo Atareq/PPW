@@ -42,6 +42,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
     seller = ProfileSummarySerializer(read_only=True)
     other_participant = serializers.SerializerMethodField()
     last_message = MessageSummarySerializer(read_only=True)
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -51,6 +52,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
             "seller",
             "other_participant",
             "last_message",
+            "unread_count",
             "last_message_at",
             "is_active",
             "created",
@@ -63,6 +65,19 @@ class ConversationListSerializer(serializers.ModelSerializer):
         if active_profile and obj.customer_id == active_profile.pk:
             return ProfileSummarySerializer(obj.seller).data
         return ProfileSummarySerializer(obj.customer).data
+
+    def get_unread_count(self, obj):
+        annotated_count = getattr(obj, "unread_count_annotation", None)
+        if annotated_count is not None:
+            return annotated_count
+
+        active_profile = self.context.get("active_profile")
+        if active_profile is None:
+            return 0
+        return obj.messages.filter(
+            receiver_id=active_profile.pk,
+            is_read=False,
+        ).count()
 
 
 class MessageSerializer(serializers.ModelSerializer):

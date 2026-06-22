@@ -388,6 +388,7 @@ class OrderCheckoutService:
         order.save(update_fields=["total_price", "modified"])
         order = OrderService.get_order(order.pk)
         OrderCheckoutService._create_checkout_events(order)
+        OrderCheckoutService._schedule_seller_pending_notifications(order)
         return OrderService.get_order(order.pk)
 
     @staticmethod
@@ -418,6 +419,31 @@ class OrderCheckoutService:
             for item in order.items.all()
         )
         OrderEvent.objects.bulk_create(events)
+
+    @staticmethod
+    def _schedule_seller_pending_notifications(order):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        def notify():
+            for item in order.items.all():
+                NotificationService.safe_create_notification(
+                    recipient_profile=item.seller,
+                    actor_profile=order.owner,
+                    notification_type=NotificationType.ORDER_ITEM_PENDING_SELLER,
+                    title="New order item",
+                    body="A customer placed an order item for your review.",
+                    object_type="order_item",
+                    object_id=item.pk,
+                    metadata={
+                        "order_id": order.pk,
+                        "order_item_id": item.pk,
+                        "asset_id": item.asset_id,
+                    },
+                    idempotency_key=f"order_item_pending_seller:{item.pk}",
+                )
+
+        transaction.on_commit(notify)
 
 
 class OrderItemService:
@@ -533,6 +559,10 @@ class OrderItemService:
             item,
             timeout_days=timeout_days,
         )
+        OrderItemService._schedule_auto_cancelled_notification(
+            item,
+            timeout_days=timeout_days,
+        )
 
         return True
 
@@ -593,7 +623,7 @@ class OrderItemService:
         from apps.notifications.services import NotificationService
 
         transaction.on_commit(
-            lambda: NotificationService.create_notification(
+            lambda: NotificationService.safe_create_notification(
                 recipient_profile=item.order.owner,
                 actor_profile=item.seller,
                 notification_type=notification_type,
@@ -601,6 +631,35 @@ class OrderItemService:
                 body=body,
                 object_type="order_item",
                 object_id=item.pk,
+                metadata={
+                    "order_id": item.order_id,
+                    "order_item_id": item.pk,
+                    "asset_id": item.asset_id,
+                },
                 idempotency_key=idempotency_key,
+            )
+        )
+
+    @staticmethod
+    def _schedule_auto_cancelled_notification(item, *, timeout_days):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        transaction.on_commit(
+            lambda: NotificationService.safe_create_notification(
+                recipient_profile=item.order.owner,
+                actor_profile=item.seller,
+                notification_type=NotificationType.ORDER_ITEM_AUTO_CANCELLED,
+                title="Order item cancelled",
+                body="An order item was cancelled because the seller did not act.",
+                object_type="order_item",
+                object_id=item.pk,
+                metadata={
+                    "order_id": item.order_id,
+                    "order_item_id": item.pk,
+                    "asset_id": item.asset_id,
+                    "timeout_days": timeout_days,
+                },
+                idempotency_key=f"order_item_auto_cancelled:{item.pk}",
             )
         )

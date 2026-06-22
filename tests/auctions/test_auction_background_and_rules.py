@@ -25,6 +25,7 @@ from apps.packages.models import PackageUsageLog, PackageUsageType
 from apps.users.constants import ProfileType
 from tests.factories import (
     ActiveAssetSellerPackageFactory,
+    AssetMediaFactory,
     AuctionFactory,
     AuctionItemFactory,
     BidFactory,
@@ -34,6 +35,65 @@ from tests.factories import (
     UserAccountFactory,
     create_active_auction_with_item,
 )
+
+
+def authenticated_client(user):
+    client = APIClient()
+    refresh = build_token_for_user(user)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    return client
+
+
+@pytest.mark.django_db
+def test_auction_list_and_detail_include_fe_fields(seller_user, customer_user):
+    auction = AuctionFactory(
+        owner=seller_user.active_profile,
+        buy_now_enabled=True,
+        buy_now_price=Decimal("250.00"),
+        min_bid_increment=Decimal("15.00"),
+    )
+    item = AuctionItemFactory(
+        auction=auction,
+        current_price=Decimal("150.00"),
+    )
+    AssetMediaFactory(asset=item.bird, media_url="https://example.com/bird.jpg")
+    owner_client = authenticated_client(seller_user)
+    customer_client = authenticated_client(customer_user)
+
+    list_response = owner_client.get("/api/auctions/")
+    detail_response = owner_client.get(f"/api/auctions/{auction.pk}/")
+    customer_list_response = customer_client.get("/api/auctions/")
+    list_item = next(
+        item for item in list_response.data["results"] if item["id"] == auction.pk
+    )
+    customer_list_item = next(
+        item
+        for item in customer_list_response.data["results"]
+        if item["id"] == auction.pk
+    )
+
+    assert list_response.status_code == status.HTTP_200_OK
+    assert detail_response.status_code == status.HTTP_200_OK
+    assert list_item["buy_now_enabled"] is True
+    assert list_item["buy_now_price"] == "250.00"
+    assert list_item["min_bid_increment"] == "15.00"
+    assert list_item["current_price"] == Decimal("150.00")
+    assert list_item["thumbnail_url"] == "https://example.com/bird.jpg"
+    assert list_item["is_owner"] is True
+    assert detail_response.data["is_owner"] is True
+    assert customer_list_item["is_owner"] is False
+
+
+@pytest.mark.django_db
+def test_auction_thumbnail_is_null_when_item_has_no_media(seller_user):
+    auction = AuctionFactory(owner=seller_user.active_profile)
+    AuctionItemFactory(auction=auction)
+    client = authenticated_client(seller_user)
+
+    response = client.get(f"/api/auctions/{auction.pk}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["thumbnail_url"] is None
 
 
 @pytest.mark.django_db

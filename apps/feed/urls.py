@@ -5,6 +5,7 @@ from apps.feed.views import (
     MarketFeedViewSet,
     PeopleYouMayKnowViewSet,
     SellerCustomerBlockViewSet,
+    SellerDiscoveryViewSet,
     SellerFollowCreateViewSet,
     SellerFollowingViewSet,
     SellerUnfollowCreateViewSet,
@@ -27,6 +28,11 @@ urlpatterns = [
         "blocks/customer-seller/<int:profile_id>/",
         SellerCustomerBlockViewSet.as_view(DESTROY_ACTION),
         name="seller-customer-block-delete",
+    ),
+    path(
+        "sellers/",
+        SellerDiscoveryViewSet.as_view(LIST_ACTION),
+        name="seller-discovery",
     ),
     path(
         "sellers/<int:seller_id>/follow/",

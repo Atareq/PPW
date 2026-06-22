@@ -33,8 +33,11 @@ from apps.users.models import CustomerProfile
 from tests.factories import (
     AssetMediaFactory,
     BirdFactory,
+    CashbackOfferFactory,
     CustomerProfileFactory,
+    DiscountOfferFactory,
     OrderFactory,
+    OrderItemFactory,
     SellerProfileFactory,
     SupplyFactory,
     UserAccountFactory,
@@ -919,6 +922,36 @@ class TestOrderReadEndpoints:
         assert len(orders_response.data["results"]) == 2
         assert items_response.status_code == 200
         assert len(items_response.data["results"]) == 2
+
+    def test_order_item_list_filters_by_discount_and_cashback_offer(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        discount = DiscountOfferFactory()
+        cashback = CashbackOfferFactory()
+        matched = OrderItemFactory(
+            seller=seller.active_profile,
+            discount_offer=discount,
+            cashback_offer=cashback,
+        )
+        OrderItemFactory(seller=seller.active_profile)
+        client = authenticated_client(seller)
+
+        discount_response = client.get(
+            "/api/orders/items/",
+            {"discount_offer": discount.pk},
+        )
+        cashback_response = client.get(
+            "/api/orders/items/",
+            {"cashback_offer": cashback.pk},
+        )
+
+        assert discount_response.status_code == 200
+        assert [item["id"] for item in discount_response.data["results"]] == [
+            matched.pk
+        ]
+        assert cashback_response.status_code == 200
+        assert [item["id"] for item in cashback_response.data["results"]] == [
+            matched.pk
+        ]
 
     def test_customer_can_filter_own_orders_by_status(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

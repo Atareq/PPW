@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.notifications.models import Notification
+from apps.users.models import Profile
 
 
 class NotificationActorProfileSerializer(serializers.Serializer):
@@ -35,6 +36,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "actor_profile",
             "object_type",
             "object_id",
+            "metadata",
             "target_url",
             "is_read",
             "read_at",
@@ -50,3 +52,31 @@ class UnreadCountSerializer(serializers.Serializer):
 class MarkAllReadSerializer(serializers.Serializer):
     updated_count = serializers.IntegerField(read_only=True)
 
+
+class ManualNotificationCreateSerializer(serializers.Serializer):
+    recipient_profile_id = serializers.IntegerField()
+    title = serializers.CharField(max_length=255, trim_whitespace=True)
+    body = serializers.CharField(trim_whitespace=True)
+    object_type = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+    )
+    object_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    metadata = serializers.DictField(required=False)
+    target_url = serializers.CharField(
+        max_length=2048,
+        required=False,
+        allow_blank=True,
+    )
+
+    def validate_recipient_profile_id(self, value):
+        if not Profile.objects.filter(
+            pk=value,
+            is_active=True,
+            activated=True,
+            is_valid=True,
+            deleted__isnull=True,
+        ).exists():
+            raise serializers.ValidationError("Recipient profile was not found.")
+        return value

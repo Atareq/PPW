@@ -773,6 +773,7 @@ class BiddingService:
             bidder,
             was_last_minute=was_last_minute,
         )
+        BiddingService._schedule_bid_notification(bid)
 
         return bid
 
@@ -798,6 +799,30 @@ class BiddingService:
             actor=bidder,
             profile=bidder,
             context={"bid": bid, "was_last_minute": was_last_minute},
+        )
+
+    @staticmethod
+    def _schedule_bid_notification(bid):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        auction = bid.item.auction
+        transaction.on_commit(
+            lambda: NotificationService.safe_create_notification(
+                recipient_profile=auction.owner,
+                actor_profile=bid.bidder,
+                notification_type=NotificationType.AUCTION_BID_PLACED,
+                title="New auction bid",
+                body="A customer placed a bid on your auction item.",
+                object_type="bid",
+                object_id=bid.pk,
+                metadata={
+                    "auction_id": auction.pk,
+                    "auction_item_id": bid.item_id,
+                    "bid_id": bid.pk,
+                },
+                idempotency_key=f"auction_bid_placed:{bid.pk}",
+            )
         )
 
 
@@ -902,6 +927,7 @@ class SettlementService:
             item.current_price = auction.buy_now_price
             item.save()
             SettlementService._schedule_auction_won_notification(item)
+            SettlementService._schedule_buy_now_success_notification(item, bid)
 
             # Log event
             AuctionService._log_event(
@@ -920,7 +946,7 @@ class SettlementService:
         from apps.notifications.services import NotificationService
 
         transaction.on_commit(
-            lambda: NotificationService.create_notification(
+            lambda: NotificationService.safe_create_notification(
                 recipient_profile=item.winner,
                 actor_profile=item.auction.owner,
                 notification_type="auction_won",
@@ -928,6 +954,34 @@ class SettlementService:
                 body="You won the auction item.",
                 object_type="auction_item",
                 object_id=item.pk,
+                metadata={
+                    "auction_id": item.auction_id,
+                    "auction_item_id": item.pk,
+                    "bid_id": item.winner_bid_id,
+                },
                 idempotency_key=f"auction_won:{item.pk}:{item.winner_id}",
+            )
+        )
+
+    @staticmethod
+    def _schedule_buy_now_success_notification(item, bid):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        transaction.on_commit(
+            lambda: NotificationService.safe_create_notification(
+                recipient_profile=item.winner,
+                actor_profile=item.auction.owner,
+                notification_type=NotificationType.AUCTION_BUY_NOW_SUCCESS,
+                title="Buy now completed",
+                body="Your buy-now purchase was confirmed.",
+                object_type="auction_item",
+                object_id=item.pk,
+                metadata={
+                    "auction_id": item.auction_id,
+                    "auction_item_id": item.pk,
+                    "bid_id": bid.pk,
+                },
+                idempotency_key=f"auction_buy_now_success:{item.pk}:{bid.pk}",
             )
         )

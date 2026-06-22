@@ -1,5 +1,5 @@
-from django.db.models import Q
 from django.core.exceptions import PermissionDenied
+from django.db.models import Avg, Count, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, viewsets
 from rest_framework.filters import OrderingFilter
@@ -39,7 +39,15 @@ from apps.users.constants import ProfileType
 class BirdViewSet(viewsets.ModelViewSet):
     """Bird asset CRUD gated by BIRD app permissions and seller validation."""
 
-    queryset = Bird.objects.prefetch_related("media").order_by("-created")
+    queryset = (
+        Bird.objects.select_related("owner", "owner__sellerprofile")
+        .prefetch_related("media")
+        .annotate(
+            rating_annotation=Avg("asset_ratings__stars"),
+            review_count_annotation=Count("asset_ratings"),
+        )
+        .order_by("-created")
+    )
     serializer_class = BirdSerializer
     permission_classes = [
         HasAppAccess,
@@ -103,8 +111,16 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Managers see all; customers see listed; sellers see own plus listed."""
 
-        queryset = super().get_queryset().prefetch_related("media").order_by(
-            "-created"
+        queryset = (
+            super()
+            .get_queryset()
+            .select_related("owner", "owner__sellerprofile")
+            .prefetch_related("media")
+            .annotate(
+                rating_annotation=Avg("asset_ratings__stars"),
+                review_count_annotation=Count("asset_ratings"),
+            )
+            .order_by("-created")
         )
         user = self.request.user
         if user.is_superuser:

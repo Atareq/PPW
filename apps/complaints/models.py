@@ -22,6 +22,7 @@ class ComplaintEventType(models.TextChoices):
     IN_REVIEW = "complaint_in_review", "Complaint In Review"
     RESOLVED = "complaint_resolved", "Complaint Resolved"
     REJECTED = "complaint_rejected", "Complaint Rejected"
+    REOPENED = "complaint_reopened", "Complaint Reopened"
     CANCELLED = "complaint_cancelled", "Complaint Cancelled"
 
 

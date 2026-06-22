@@ -1,20 +1,24 @@
 from decimal import Decimal
+from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 from rest_framework.exceptions import NotFound
 from rest_framework.test import APIClient
 
 from apps.authentication.services import build_token_for_user
+from apps.auctions.services import BiddingService, SettlementService
 from apps.auctions.models import AuctionItemStatus
 from apps.chat.services import ChatService
 from apps.complaints.models import ComplaintStatus
 from apps.complaints.services import ComplaintService
+from apps.feed.models import SellerFollow
 from apps.loyalty.constants import BadgeType
 from apps.loyalty.services import BadgeService
 from apps.notifications.models import Notification, NotificationType
 from apps.notifications.services import NotificationService
 from apps.orders.models import OrderItemStatus, OrderStatus
-from apps.orders.services import OrderItemService
+from apps.orders.services import OrderCheckoutService, OrderItemService
 from apps.payments.models import PaymentRequest, PaymentRequestStatus, PaymentRequestType
 from apps.payments.services import PaymentRequestService
 from apps.users.constants import ProfileType
@@ -55,6 +59,11 @@ def create_users():
 
 
 def create_conversation(customer, seller):
+    SellerFollow.objects.get_or_create(
+        follower=customer.active_profile,
+        seller=seller.active_profile,
+        defaults={"is_active": True},
+    )
     return ChatService.get_or_create_conversation(
         customer.active_profile,
         seller.active_profile,
@@ -137,6 +146,19 @@ class TestNotificationService:
         )
 
         assert notification.actor_profile_id == seller.active_profile.pk
+
+    def test_create_notification_stores_metadata(self):
+        customer, _, _, _ = create_users()
+
+        notification = NotificationService.create_notification(
+            recipient_profile=customer.active_profile,
+            notification_type=NotificationType.ORDER_ITEM_APPROVED,
+            title="Approved",
+            body="Your order item was approved.",
+            metadata={"order_item_id": 123},
+        )
+
+        assert notification.metadata == {"order_item_id": 123}
 
     def test_idempotency_key_prevents_duplicates(self):
         customer, _, _, _ = create_users()
@@ -307,6 +329,63 @@ class TestNotificationAPI:
 
         assert response.status_code == 404
 
+    def test_manager_can_create_manual_notification(self):
+        customer, _, manager, _ = create_users()
+        client = authenticated_client(manager)
+
+        response = client.post(
+            "/api/notifications/",
+            {
+                "recipient_profile_id": customer.active_profile.pk,
+                "title": "Manual notice",
+                "body": "Please review your account.",
+                "metadata": {"reason": "manager_notice"},
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201
+        assert response.data["notification_type"] == (
+            NotificationType.MANUAL_MANAGER_NOTIFICATION
+        )
+        assert response.data["metadata"] == {"reason": "manager_notice"}
+        assert response.data["actor_profile"]["id"] == manager.active_profile.pk
+
+    def test_manager_without_permission_cannot_create_manual_notification(self):
+        customer, _, manager, _ = create_users()
+        manager_profile = manager.active_profile
+        manager_profile.permissions = []
+        manager_profile.save(update_fields=["permissions"])
+        client = authenticated_client(manager)
+
+        response = client.post(
+            "/api/notifications/",
+            {
+                "recipient_profile_id": customer.active_profile.pk,
+                "title": "Manual notice",
+                "body": "Please review your account.",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 403
+
+    def test_customer_cannot_create_manual_notification(self):
+        customer, _, _, other_customer = create_users()
+        client = authenticated_client(customer)
+
+        response = client.post(
+            "/api/notifications/",
+            {
+                "recipient_profile_id": other_customer.active_profile.pk,
+                "title": "Manual notice",
+                "body": "Please review your account.",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 403
+
 
 class TestNotificationIntegrations:
     def test_chat_message_creates_notification_for_receiver_only(
@@ -364,6 +443,80 @@ class TestNotificationIntegrations:
         )
         assert notification.recipient_profile_id == seller.active_profile.pk
         assert notification.actor_profile_id == buyer.active_profile.pk
+
+    def test_new_bid_notifies_auction_owner(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        item, buyer, seller = create_sold_auction_item()
+        item.status = AuctionItemStatus.ACTIVE
+        item.winner = None
+        item.winner_bid = None
+        item.save(update_fields=["status", "winner", "winner_bid", "modified"])
+
+        with django_capture_on_commit_callbacks(execute=True):
+            bid = BiddingService.place_bid(
+                item,
+                buyer.active_profile,
+                Decimal("175.00"),
+            )
+
+        notification = Notification.objects.get(
+            notification_type=NotificationType.AUCTION_BID_PLACED,
+            object_id=bid.pk,
+        )
+        assert notification.recipient_profile_id == seller.active_profile.pk
+        assert notification.actor_profile_id == buyer.active_profile.pk
+        assert notification.metadata["auction_item_id"] == item.pk
+
+    def test_auction_settlement_notifies_winner(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        item, buyer, _ = create_sold_auction_item()
+        item.status = AuctionItemStatus.ACTIVE
+        item.winner = None
+        item.winner_bid = None
+        item.save(update_fields=["status", "winner", "winner_bid", "modified"])
+        bid = BiddingService.place_bid(
+            item,
+            buyer.active_profile,
+            Decimal("175.00"),
+        )
+        item.refresh_from_db()
+
+        with django_capture_on_commit_callbacks(execute=True):
+            SettlementService._settle_item(item)
+
+        notification = Notification.objects.get(
+            notification_type=NotificationType.AUCTION_WON,
+            object_id=item.pk,
+        )
+        assert notification.recipient_profile_id == buyer.active_profile.pk
+        assert notification.metadata["bid_id"] == bid.pk
+
+    def test_buy_now_success_notifies_buyer(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        item, buyer, _ = create_sold_auction_item()
+        auction = item.auction
+        auction.buy_now_enabled = True
+        auction.buy_now_price = Decimal("200.00")
+        auction.save(update_fields=["buy_now_enabled", "buy_now_price", "modified"])
+        item.status = AuctionItemStatus.ACTIVE
+        item.winner = None
+        item.winner_bid = None
+        item.save(update_fields=["status", "winner", "winner_bid", "modified"])
+
+        with django_capture_on_commit_callbacks(execute=True):
+            SettlementService.trigger_buy_now(item, buyer.active_profile)
+
+        notification = Notification.objects.get(
+            notification_type=NotificationType.AUCTION_BUY_NOW_SUCCESS,
+            object_id=item.pk,
+        )
+        assert notification.recipient_profile_id == buyer.active_profile.pk
 
     def test_payment_request_approved_notifies_buyer(
         self,
@@ -430,6 +583,27 @@ class TestNotificationIntegrations:
         )
         assert notification.recipient_profile_id == buyer.active_profile.pk
 
+    def test_checkout_notifies_each_seller_of_pending_item(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        buyer, seller, _, _ = create_users()
+        asset = SupplyFactory(owner=seller.active_profile, count=3)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            order = OrderCheckoutService.create_order_from_items(
+                buyer.active_profile,
+                [{"asset_id": asset.pk, "quantity": 1}],
+            )
+
+        item = order.items.get()
+        notification = Notification.objects.get(
+            notification_type=NotificationType.ORDER_ITEM_PENDING_SELLER,
+            object_id=item.pk,
+        )
+        assert notification.recipient_profile_id == seller.active_profile.pk
+        assert notification.metadata["order_id"] == order.pk
+
     def test_order_item_rejected_notifies_customer(
         self,
         django_capture_on_commit_callbacks,
@@ -446,6 +620,52 @@ class TestNotificationIntegrations:
             object_id=item.pk,
         )
         assert notification.recipient_profile_id == buyer.active_profile.pk
+
+    def test_auto_cancel_notifies_customer(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        item, buyer, _, _ = create_approved_order_item()
+        item.status = OrderItemStatus.PENDING_SELLER
+        item.save(update_fields=["status", "modified"])
+        old_created = timezone.now() - timedelta(days=3)
+        type(item).objects.filter(pk=item.pk).update(created=old_created)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            cancelled_count = OrderItemService.cancel_expired_pending_items(
+                now=timezone.now(),
+                timeout_days=1,
+            )
+
+        assert cancelled_count == 1
+        notification = Notification.objects.get(
+            notification_type=NotificationType.ORDER_ITEM_AUTO_CANCELLED,
+            object_id=item.pk,
+        )
+        assert notification.recipient_profile_id == buyer.active_profile.pk
+
+    def test_notification_failure_does_not_break_order_rejection(
+        self,
+        django_capture_on_commit_callbacks,
+        monkeypatch,
+    ):
+        item, _, seller, _ = create_approved_order_item()
+        item.status = OrderItemStatus.PENDING_SELLER
+        item.save(update_fields=["status", "modified"])
+
+        def fail_create(*args, **kwargs):
+            raise RuntimeError("notification store down")
+
+        monkeypatch.setattr(
+            NotificationService,
+            "create_notification",
+            staticmethod(fail_create),
+        )
+
+        with django_capture_on_commit_callbacks(execute=True):
+            updated = OrderItemService.reject_item(item, seller.active_profile)
+
+        assert updated.status == OrderItemStatus.REJECTED
 
     def test_complaint_status_update_notifies_buyer_and_seller(
         self,

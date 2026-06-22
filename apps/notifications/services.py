@@ -1,9 +1,13 @@
+import logging
+
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.notifications.models import Notification
 from apps.users.models import Profile
+
+logger = logging.getLogger(__name__)
 
 
 def notification_queryset():
@@ -30,6 +34,7 @@ class NotificationService:
         actor_profile=None,
         object_type=None,
         object_id=None,
+        metadata=None,
         target_url=None,
         idempotency_key=None,
     ):
@@ -64,6 +69,7 @@ class NotificationService:
                 body=body,
                 object_type=normalize_optional_string(object_type),
                 object_id=object_id,
+                metadata=metadata or {},
                 target_url=normalize_optional_string(target_url),
                 idempotency_key=idempotency_key,
             )
@@ -78,6 +84,14 @@ class NotificationService:
             if existing is not None:
                 return existing
             raise
+
+    @staticmethod
+    def safe_create_notification(*args, **kwargs):
+        try:
+            return NotificationService.create_notification(*args, **kwargs)
+        except Exception:
+            logger.exception("Failed to create in-app notification.")
+            return None
 
     @staticmethod
     @transaction.atomic
@@ -150,4 +164,3 @@ class NotificationService:
             and profile.is_valid
             and getattr(profile, "deleted", None) is None
         )
-

@@ -199,6 +199,45 @@ class ComplaintService:
 
     @staticmethod
     @transaction.atomic
+    def reopen_complaint(complaint_id, manager_profile):
+        ComplaintService._ensure_manager(manager_profile)
+        complaint = ComplaintService._get_locked_complaint(complaint_id)
+
+        if complaint.status not in {
+            ComplaintStatus.RESOLVED,
+            ComplaintStatus.REJECTED,
+        }:
+            raise ValidationError(
+                "Only resolved or rejected complaints can be reopened."
+            )
+
+        complaint.status = ComplaintStatus.OPEN
+        complaint.admin_note = ""
+        complaint.resolved_at = None
+        complaint.save(
+            update_fields=[
+                "status",
+                "admin_note",
+                "resolved_at",
+                "modified",
+            ]
+        )
+        ComplaintService._log_event(
+            complaint,
+            ComplaintEventType.REOPENED,
+            actor=manager_profile,
+        )
+        ComplaintService._schedule_status_notifications(
+            complaint,
+            actor=manager_profile,
+            title="Complaint reopened",
+            body="A manager reopened the complaint tied to your payment request.",
+            idempotency_suffix=f"reopened:{complaint.modified.isoformat()}",
+        )
+        return ComplaintService.get_complaint(complaint.pk)
+
+    @staticmethod
+    @transaction.atomic
     def cancel(complaint_id, actor_profile):
         complaint = ComplaintService._get_locked_complaint(complaint_id)
 
@@ -291,7 +330,7 @@ class ComplaintService:
 
         def notify():
             for recipient in (complaint.buyer, complaint.seller):
-                NotificationService.create_notification(
+                NotificationService.safe_create_notification(
                     recipient_profile=recipient,
                     actor_profile=actor,
                     notification_type="complaint_status_updated",
@@ -299,6 +338,10 @@ class ComplaintService:
                     body=body,
                     object_type="complaint",
                     object_id=complaint.pk,
+                    metadata={
+                        "complaint_id": complaint.pk,
+                        "payment_request_id": complaint.payment_request_id,
+                    },
                     idempotency_key=(
                         f"complaint_status_updated:{complaint.pk}:"
                         f"{idempotency_suffix}:{recipient.pk}"

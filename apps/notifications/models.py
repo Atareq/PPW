@@ -6,6 +6,15 @@ from apps.general.models import BaseModel
 
 class NotificationType(models.TextChoices):
     CHAT_MESSAGE_RECEIVED = "chat_message_received", "Chat Message Received"
+    MANUAL_MANAGER_NOTIFICATION = (
+        "manual_manager_notification",
+        "Manual Manager Notification",
+    )
+    AUCTION_BID_PLACED = "auction_bid_placed", "Auction Bid Placed"
+    AUCTION_BUY_NOW_SUCCESS = (
+        "auction_buy_now_success",
+        "Auction Buy Now Success",
+    )
     PAYMENT_REQUEST_CREATED = (
         "payment_request_created",
         "Payment Request Created",
@@ -20,6 +29,14 @@ class NotificationType(models.TextChoices):
     )
     ORDER_ITEM_APPROVED = "order_item_approved", "Order Item Approved"
     ORDER_ITEM_REJECTED = "order_item_rejected", "Order Item Rejected"
+    ORDER_ITEM_PENDING_SELLER = (
+        "order_item_pending_seller",
+        "Order Item Pending Seller",
+    )
+    ORDER_ITEM_AUTO_CANCELLED = (
+        "order_item_auto_cancelled",
+        "Order Item Auto Cancelled",
+    )
     AUCTION_WON = "auction_won", "Auction Won"
     AUCTION_OUTBID = "auction_outbid", "Auction Outbid"
     COMPLAINT_CREATED = "complaint_created", "Complaint Created"
@@ -56,6 +73,7 @@ class Notification(BaseModel):
     body = models.TextField()
     object_type = models.CharField(max_length=100, null=True, blank=True)
     object_id = models.PositiveBigIntegerField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
     target_url = models.CharField(max_length=2048, null=True, blank=True)
     is_read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
@@ -92,4 +110,3 @@ class Notification(BaseModel):
             f"Notification #{self.pk} "
             f"{self.notification_type} -> {self.recipient_profile_id}"
         )
-

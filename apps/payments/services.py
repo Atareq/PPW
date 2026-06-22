@@ -514,7 +514,7 @@ class PaymentRequestService:
         from apps.notifications.services import NotificationService
 
         transaction.on_commit(
-            lambda: NotificationService.create_notification(
+            lambda: NotificationService.safe_create_notification(
                 recipient_profile=recipient_profile,
                 actor_profile=actor_profile,
                 notification_type=notification_type,
@@ -522,6 +522,10 @@ class PaymentRequestService:
                 body=body,
                 object_type="payment_request",
                 object_id=payment_request.pk,
+                metadata={
+                    "payment_request_id": payment_request.pk,
+                    "asset_id": payment_request.asset_id,
+                },
                 idempotency_key=idempotency_key,
             )
         )

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -67,6 +68,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
         source="auction.title", read_only=True
     )
     auction_id = serializers.IntegerField(source="auction.id", read_only=True)
+    winner_payment_request_id = serializers.SerializerMethodField()
 
     class Meta:
         model = AuctionItem
@@ -86,6 +88,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
             "modified",
             "auction_id",
             "auction_title",
+            "winner_payment_request_id",
         ]
         read_only_fields = [
             "id",
@@ -95,10 +98,20 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
             "bids",
             "created",
             "modified",
+            "winner_payment_request_id",
         ]
 
     def get_is_active(self, obj) -> bool:
         return obj.is_active()
+
+    def get_winner_payment_request_id(self, obj):
+        try:
+            payment_request = obj.payment_request
+        except ObjectDoesNotExist:
+            return None
+        if payment_request is None:
+            return None
+        return payment_request.pk
 
 
 class AuctionItemListSerializer(serializers.ModelSerializer):
@@ -170,6 +183,9 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
     time_remaining = serializers.SerializerMethodField()
     is_active = serializers.SerializerMethodField()
     is_ended = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
 
     auction_type_display = serializers.CharField(
         source="get_auction_type_display", read_only=True
@@ -191,6 +207,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "auto_extend_minutes",
             "buy_now_enabled",
             "buy_now_price",
+            "min_bid_increment",
             "deposit_required",
             "payment_deadline_days",
             "is_visible",
@@ -199,6 +216,9 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "time_remaining",
             "is_active",
             "is_ended",
+            "current_price",
+            "thumbnail_url",
+            "is_owner",
             "created",
             "modified",
             "items",
@@ -214,6 +234,9 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "created",
             "modified",
             "status ",
+            "current_price",
+            "thumbnail_url",
+            "is_owner",
         ]
 
     def get_time_remaining(self, obj) -> int | None:
@@ -227,6 +250,18 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
 
     def get_is_ended(self, obj) -> bool:
         return obj.is_ended()
+
+    def get_current_price(self, obj):
+        item = _first_auction_item(obj)
+        if item is None:
+            return None
+        return item.current_price
+
+    def get_thumbnail_url(self, obj):
+        return _auction_thumbnail_url(obj)
+
+    def get_is_owner(self, obj):
+        return _is_request_profile_owner(obj, self.context.get("request"))
 
 
 class AuctionListSerializer(serializers.ModelSerializer):
@@ -243,6 +278,11 @@ class AuctionListSerializer(serializers.ModelSerializer):
         source="get_auction_type_display", read_only=True
     )
     time_remaining = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
+    is_ended = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = Auction
@@ -258,6 +298,14 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "item_count",
             "is_visible",
             "time_remaining",
+            "is_active",
+            "is_ended",
+            "buy_now_price",
+            "buy_now_enabled",
+            "min_bid_increment",
+            "current_price",
+            "thumbnail_url",
+            "is_owner",
             "created",
             "status",
         ]
@@ -265,6 +313,11 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "id",
             "is_visible",
             "created",
+            "is_active",
+            "is_ended",
+            "current_price",
+            "thumbnail_url",
+            "is_owner",
         ]
 
     def get_item_count(self, obj) -> int:
@@ -275,6 +328,52 @@ class AuctionListSerializer(serializers.ModelSerializer):
         if remaining:
             return int(remaining.total_seconds())
         return None
+
+    def get_is_active(self, obj) -> bool:
+        return obj.is_active()
+
+    def get_is_ended(self, obj) -> bool:
+        return obj.is_ended()
+
+    def get_current_price(self, obj):
+        item = _first_auction_item(obj)
+        if item is None:
+            return None
+        return item.current_price
+
+    def get_thumbnail_url(self, obj):
+        return _auction_thumbnail_url(obj)
+
+    def get_is_owner(self, obj):
+        return _is_request_profile_owner(obj, self.context.get("request"))
+
+
+def _first_auction_item(auction):
+    items = list(auction.items.all()[:1])
+    if not items:
+        return None
+    return items[0]
+
+
+def _auction_thumbnail_url(auction):
+    item = _first_auction_item(auction)
+    if item is None or item.bird_id is None:
+        return None
+
+    media_items = list(item.bird.media.all()[:1])
+    if not media_items:
+        return None
+    return media_items[0].media_url
+
+
+def _is_request_profile_owner(auction, request):
+    if request is None or not getattr(request, "user", None):
+        return False
+    try:
+        active_profile = request.user.active_profile
+    except PermissionDenied:
+        return False
+    return active_profile.pk == auction.owner_id
 
 
 # ============================================================================

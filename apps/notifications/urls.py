@@ -7,6 +7,7 @@ from apps.notifications.views import (
     NotificationViewSet,
 )
 
+LIST_CREATE_ACTION = {"get": "list", "post": "create"}
 LIST_ACTION = {"get": "list"}
 CREATE_ACTION = {"post": "create"}
 
@@ -15,7 +16,7 @@ app_name = "notifications"
 urlpatterns = [
     path(
         "",
-        NotificationViewSet.as_view(LIST_ACTION),
+        NotificationViewSet.as_view(LIST_CREATE_ACTION),
         name="notification-list",
     ),
     path(
@@ -34,4 +35,3 @@ urlpatterns = [
         name="notification-mark-read",
     ),
 ]
-

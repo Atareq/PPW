@@ -366,13 +366,18 @@ class BadgeService:
 
         badge_name = BADGE_DEFINITIONS[award.badge_type]["name"]
         transaction.on_commit(
-            lambda: NotificationService.create_notification(
+            lambda: NotificationService.safe_create_notification(
                 recipient_profile=award.profile,
                 notification_type="badge_awarded",
                 title="Badge awarded",
                 body=f"You earned the {badge_name} badge.",
                 object_type="badge_award",
                 object_id=award.pk,
+                metadata={
+                    "badge_award_id": award.pk,
+                    "profile_id": award.profile_id,
+                    "badge_type": award.badge_type,
+                },
                 idempotency_key=f"badge_awarded:{award.pk}",
             )
         )

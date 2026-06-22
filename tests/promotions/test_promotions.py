@@ -503,6 +503,53 @@ class TestPromotionApi:
         assert balance_response.data["cashback_balance"] == "15.00"
         assert transaction_response.data["count"] == 1
 
+    def test_manager_can_lookup_customer_cashback_balance(self):
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        customer = CustomerProfileFactory(cashback_balance=Decimal("19.50"))
+        client = authenticated_client(manager)
+
+        response = client.get(
+            "/api/promotions/cashback/balance/",
+            {"customer": customer.pk},
+        )
+
+        assert response.status_code == 200
+        assert response.data == {
+            "customer_id": customer.pk,
+            "cashback_balance": "19.50",
+        }
+
+    def test_cashback_balance_manager_lookup_requires_customer_param(self):
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        client = authenticated_client(manager)
+
+        response = client.get("/api/promotions/cashback/balance/")
+
+        assert response.status_code == 403
+
+    def test_cashback_balance_customer_param_is_manager_only(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        other_customer = CustomerProfileFactory(cashback_balance=Decimal("5.00"))
+        client = authenticated_client(customer)
+
+        response = client.get(
+            "/api/promotions/cashback/balance/",
+            {"customer": other_customer.pk},
+        )
+
+        assert response.status_code == 403
+
+    def test_cashback_balance_manager_lookup_returns_404_for_invalid_customer(self):
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        client = authenticated_client(manager)
+
+        response = client.get(
+            "/api/promotions/cashback/balance/",
+            {"customer": 999999},
+        )
+
+        assert response.status_code == 404
+
     def test_manager_creates_and_toggles_offers_and_adjusts_cashback(self):
         manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
         customer = CustomerProfileFactory()

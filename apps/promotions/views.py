@@ -2,6 +2,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
@@ -210,17 +211,35 @@ class MyCashbackTransactionViewSet(
 class CashbackBalanceViewSet(viewsets.GenericViewSet):
     permission_classes = [HasAppAccess]
     permission_resource = "CASHBACK"
+    manager_permission_map = {
+        "retrieve": "cashback.balance.retrieve",
+    }
     serializer_class = CashbackBalanceSerializer
     queryset = CashbackTransaction.objects.all()
 
     @extend_schema(tags=["Promotions"], responses={200: CashbackBalanceSerializer})
     def retrieve(self, request):
+        customer_id = request.query_params.get("customer")
         active_profile = request.user.active_profile
+        if customer_id:
+            if active_profile.type != ProfileType.MANAGER:
+                raise PermissionDenied(
+                    "Only manager profiles can look up customer cashback balance."
+                )
+            try:
+                customer = CustomerProfile.objects.get(pk=customer_id)
+            except CustomerProfile.DoesNotExist as exc:
+                raise NotFound("Customer profile was not found.") from exc
+            return self._balance_response(customer)
+
         if active_profile.type != ProfileType.CUSTOMER:
             raise PermissionDenied(
                 "Only customer profiles can view cashback balance."
             )
         customer = CustomerProfile.objects.get(pk=active_profile.pk)
+        return self._balance_response(customer)
+
+    def _balance_response(self, customer):
         return Response(
             CashbackBalanceSerializer(
                 {

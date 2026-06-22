@@ -359,6 +359,7 @@ Current bird API behavior:
 - `BirdSerializer` exposes `qr_payload_url` built from `PUBLIC_FRONTEND_BASE_URL` as `{PUBLIC_FRONTEND_BASE_URL}/birds/{public_id}`
 - `BirdSerializer` returns nested `media` and accepts nested `media` on create
 - `BirdSerializer` replaces the full media set when `media` is supplied on update; omitted `media` preserves existing media rows and `media: []` clears them
+- `BirdSerializer` exposes FE-safe read-only `seller_nickname`, `rating`, and `review_count`; list querysets annotate rating aggregates to avoid N+1 reads
 - the public bird endpoint is unauthenticated, looks up by `public_id`, and returns `PublicBirdSerializer`
 - the public bird endpoint excludes deleted and inactive birds
 - `PublicBirdSerializer` exposes only public-safe bird identity fields, media, and seller display info; it does not expose internal DB ids, owner ids, prices, admin fields, phone, or email
@@ -382,6 +383,7 @@ Current product asset API behavior:
 - `owner` and `category` are read-only in API input
 - product asset serializers return nested `media` and accept nested `media` on create
 - product asset serializers replace the full media set when `media` is supplied on update; omitted `media` preserves existing media rows and `media: []` clears them
+- product asset serializers expose FE-safe read-only `rating` and `review_count`; list querysets annotate rating aggregates to avoid N+1 reads
 - `images` and `image_url` are no longer accepted product media API field names
 - `thumbnail_url` is no longer accepted in product asset API payloads
 - create sets `owner` from `request.user.active_profile` for seller-created accessory, feed, and supplement assets
@@ -458,7 +460,7 @@ Current order API:
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
-  - `GET`: paginated seller list of own order items or manager list of all order items
+  - `GET`: paginated seller list of own order items or manager list of all order items; supports `discount_offer=<id>` and `cashback_offer=<id>` filters
 - `/api/orders/items/<id>/approve/`
   - `POST`: seller approves their own pending order item
 - `/api/orders/items/<id>/reject/`
@@ -482,6 +484,7 @@ Current order behavior:
 - checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
 - checkout and direct `POST /api/orders/` calculate `gross_total`, apply the best active `DiscountOffer`, store `discount_offer` and `discount_amount`, and store discounted `total_price`
 - checkout and direct `POST /api/orders/` do not redeem or earn cashback
+- checkout and direct `POST /api/orders/` create best-effort in-app notifications for each seller with a pending order item
 - new order items start as `pending_seller`
 - seller approval changes `pending_seller` to `approved` without decrementing stock, marking assets sold, or unlisting assets
 - seller approval checks active `CashbackOffer` eligibility, stores `cashback_offer`, `cashback_redeemed_amount`, and `cashback_earned_amount`, and updates `OrderItem.total_price`
@@ -490,8 +493,10 @@ Current order behavior:
 - seller approval is idempotent when the item is already `approved`
 - seller rejection changes `pending_seller` to `rejected` only; it does not change stock, asset status, or market listing
 - seller rejection is idempotent when the item is already `rejected`
+- seller approval and rejection create best-effort in-app notifications for the customer
 - pending seller order items older than `ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS` are automatically moved to `cancelled` by a Celery task
 - auto-cancelling a pending order item refreshes the parent order status but does not change stock, asset status, or market listing
+- auto-cancelling a pending order item creates a best-effort in-app notification for the customer
 - aggregate order statuses are `pending`, `processing`, `completed`, `cancelled`, and `partial_rejected`
 - if all order items are rejected or cancelled, the aggregate order status becomes `cancelled`
 - if all order items are completed, the aggregate order status becomes `completed`
@@ -576,6 +581,7 @@ Current responsibilities:
 - simple complaint/dispute records tied to `PaymentRequest`
 - buyer/seller complaint creation after a payment request is approved or rejected
 - manager review transitions for open complaints
+- manager reopen transitions for resolved or rejected complaints
 - creator cancellation of open complaints
 - lightweight `ComplaintEvent` trace records
 
@@ -600,6 +606,8 @@ Current complaint API:
   - `POST`: manager resolves an open or in-review complaint with optional `admin_note`
 - `/api/complaints/<id>/reject/`
   - `POST`: manager rejects an open or in-review complaint with optional `admin_note`
+- `/api/complaints/<id>/reopen/`
+  - `POST`: manager reopens a resolved or rejected complaint
 
 Current complaint behavior:
 
@@ -614,10 +622,12 @@ Current complaint behavior:
 - closed complaints do not block a later new active complaint for the same payment request
 - managers can mark open complaints `in_review`
 - managers can resolve or reject open and in-review complaints
+- managers with `complaints.reopen` can reopen resolved or rejected complaints; reopening sets `status=open`, clears `admin_note`, clears `resolved_at`, and writes a `complaint_reopened` event
+- open and in-review complaints cannot be reopened
 - only the complaint creator can cancel, and only while the complaint is `open`
 - complaint actions do not mutate `PaymentRequest`, asset ownership, product stock, orders, cashback, or ratings
 - complaint actions do not refund money, roll back ownership, reverse stock, reverse cashback, mutate approved payment requests, or delete orders, conversations, or messages
-- `ComplaintEvent` records are written for created, in-review, resolved, rejected, and cancelled transitions
+- `ComplaintEvent` records are written for created, in-review, resolved, rejected, reopened, and cancelled transitions
 
 Current complaint service implementation names:
 
@@ -625,6 +635,7 @@ Current complaint service implementation names:
 - `ComplaintService.mark_in_review()` moves an open complaint into manager review
 - `ComplaintService.resolve()` resolves an open or in-review complaint
 - `ComplaintService.reject()` rejects an open or in-review complaint
+- `ComplaintService.reopen_complaint()` reopens a resolved or rejected complaint without payment, ownership, stock, order, cashback, or rating side effects
 - `ComplaintService.cancel()` cancels an open complaint created by the active profile
 
 ### `apps.chat`
@@ -665,8 +676,11 @@ Current chat behavior:
 - conversation creation rejects customer and seller profiles that belong to the same user account
 - conversation creation rejects customer/seller pairs with an active `SellerCustomerBlock`
 - conversation creation rejects receiver profiles that are not active, activated, valid, or non-deleted
+- when a customer starts a new conversation with a seller, the customer must actively follow that seller first; existing conversations can still be returned even if the follow is later inactive
+- sellers can start or reply in existing customer-seller conversations without requiring the customer follow gate at send time
 - conversation list is scoped to the active customer or seller profile only
 - conversation list uses `Conversation.last_message` and `last_message_at` for latest-message summary and ordering
+- conversation list exposes `unread_count` for unread messages addressed to the requesting active profile
 - message list is scoped to the conversation customer or seller only and orders by `created`, then `id`
 - message list supports `after_id` for polling-style incremental fetches
 - sending requires an active conversation and a sender who is the conversation customer or seller
@@ -678,13 +692,13 @@ Current chat behavior:
 - sending a message updates `Conversation.last_message` and `last_message_at`
 - sending a message triggers `send_chat_message_notification(message_id)` through Celery
 - notification enqueue failures are logged and do not roll back message creation
-- the current notification task is a safe logging placeholder because there is no notification app/model yet
+- the chat notification task creates an in-app `chat_message_received` notification through `apps.notifications`; enqueue or notification creation failures do not roll back message creation
 
 Current chat service implementation names:
 
 - `conversation_queryset()` returns optimized conversation rows with customer, seller, and last-message relations
 - `message_queryset()` returns optimized message rows with sender and receiver relations
-- `ChatService.get_or_create_conversation()` resolves the customer/seller pair and returns the existing or new conversation
+- `ChatService.get_or_create_conversation()` resolves the customer/seller pair, returns existing conversations, and requires an active follow before a customer can start a new seller conversation
 - `ChatService.send_message()` validates customer/seller participation, state, and contact-sharing rules, creates the message, updates conversation summary fields, and enqueues notification
 - `ChatService.mark_messages_read()` marks unread messages for the reader profile as read
 - `send_chat_message_notification()` is the Celery notification placeholder task
@@ -707,6 +721,7 @@ Current notifications API:
 
 - `/api/notifications/`
   - `GET`: authenticated active profile lists only its own notifications with optional `is_read` and `type` filters
+  - `POST`: manager with `notifications.create` creates one manual in-app notification for a selected active recipient profile; broadcast is not implemented
 - `/api/notifications/unread-count/`
   - `GET`: authenticated active profile gets unread notification count
 - `/api/notifications/<id>/mark-read/`
@@ -714,23 +729,33 @@ Current notifications API:
 - `/api/notifications/mark-all-read/`
   - `POST`: authenticated active profile marks all of its unread notifications as read
 
+No notification delete endpoint is currently implemented.
+
 Current notifications behavior:
 
 - `Notification.recipient_profile` points to the active recipient `Profile`
 - `Notification.actor_profile` is optional and stores the profile that caused the business event when available
+- `Notification.metadata` stores small related-object ids such as `order_id`, `order_item_id`, `asset_id`, `payment_request_id`, `auction_id`, `auction_item_id`, `bid_id`, `conversation_id`, `message_id`, and `badge_award_id` when a trigger has them
 - notification ordering is newest first by `created`, then `id`
 - read state is tracked by `is_read` and optional `read_at`
 - `idempotency_key` prevents duplicate notifications for the same business event when supplied
 - inactive, invalid, unactivated, or deleted recipient profiles do not receive newly created notifications
 - mark-read is idempotent and only the recipient profile can mark one notification as read
 - mark-all-read uses a bulk update over the current active profile's unread rows
+- `NotificationService.safe_create_notification()` is the best-effort helper for business integrations; notification failures are logged and must not roll back the main business transaction
 - current safe integrations create in-app notifications for:
   - received chat messages
   - payment request created, approved, and rejected
+  - checkout-created pending seller order items
   - seller order-item approved and rejected
+  - seller decision timeout auto-cancelled order items
+  - new auction bids to the auction owner
   - auction won
+  - buy-now success to the buyer
   - complaint status updated
+  - manual manager notifications
   - badge awarded
+- badge-awarded notifications are created only when a new badge award row is created, not when an existing idempotent award is returned
 - current notification types also reserve room for future cashback-earned, package-expiring-soon, auction-outbid, and complaint-created notifications, but those are not wired yet
 
 ### `apps.feed`
@@ -753,19 +778,21 @@ This app is named `feed`, not `social`. It is not a recommendation engine, notif
 
 Current feed API:
 
+- `/api/feed/sellers/`
+  - `GET`: authenticated paginated active seller discovery list; excludes the requesting user's own seller profile and active customer/seller blocks where applicable; returns public-safe seller fields including `avatar_url`
 - `/api/feed/sellers/<seller_id>/follow/`
   - `POST`: authenticated active customer creates or reactivates a follow for an active seller
 - `/api/feed/sellers/<seller_id>/unfollow/`
   - `POST`: authenticated active customer deactivates a follow if present
 - `/api/feed/sellers/following/`
-  - `GET`: authenticated active customer lists active followed sellers
+  - `GET`: authenticated active customer lists active followed sellers; seller summaries include `avatar_url` with an empty-string default
 - `/api/feed/blocks/customer-seller/`
   - `GET`: authenticated active customer or seller lists active blocks involving the active profile
   - `POST`: authenticated active customer or seller blocks the opposite profile by `profile_id`
 - `/api/feed/blocks/customer-seller/<profile_id>/`
   - `DELETE`: authenticated original block creator deactivates the active block for the opposite profile
 - `/api/feed/people-you-may-know/`
-  - `GET`: authenticated active customer gets public-safe active seller suggestions
+  - `GET`: authenticated active customer gets public-safe active seller suggestions; seller suggestions include `avatar_url` with an empty-string default
 - `/api/feed/auctions/`
   - `GET`: authenticated active customer gets followed-seller active auctions first, then discovery auctions
 - `/api/feed/market/`
@@ -934,6 +961,7 @@ Current promotions API:
   - `GET`: customer lists their own cashback transactions
 - `/api/promotions/cashback/balance/`
   - `GET`: customer retrieves their current cashback balance
+  - `GET ?customer=<id>`: manager with `cashback.balance.retrieve` retrieves one customer's cashback balance; manager without `customer` and non-manager use of `customer` return 403
 - `/api/promotions/admin/discount-offers/`
   - `GET`: manager lists discount offers
   - `POST`: manager creates a discount offer
@@ -1004,6 +1032,8 @@ Important note:
 
 Auction closing resolves winners and marks items sold or unsold. It does not auto-create payment requests. A winning customer manually creates an `AuctionPaymentRequest`, and seller approval in `apps.payments` transfers bird ownership.
 
+Public auction chat/comments are still out of scope in the current backend. There is no `Auction.chat_enabled` field, no `AuctionComment` model, and no auction comment endpoint.
+
 Current auction API:
 
 - `/api/auctions/`
@@ -1051,8 +1081,11 @@ Current auction behavior:
 - seller-created auctions are linked to the consumed `AssetSellerPackage`
 - manager-created auctions bypass seller package consumption and keep `seller_package=NULL`
 - auction update, cancellation, close, bidding, and buy-now do not consume package points
+- auction list/detail serializers expose FE-safe read-only fields including `is_active`, `is_ended`, `buy_now_price`, `buy_now_enabled`, `min_bid_increment`, `current_price`, `thumbnail_url`, and `is_owner`; `chat_enabled` is not exposed because no such model field exists
+- auction item detail exposes `winner_payment_request_id` through the existing auction payment-request relation when present
 - `BidBusinessValidator` requires a customer profile, an active time window, an active item, starting-price compliance, and minimum increment compliance
 - bid placement revalidates under an `AuctionItem` row lock before creating the bid
+- bid placement creates a best-effort in-app notification for the auction owner with `auction_id`, `auction_item_id`, and `bid_id` metadata
 - bid placement updates `AuctionItem.current_price`, optionally auto-extends, and writes a `bid_placed` event
 - auto-extend uses the module constant `AUCTION_AUTO_EXTEND_MINUTES = 10` as the trigger window and extends by `auction.auto_extend_minutes`
 - `AuctionService.update_auction()` allows updates only when status is `active`, the start time is still in the future, and no bids exist
@@ -1060,9 +1093,10 @@ Current auction behavior:
 - `AuctionService.close_expired_auctions()` selects active auctions with `end_time <= now`
 - `AuctionService.close_auction()` is idempotent for already closed auctions
 - closing an auction marks each item `sold` with winner data when bids exist, otherwise `unsold`, sets the auction to `closed`, and writes an `auction_ended` event
+- closing an auction creates a best-effort in-app `auction_won` notification for each winning customer
 - closing an auction does not create `PaymentRequest` records automatically
 - sold seller-owned auction items can be finalized through buyer-created payment requests
-- buy-now creates a bid at `auction.buy_now_price`, marks the item sold, sets winner fields, updates current price, and writes a `buy_now_triggered` event
+- buy-now creates a bid at `auction.buy_now_price`, marks the item sold, sets winner fields, updates current price, writes a `buy_now_triggered` event, and creates best-effort `auction_won` and buy-now success notifications for the buyer
 
 ### `apps.ratings`
 
@@ -1231,7 +1265,7 @@ Current responsibilities:
 
 Important note:
 
-This app implements an MVP rewards engine, not a campaign platform. It does not implement point purchase, cashback conversion, withdrawal, payment gateway behavior, notifications, leaderboards, referral rewards, paid badges, shipping/receipt rewards, or a full scheduled reward campaign system. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`.
+This app implements an MVP rewards engine, not a campaign platform. It does not implement point purchase, cashback conversion, withdrawal, payment gateway behavior, notification preferences, leaderboards, referral rewards, paid badges, shipping/receipt rewards, or a full scheduled reward campaign system. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`.
 
 Current loyalty API:
 
@@ -1299,6 +1333,7 @@ Current badge behavior:
 - `points_starter` is eligible for any profile type
 - manager-created badge awards remain idempotent per profile and badge type through `BadgeService.award_badge()`
 - reward-created badges use deterministic idempotency keys and service-level one-time or active-temporary checks
+- badge awards create a best-effort in-app notification only when a new `BadgeAward` row is created; returning an existing idempotent award does not create another notification
 - temporary badges are active only when `revoked_at IS NULL` and `expires_at` is null or in the future
 - expired badges are retained as history and hidden from active badge reads by default
 - different profiles under the same user can receive the same badge type independently
@@ -2116,7 +2151,7 @@ Current promotions permission pattern:
 - admin offer management endpoints use `DISCOUNT_OFFER_ADMIN` and `CASHBACK_OFFER_ADMIN`
 - admin transaction and adjustment endpoints use `CASHBACK_TRANSACTION_ADMIN` and `CASHBACK_ADJUSTMENT_ADMIN`
 - customers can list current offers and their own cashback balance/transactions
-- managers can create, activate, deactivate, and list offers, list all cashback transactions, and perform cashback adjustments
+- managers can create, activate, deactivate, and list offers, list all cashback transactions, retrieve customer cashback balances with `cashback.balance.retrieve`, and perform cashback adjustments
 - sellers have no direct promotions permissions in this sprint
 - promotion services still enforce concrete customer/manager profile requirements where endpoint-level permission is not enough
 
@@ -2201,7 +2236,7 @@ The codebase currently provides:
 - Dockerized local and production runtime configuration
 - Redis + Celery worker/beat infrastructure for background jobs
 - automatic scheduled auction closing through Celery Beat
-- safe in-app notification hooks for chat messages, payment requests, seller order-item decisions, auction wins, complaint status updates, and badge awards
+- safe in-app notification hooks for chat messages, payment requests, checkout seller-pending items, seller order-item decisions, seller decision timeouts, auction bids, auction wins, buy-now success, complaint status updates, manual manager notifications, and badge awards
 - seller follow relationships for customer profiles
 - cursor-based auction and market home feeds that rank followed-seller content before deterministic discovery fallback
 - pedigree document upload, null OCR extraction, retrieval, and manual review APIs
@@ -2294,7 +2329,7 @@ Important remaining gaps:
 - no payment proof upload or admin payment review exists
 - no handoff, shipping, or logistics workflow exists
 - no ownership history table exists
-- no automatic refund, ownership rollback, cashback reversal, complaint chat, complaint attachments, notifications, or seller penalty workflow exists
+- no automatic refund, ownership rollback, cashback reversal, complaint chat, complaint attachments, or seller penalty workflow exists
 
 ### Media Gap
 

@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
@@ -67,7 +67,14 @@ class ConversationViewSet(
                     "last_message_at",
                     "created",
                     output_field=models.DateTimeField(),
-                )
+                ),
+                unread_count_annotation=Count(
+                    "messages",
+                    filter=Q(
+                        messages__receiver_id=profile.pk,
+                        messages__is_read=False,
+                    ),
+                ),
             )
             .order_by("-latest_at", "-created", "-id")
         )

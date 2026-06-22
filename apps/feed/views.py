@@ -11,6 +11,7 @@ from apps.feed.serializers import (
     FeedQuerySerializer,
     MarketFeedResultSerializer,
     SellerCustomerBlockSerializer,
+    SellerDiscoverySerializer,
     SellerFollowSerializer,
     SellerFollowSellerSerializer,
     SellerSuggestionQuerySerializer,
@@ -20,6 +21,8 @@ from apps.feed.serializers import (
 from apps.feed.services import BlockService, FeedService, SellerFollowService
 from apps.general.authorizations import HasAppAccess
 from apps.general.permissions import IsNotManagerProfile
+from apps.users.constants import ProfileType
+from apps.users.models import SellerProfile
 
 
 def active_profile(request):
@@ -178,6 +181,41 @@ class SellerFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             SellerFollowSellerSerializer(sellers, many=True).data,
             status=status.HTTP_200_OK,
         )
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Feed"],
+        responses={200: SellerDiscoverySerializer(many=True)},
+    ),
+)
+class SellerDiscoveryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Paginated discovery list of active seller profiles."""
+
+    permission_classes = [IsAuthenticated]
+    queryset = SellerProfile.objects.all()
+    serializer_class = SellerDiscoverySerializer
+
+    def get_queryset(self):
+        profile = active_profile(self.request)
+        queryset = SellerProfile.objects.filter(
+            is_active=True,
+            activated=True,
+            is_valid=True,
+            deleted__isnull=True,
+        ).select_related("user")
+
+        if profile.type == ProfileType.SELLER:
+            queryset = queryset.exclude(pk=profile.pk)
+        elif profile.type == ProfileType.CUSTOMER:
+            queryset = queryset.exclude(user_id=profile.user_id)
+            blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+                profile
+            )
+            if blocked_seller_ids:
+                queryset = queryset.exclude(pk__in=blocked_seller_ids)
+
+        return queryset.order_by("-avg_rating", "-ratings_count", "id")
 
 
 @extend_schema_view(

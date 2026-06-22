@@ -134,7 +134,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter based on action"""
         if self.request.user.role == ProfileType.MANAGER:
-            return Auction.objects.all().order_by("-created")
+            return self._base_queryset()
         else:
             if self.action in [
                 "my_auctions",
@@ -142,19 +142,30 @@ class AuctionViewSet(viewsets.ModelViewSet):
                 "partial_update",
                 "destroy",
             ]:
-                return Auction.objects.filter(
+                return self._base_queryset().filter(
                     owner=self.request.user.active_profile
-                ).order_by("-created")
+                )
 
             # Public listings only show published auctions
             if self.action in ["list", "active", "ended"]:
-                return Auction.objects.filter(is_visible=True).order_by(
-                    "-created"
-                )
+                return self._base_queryset().filter(is_visible=True)
             if self.action == "retrieve":
-                return Auction.objects.all().order_by("-created")
+                return self._base_queryset()
 
-        return Auction.objects.all().order_by("-created")
+        return self._base_queryset()
+
+    def _base_queryset(self):
+        return (
+            Auction.objects.select_related("owner", "owner__sellerprofile")
+            .prefetch_related(
+                "items",
+                "items__bird",
+                "items__bird__media",
+                "items__paired_bird",
+                "events",
+            )
+            .order_by("-created")
+        )
 
     def get_serializer_context(self):
         """Add request to context for serializers"""
@@ -263,7 +274,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def active(self, request):
         """Get all active auctions"""
-        queryset = Auction.objects.filter(
+        queryset = self._base_queryset().filter(
             is_visible=True,
             start_time__lte=timezone.now(),
             end_time__gt=timezone.now(),
@@ -287,7 +298,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         later = now + timedelta(minutes=minutes)
 
-        queryset = Auction.objects.filter(
+        queryset = self._base_queryset().filter(
             is_visible=True, end_time__gt=now, end_time__lte=later
         ).order_by("end_time")
 

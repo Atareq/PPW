@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.db.models import Avg, Count
 from django.db import transaction
+from decimal import Decimal
 from rest_framework import serializers
 
 from apps.assets.constants import (
@@ -14,6 +16,7 @@ from apps.assets.services import (
     ProductAssetCreationService,
 )
 from apps.general.serializers import AssetMediaSerializer
+from apps.ratings.models import AssetRating
 
 
 class RemovedThumbnailUrlMixin:
@@ -42,15 +45,35 @@ class RemovedThumbnailUrlMixin:
 class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
     media = AssetMediaSerializer(many=True, required=False)
     qr_payload_url = serializers.SerializerMethodField()
+    seller_nickname = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Bird
         fields = "__all__"
-        read_only_fields = ["owner", "public_id", "qr_payload_url"]
+        read_only_fields = [
+            "owner",
+            "public_id",
+            "qr_payload_url",
+            "seller_nickname",
+            "rating",
+            "review_count",
+        ]
 
     def get_qr_payload_url(self, obj):
         base_url = settings.PUBLIC_FRONTEND_BASE_URL.rstrip("/")
         return f"{base_url}/birds/{obj.public_id}"
+
+    def get_seller_nickname(self, obj):
+        seller_profile = getattr(obj.owner, "sellerprofile", None)
+        return getattr(seller_profile, "nickname", "") or ""
+
+    def get_rating(self, obj):
+        return _asset_rating_value(obj)
+
+    def get_review_count(self, obj):
+        return _asset_review_count(obj)
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -125,6 +148,8 @@ class ProductAssetSerializer(
     serializers.ModelSerializer,
 ):
     media = AssetMediaSerializer(many=True, required=False)
+    rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         fields = PRODUCT_ASSET_FIELDS
@@ -147,6 +172,12 @@ class ProductAssetSerializer(
             validated_data,
             media_data=media_data,
         )
+
+    def get_rating(self, obj):
+        return _asset_rating_value(obj)
+
+    def get_review_count(self, obj):
+        return _asset_review_count(obj)
 
     def update(self, instance, validated_data):
         media_data = validated_data.pop("media", None)
@@ -175,3 +206,37 @@ class FeedSerializer(ProductAssetSerializer):
 class SupplementSerializer(ProductAssetSerializer):
     class Meta(ProductAssetSerializer.Meta):
         model = Supplement
+
+
+def _asset_rating_value(obj):
+    annotated_rating = getattr(obj, "rating_annotation", None)
+    if annotated_rating is not None:
+        return _normalize_decimal(annotated_rating)
+
+    stored_rating = getattr(obj, "avg_rating", None)
+    if stored_rating is not None:
+        return _normalize_decimal(stored_rating)
+
+    aggregate = AssetRating.objects.filter(asset_id=obj.pk).aggregate(
+        rating=Avg("stars")
+    )
+    return _normalize_decimal(aggregate["rating"] or Decimal("0.00"))
+
+
+def _asset_review_count(obj):
+    annotated_count = getattr(obj, "review_count_annotation", None)
+    if annotated_count is not None:
+        return annotated_count
+
+    stored_count = getattr(obj, "ratings_count", None)
+    if stored_count is not None:
+        return stored_count
+
+    aggregate = AssetRating.objects.filter(asset_id=obj.pk).aggregate(
+        count=Count("id")
+    )
+    return aggregate["count"] or 0
+
+
+def _normalize_decimal(value):
+    return Decimal(value).quantize(Decimal("0.01"))

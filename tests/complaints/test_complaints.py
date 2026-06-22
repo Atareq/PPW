@@ -304,6 +304,78 @@ class TestComplaintAdminActions:
         with pytest.raises(ValidationError):
             ComplaintService.resolve(rejected.pk, manager.active_profile)
 
+    def test_manager_can_reopen_resolved_complaint(self):
+        complaint, _, _, _ = create_complaint()
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        ComplaintService.resolve(
+            complaint.pk,
+            manager.active_profile,
+            admin_note="Closed once.",
+        )
+
+        reopened = ComplaintService.reopen_complaint(
+            complaint.pk,
+            manager.active_profile,
+        )
+
+        assert reopened.status == ComplaintStatus.OPEN
+        assert reopened.admin_note == ""
+        assert reopened.resolved_at is None
+
+    def test_manager_can_reopen_rejected_complaint(self):
+        complaint, _, _, _ = create_complaint()
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        ComplaintService.reject(
+            complaint.pk,
+            manager.active_profile,
+            admin_note="Rejected once.",
+        )
+
+        reopened = ComplaintService.reopen_complaint(
+            complaint.pk,
+            manager.active_profile,
+        )
+
+        assert reopened.status == ComplaintStatus.OPEN
+        assert reopened.admin_note == ""
+
+    @pytest.mark.parametrize(
+        "status",
+        [ComplaintStatus.OPEN, ComplaintStatus.IN_REVIEW],
+    )
+    def test_open_or_in_review_complaint_cannot_be_reopened(self, status):
+        complaint, _, _, _ = create_complaint()
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        if status == ComplaintStatus.IN_REVIEW:
+            ComplaintService.mark_in_review(complaint.pk, manager.active_profile)
+
+        with pytest.raises(ValidationError):
+            ComplaintService.reopen_complaint(
+                complaint.pk,
+                manager.active_profile,
+            )
+
+    def test_reopen_creates_event_and_does_not_mutate_payment_or_asset(self):
+        complaint, payment_request, _, _ = create_complaint()
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        asset = payment_request.asset
+        original_payment_status = payment_request.status
+        original_asset_owner_id = asset.owner_id
+        original_asset_count = asset.count
+        ComplaintService.resolve(complaint.pk, manager.active_profile)
+
+        ComplaintService.reopen_complaint(complaint.pk, manager.active_profile)
+        payment_request.refresh_from_db()
+        asset.refresh_from_db()
+
+        assert ComplaintEvent.objects.filter(
+            complaint_id=complaint.pk,
+            event_type=ComplaintEventType.REOPENED,
+        ).exists()
+        assert payment_request.status == original_payment_status
+        assert asset.owner_id == original_asset_owner_id
+        assert asset.count == original_asset_count
+
 
 class TestComplaintCancellation:
     def test_creator_can_cancel_open_complaint(self):
@@ -425,6 +497,44 @@ class TestComplaintApi:
         assert response.status_code == 200
         assert response.data["status"] == ComplaintStatus.RESOLVED
         assert response.data["admin_note"] == "Resolved by API."
+
+    def test_manager_can_reopen_complaint_through_api(self):
+        complaint, _, _, _ = create_complaint()
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        ComplaintService.resolve(
+            complaint.pk,
+            manager.active_profile,
+            admin_note="Closed once.",
+        )
+
+        response = authenticated_client(manager).post(
+            f"/api/complaints/{complaint.pk}/reopen/",
+            {},
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["status"] == ComplaintStatus.OPEN
+        assert response.data["admin_note"] == ""
+
+    def test_manager_without_reopen_permission_is_rejected(self):
+        complaint, _, _, _ = create_complaint()
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        manager_profile = manager.active_profile
+        manager_profile.permissions = ["complaints.retrieve"]
+        manager_profile.save(update_fields=["permissions"])
+        ComplaintService.resolve(
+            complaint.pk,
+            UserAccountFactory(with_profile=ProfileType.MANAGER).active_profile,
+        )
+
+        response = authenticated_client(manager).post(
+            f"/api/complaints/{complaint.pk}/reopen/",
+            {},
+            format="json",
+        )
+
+        assert response.status_code == 403
 
     def test_unrelated_user_cannot_retrieve_complaint(self):
         complaint, _, _, _ = create_complaint()

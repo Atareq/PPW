@@ -61,6 +61,12 @@ def result_sources(response):
     return [entry["source"] for entry in response.data["results"]]
 
 
+def response_results(response):
+    if isinstance(response.data, dict) and "results" in response.data:
+        return response.data["results"]
+    return response.data
+
+
 class TestSellerCustomerBlockService:
     def test_customer_can_block_seller(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -459,6 +465,7 @@ class TestPeopleYouMayKnow:
             "currency": seller.currency,
             "avg_rating": "0.00",
             "ratings_count": 0,
+            "avatar_url": "",
             "is_followed": False,
         }
         assert "user" not in response.data[0]
@@ -547,6 +554,48 @@ class TestPeopleYouMayKnow:
         response = APIClient().get("/api/social/sellers/following/")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestSellerDiscovery:
+    def test_seller_list_endpoint_returns_public_safe_sellers(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        own_seller = SellerProfileFactory(user=customer, is_active=False)
+        inactive = UserAccountFactory(with_profile=ProfileType.SELLER)
+        inactive_profile = inactive.active_profile
+        inactive_profile.is_active = False
+        inactive_profile.save(update_fields=["is_active"])
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/sellers/")
+        results = response_results(response)
+        ids = {item["id"] for item in results}
+        seller_item = next(item for item in results if item["id"] == seller.active_profile.pk)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert seller.active_profile.pk in ids
+        assert own_seller.pk not in ids
+        assert inactive_profile.pk not in ids
+        assert seller_item["user_id"] == seller.pk
+        assert seller_item["description"] == ""
+        assert seller_item["avatar_url"] == ""
+
+    def test_seller_list_excludes_blocked_sellers(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        visible = UserAccountFactory(with_profile=ProfileType.SELLER)
+        blocked = UserAccountFactory(with_profile=ProfileType.SELLER)
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            blocked.active_profile,
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/sellers/")
+        ids = {item["id"] for item in response_results(response)}
+
+        assert response.status_code == status.HTTP_200_OK
+        assert visible.active_profile.pk in ids
+        assert blocked.active_profile.pk not in ids
 
 
 class TestAuctionFeed:

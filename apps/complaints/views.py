@@ -152,6 +152,8 @@ class ComplaintAdminActionViewSet(viewsets.GenericViewSet):
             return "complaints.resolve"
         if self.action_type == "reject":
             return "complaints.reject"
+        if self.action_type == "reopen":
+            return "complaints.reopen"
         return None
 
     def create(self, request, *args, **kwargs):
@@ -169,11 +171,16 @@ class ComplaintAdminActionViewSet(viewsets.GenericViewSet):
                     profile,
                     admin_note=admin_note,
                 )
-            else:
+            elif self.action_type == "reject":
                 complaint = ComplaintService.reject(
                     kwargs["pk"],
                     profile,
                     admin_note=admin_note,
+                )
+            else:
+                complaint = ComplaintService.reopen_complaint(
+                    kwargs["pk"],
+                    profile,
                 )
 
         return Response(
