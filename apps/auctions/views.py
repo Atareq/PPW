@@ -35,6 +35,7 @@ from apps.auctions.services import (
     BiddingService,
 )
 from apps.general.authorizations import HasAppAccess
+from apps.general.permissions import IsNotManagerProfile
 from apps.insights.models import SellerInsightEventType
 from apps.insights.services import SellerInsightEventService
 from apps.users.constants import ProfileType
@@ -105,6 +106,14 @@ class AuctionViewSet(viewsets.ModelViewSet):
     permission_resource = "AUCTION"
     queryset = Auction.objects.all().order_by("-created")
     permission_classes = [IsAuthenticated, HasAppAccess]
+    manager_permission_map = {
+        "list": "auctions.list",
+        "active": "auctions.list",
+        "ending_soon": "auctions.list",
+        "retrieve": "auctions.retrieve",
+        "cancel": "auctions.cancel",
+        "close": "auctions.close",
+    }
 
     def get_serializer_class(self):
         """Choose serializer based on action"""
@@ -312,7 +321,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAdminUser],
+        permission_classes=[IsAuthenticated, HasAppAccess],
     )
     def close(self, request, pk=None):
         """
@@ -392,7 +401,7 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAuthenticated],
+        permission_classes=[permissions.IsAuthenticated, IsNotManagerProfile],
     )
     def place_bid(self, request, pk=None):
         """
@@ -440,7 +449,7 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAuthenticated],
+        permission_classes=[permissions.IsAuthenticated, IsNotManagerProfile],
     )
     def buy_now(self, request, pk=None):
         """

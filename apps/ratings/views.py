@@ -25,6 +25,9 @@ from apps.ratings.serializers import (
 
 class AssetCommentViewSet(CreateListViewSet):
     permission_resource = "ASSET_COMMENT"
+    manager_permission_map = {
+        "list": "comments.list",
+    }
     queryset = AssetComment.objects.all()
     filterset_class = AssetCommentFilter
     create_serializer_class = AssetCommentCreateSerializer
@@ -40,6 +43,9 @@ class AssetCommentViewSet(CreateListViewSet):
 
 class SellerCommentViewSet(CreateListViewSet):
     permission_resource = "SELLER_COMMENT"
+    manager_permission_map = {
+        "list": "comments.list",
+    }
     queryset = SellerComment.objects.all()
     filterset_class = SellerCommentFilter
     create_serializer_class = SellerCommentCreateSerializer
@@ -56,6 +62,9 @@ class SellerCommentViewSet(CreateListViewSet):
 
 class AssetRatingViewSet(CreateListViewSet):
     permission_resource = "ASSET_RATING"
+    manager_permission_map = {
+        "list": "ratings.list",
+    }
     queryset = AssetRating.objects.all()
     filterset_class = AssetRatingFilter
     create_serializer_class = AssetRatingCreateSerializer
@@ -80,6 +89,9 @@ class AssetRatingViewSet(CreateListViewSet):
 
 class SellerRatingViewSet(CreateListViewSet):
     permission_resource = "SELLER_RATING"
+    manager_permission_map = {
+        "list": "ratings.list",
+    }
     queryset = SellerRating.objects.all()
     filterset_class = SellerRatingFilter
     create_serializer_class = SellerRatingCreateSerializer

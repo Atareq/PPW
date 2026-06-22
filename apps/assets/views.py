@@ -43,6 +43,7 @@ class BirdViewSet(viewsets.ModelViewSet):
         HasAppAccess,
     ]
     permission_resource = "BIRD"
+    manager_permission_namespace = "assets"
 
 
 class PublicBirdViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -68,6 +69,7 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
 
     permission_classes = [HasAppAccess]
     permission_resource = "PRODUCT_ASSET"
+    manager_permission_namespace = "assets"
     allow_scoped_read_access = True
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = [

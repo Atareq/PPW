@@ -50,6 +50,10 @@ class PaymentRequestViewSet(
 
     permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
+    manager_permission_map = {
+        "list": "payments.list",
+        "retrieve": "payments.retrieve",
+    }
     queryset = PaymentRequest.objects.all()
     http_method_names = ["get", "patch"]
 

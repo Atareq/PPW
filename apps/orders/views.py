@@ -44,6 +44,10 @@ class OrderViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "ORDER"
+    manager_permission_map = {
+        "list": "orders.list",
+        "retrieve": "orders.retrieve",
+    }
 
     queryset = Order.objects.all()
     filter_backends = [DjangoFilterBackend]
@@ -200,6 +204,10 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     permission_classes = [HasAppAccess]
     permission_resource = "ORDER_ITEM"
+    manager_permission_map = {
+        "list": "order_items.list",
+        "retrieve": "order_items.retrieve",
+    }
     permission_owner_field = "seller_id"
     serializer_class = OrderItemSerializer
     queryset = OrderItem.objects.all()

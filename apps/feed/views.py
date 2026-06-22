@@ -19,6 +19,7 @@ from apps.feed.serializers import (
 )
 from apps.feed.services import BlockService, FeedService, SellerFollowService
 from apps.general.authorizations import HasAppAccess
+from apps.general.permissions import IsNotManagerProfile
 
 
 def active_profile(request):
@@ -114,7 +115,7 @@ class SellerCustomerBlockViewSet(
 class SellerFollowCreateViewSet(viewsets.GenericViewSet):
     """Create or reactivate a customer follow for one seller."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
     queryset = SellerFollow.objects.all()
     serializer_class = SellerFollowSerializer
 
@@ -139,7 +140,7 @@ class SellerFollowCreateViewSet(viewsets.GenericViewSet):
 class SellerUnfollowCreateViewSet(viewsets.GenericViewSet):
     """Deactivate a customer follow for one seller without deleting it."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
     queryset = SellerFollow.objects.all()
     serializer_class = SellerUnfollowResponseSerializer
 
@@ -166,7 +167,7 @@ class SellerUnfollowCreateViewSet(viewsets.GenericViewSet):
 class SellerFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """List sellers followed by the active customer profile."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
     queryset = SellerFollow.objects.all()
     serializer_class = SellerFollowSellerSerializer
 
@@ -189,7 +190,7 @@ class SellerFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 class PeopleYouMayKnowViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """Return random active seller suggestions for the active customer."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
     queryset = SellerFollow.objects.none()
     serializer_class = SellerSuggestionSerializer
 
@@ -210,7 +211,7 @@ class PeopleYouMayKnowViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 
 class BaseFeedViewSet(viewsets.GenericViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
 
     def _feed_response(self, request, service_method, result_serializer_class):
         query_serializer = FeedQuerySerializer(data=request.query_params)

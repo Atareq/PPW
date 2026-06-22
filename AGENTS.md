@@ -248,10 +248,10 @@ Current user/profile API:
 - `/api/users/admin/customers/`
   - admin/staff CRUD for customer profiles through `CustomerProfileAdminViewSet`
 - `/api/users/admin/managers/`
-  - `GET`: authenticated superuser lists manager accounts
+  - `GET`: authenticated superuser lists manager accounts; normal managers can list only with `managers.list`
   - `POST`: authenticated superuser creates a manager-only account with validated permissions
 - `/api/users/admin/managers/<id>/`
-  - `GET`: authenticated superuser retrieves one manager
+  - `GET`: authenticated superuser retrieves one manager; normal managers can retrieve only with `managers.retrieve`
   - `PATCH`: authenticated superuser updates manager account/profile fields
   - `DELETE`: authenticated superuser deactivates the manager account and soft-deletes the manager profile
 - `/api/users/admin/managers/<id>/permissions/`
@@ -276,7 +276,12 @@ Current profile behavior:
 - customer registration creates an active customer profile
 - manager creation keeps the account manager-only, creates an active/activated `ManagerProfile`, and sets `is_staff=True`
 - `ManagerProfile.permissions` is the source of truth for manager authorization; legacy `UserAccount.permissions` is no longer consulted for manager access checks
-- manager permissions are centrally defined in `apps.users.manager_permissions` and currently cover assets, auctions, orders, users, managers, payments, complaints, packages, promotions, races, pedigrees, feed, chat, ratings, insights, and notifications with `list`, `edit`, and `full_control` levels
+- manager permissions are centrally defined in `apps.users.manager_permissions` as a static action catalog, not generated module levels
+- manager permission codes are exact action strings such as `assets.list`, `assets.update`, `users.sellers.retrieve`, `payments.list`, and `complaints.resolve`
+- manager permissions do not have hierarchy; `assets.update` does not imply `assets.list`, and there is no current `edit` or `full_control` authorization behavior
+- manager API access is deny-by-default unless the view declares a valid `manager_permission_map`, `manager_permission_namespace`, or `get_required_manager_permission()` result
+- invalid or manually injected permission codes in `ManagerProfile.permissions` never authorize manager access
+- superusers bypass manager permission checks and can use manager admin APIs without a `ManagerProfile`
 - mobile seller profile creation creates an inactive seller profile and overwrites submitted `nickname` with `user.username`
 - mobile customer/seller profile creation rejects manager accounts
 - deleting active mobile customer or seller profiles marks them inactive/invalid, soft-deletes them, and attempts to switch to the first other profile
@@ -1314,7 +1319,8 @@ Current responsibilities:
 - `apps.general.models.OwnerBaseModel`: common owner relation to `users.Profile`
 - `apps.general.models.ResourcePermission`: persisted resource/owner placeholder; current `HasAppAccess` does not consult this model
 - `apps.general.authorizations.HasAppAccess`: repo-specific permission gate used by app viewsets
-- `apps.users.services.ManagerPermissionService`: central manager permission normalizer/checker with HTTP-method-to-level mapping and superuser bypass
+- `apps.users.services.ManagerPermissionService`: central manager permission normalizer/checker with exact action-code matching and superuser bypass
+- manager-enabled views declare exact manager permissions with `manager_permission_map`, `manager_permission_namespace`, or `get_required_manager_permission()`; HTTP methods alone do not grant manager access
 - `HasAppAccess.allow_scoped_read_access`: opt-in read behavior for resources whose `get_queryset()` already scopes readable objects
 - `HasAppAccess.permission_owner_field`: optional view attribute for object checks that use a non-`owner_id` ownership field, such as `OrderItem.seller_id`
 - `apps.general.viewsets.CreateListViewSet`: shared DRF base for endpoints that only need `create` and `list`
@@ -2108,7 +2114,7 @@ Current pedigree permission pattern:
 
 - `PedigreeDocumentViewSet` and `PedigreeDocumentReviewViewSet` use `HasAppAccess` with `permission_resource = "PEDIGREE_DOCUMENT"`
 - customers and sellers can create, retrieve, and review only their own pedigree documents
-- managers with `pedigrees.<level>` permissions can access all pedigree document actions
+- managers can retrieve pedigree documents with `pedigrees.documents.retrieve` and review documents with `pedigrees.documents.review`; upload/create remains a profile-owned customer/seller flow
 - retrieve uses scoped read access only after `get_queryset()` limits non-manager reads to the active profile owner
 - review relies on profile ownership through `owner_id` and service-level actor validation
 
@@ -2116,11 +2122,11 @@ Current auction permission pattern:
 
 - `AuctionViewSet` uses `IsAuthenticated` plus `HasAppAccess` with `permission_resource = "AUCTION"`
 - sellers can create and manage their own auctions through owner-scoped querysets for owner actions
-- managers are authorized through `ManagerProfile.permissions`, `apps.users.manager_permissions`, and HTTP-method-to-level mapping inside `ManagerPermissionService`
+- managers can list, retrieve, cancel, and close auctions only through exact `auctions.list`, `auctions.retrieve`, `auctions.cancel`, and `auctions.close` permissions
+- managers are not currently authorized to create, update, or delete auctions through manager permissions
 - customers can use configured auction read actions, but `AuctionViewSet` does not set `allow_scoped_read_access`
 - `AuctionItemViewSet`, `BidViewSet`, and `AuctionEventViewSet` use DRF read-only public permissions for list/retrieve and custom auth checks on write actions
-- `place_bid` requires authentication and is restricted to customer profiles by `BidBusinessValidator`
-- `buy_now` requires authentication but currently does not enforce `Customer` profile type in the same way as regular bidding
+- `place_bid` and `buy_now` require authentication and reject manager profiles at the permission layer before business validation
 
 Important scoped-read rule:
 

@@ -1,12 +1,14 @@
 from django.db import transaction
 from django.http import Http404
 from rest_framework import permissions, status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.authentication.services import switch_user_profile
+from apps.general.authorizations import HasAppAccess
 from apps.general.permissions import IsSuperUser
 from apps.users.constants import ProfileType
-from apps.users.manager_permissions import get_manager_permission_codes
+from apps.users.manager_permissions import get_manager_permission_groups
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
 from apps.users.serializers import (
     CustomerProfileAdminSerializer,
@@ -25,7 +27,13 @@ class SellerProfileAdminViewSet(viewsets.ModelViewSet):
 
     serializer_class = SellerProfileAdminSerializer
     queryset = SellerProfile.objects.select_related('user').all().order_by("-created")
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, HasAppAccess]
+    manager_permission_map = {
+        "list": "users.sellers.list",
+        "retrieve": "users.sellers.retrieve",
+        "update": "users.sellers.update",
+        "partial_update": "users.sellers.update",
+    }
 
 
 class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
@@ -33,16 +41,26 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
 
     serializer_class = CustomerProfileAdminSerializer
     queryset = CustomerProfile.objects.select_related('user').all().order_by("-created")
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, HasAppAccess]
+    manager_permission_map = {
+        "list": "users.customers.list",
+        "retrieve": "users.customers.retrieve",
+        "update": "users.customers.update",
+        "partial_update": "users.customers.update",
+    }
 
 
 class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
-    """Superuser-only CRUD for manager-only accounts."""
+    """Manager account reads with superuser-only mutation."""
 
     queryset = ManagerProfile.objects.select_related("user").all().order_by(
         "-created"
     )
-    permission_classes = [IsSuperUser]
+    permission_classes = [permissions.IsAuthenticated, HasAppAccess]
+    manager_permission_map = {
+        "list": "managers.list",
+        "retrieve": "managers.retrieve",
+    }
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -52,6 +70,8 @@ class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
         return ManagerProfileAdminDetailSerializer
 
     def create(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            raise PermissionDenied("Only superusers can create managers.")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         manager_profile = serializer.save()
@@ -65,6 +85,8 @@ class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
         )
 
     def partial_update(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            raise PermissionDenied("Only superusers can update managers.")
         manager_profile = self.get_object()
         serializer = self.get_serializer(
             manager_profile,
@@ -80,6 +102,8 @@ class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     def perform_destroy(self, instance):
+        if not self.request.user.is_superuser:
+            raise PermissionDenied("Only superusers can delete managers.")
         instance.is_active = False
         instance.is_valid = False
         instance.save(update_fields=["is_active", "is_valid"])
@@ -94,18 +118,8 @@ class ManagerPermissionRegistryViewSet(viewsets.GenericViewSet):
     queryset = ManagerProfile.objects.none()
 
     def list(self, request, *args, **kwargs):
-        permissions_payload = []
-        for code in sorted(get_manager_permission_codes()):
-            module, level = code.split(".", 1)
-            permissions_payload.append(
-                {
-                    "code": code,
-                    "module": module,
-                    "level": level,
-                }
-            )
         return Response(
-            {"permissions": permissions_payload},
+            {"groups": get_manager_permission_groups()},
             status=status.HTTP_200_OK,
         )
 

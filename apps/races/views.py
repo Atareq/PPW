@@ -35,6 +35,7 @@ class RaceViewSet(viewsets.ModelViewSet):
 
     permission_classes = [HasAppAccess]
     permission_resource = "RACE"
+    manager_permission_namespace = "races"
     allow_scoped_read_access = True
     queryset = Race.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
@@ -78,6 +79,7 @@ class RaceResultViewSet(viewsets.ModelViewSet):
 
     permission_classes = [HasAppAccess]
     permission_resource = "RACE_RESULT"
+    manager_permission_namespace = "race_results"
     allow_scoped_read_access = True
     queryset = RaceResult.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
@@ -132,6 +134,7 @@ class RaceResultListCreateViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "RACE_RESULT"
+    manager_permission_namespace = "race_results"
     allow_scoped_read_access = True
     queryset = RaceResult.objects.all()
 

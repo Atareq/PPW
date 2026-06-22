@@ -88,6 +88,10 @@ class AdminDiscountOfferViewSet(
 ):
     permission_classes = [HasAppAccess]
     permission_resource = "DISCOUNT_OFFER_ADMIN"
+    manager_permission_map = {
+        "list": "promotions.discount_offers.list",
+        "create": "promotions.discount_offers.create",
+    }
     serializer_class = DiscountOfferSerializer
     queryset = DiscountOffer.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
@@ -117,6 +121,10 @@ class AdminCashbackOfferViewSet(
 ):
     permission_classes = [HasAppAccess]
     permission_resource = "CASHBACK_OFFER_ADMIN"
+    manager_permission_map = {
+        "list": "promotions.cashback_offers.list",
+        "create": "promotions.cashback_offers.create",
+    }
     serializer_class = CashbackOfferSerializer
     queryset = CashbackOffer.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
@@ -138,6 +146,11 @@ class DiscountOfferActivationViewSet(viewsets.GenericViewSet):
     queryset = DiscountOffer.objects.all()
     activate = None
 
+    def get_required_manager_permission(self):
+        if self.activate:
+            return "promotions.discount_offers.activate"
+        return "promotions.discount_offers.deactivate"
+
     @extend_schema(tags=["Promotions"], request=None)
     def create(self, request, *args, **kwargs):
         offer = self.get_object()
@@ -157,6 +170,11 @@ class CashbackOfferActivationViewSet(viewsets.GenericViewSet):
     serializer_class = CashbackOfferSerializer
     queryset = CashbackOffer.objects.all()
     activate = None
+
+    def get_required_manager_permission(self):
+        if self.activate:
+            return "promotions.cashback_offers.activate"
+        return "promotions.cashback_offers.deactivate"
 
     @extend_schema(tags=["Promotions"], request=None)
     def create(self, request, *args, **kwargs):
@@ -220,6 +238,9 @@ class AdminCashbackTransactionViewSet(
 ):
     permission_classes = [HasAppAccess]
     permission_resource = "CASHBACK_TRANSACTION_ADMIN"
+    manager_permission_map = {
+        "list": "cashback.transactions.list",
+    }
     serializer_class = CashbackTransactionSerializer
     queryset = CashbackTransaction.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
@@ -242,6 +263,9 @@ class CashbackAdjustmentViewSet(
 ):
     permission_classes = [HasAppAccess]
     permission_resource = "CASHBACK_ADJUSTMENT_ADMIN"
+    manager_permission_map = {
+        "create": "cashback.adjustments.create",
+    }
     serializer_class = CashbackAdjustmentSerializer
     queryset = CashbackTransaction.objects.all()
 

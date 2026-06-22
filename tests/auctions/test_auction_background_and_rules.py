@@ -265,7 +265,7 @@ class TestAuctionOwnershipPermissions:
 
         assert response.status_code == status.HTTP_200_OK
 
-    def test_manager_can_update_any_auction(self, manager_user):
+    def test_manager_cannot_update_auction_without_catalog_action(self, manager_user):
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         auction = AuctionFactory(
             owner=seller.active_profile,
@@ -281,7 +281,7 @@ class TestAuctionOwnershipPermissions:
             format="json",
         )
 
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_non_owner_seller_cannot_update_other_auction(
         self, seller_user, authenticated_seller_client_2
@@ -336,7 +336,7 @@ class TestAuctionOwnershipPermissions:
 
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
-    def test_manager_can_destroy_any_auction(self, manager_user):
+    def test_manager_cannot_destroy_auction_without_catalog_action(self, manager_user):
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
         auction = AuctionFactory(
             owner=seller.active_profile,
@@ -348,7 +348,7 @@ class TestAuctionOwnershipPermissions:
 
         response = manager_client.delete(f"/api/auctions/{auction.id}/")
 
-        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_non_owner_seller_cannot_destroy_other_auction(
         self, seller_user, authenticated_seller_client_2
@@ -631,7 +631,7 @@ class TestAuctionPackageConsumption:
         assert seller_package.remaining_points == remaining_after_create
         assert PackageUsageLog.objects.count() == log_count_after_create
 
-    def test_manager_auction_creation_bypasses_package_consumption(
+    def test_manager_cannot_create_auction_without_catalog_action(
         self,
         manager_user,
         seller_user,
@@ -645,7 +645,6 @@ class TestAuctionPackageConsumption:
             format="json",
         )
 
-        assert response.status_code == status.HTTP_201_CREATED
-        auction = Auction.objects.get(pk=response.data["id"])
-        assert auction.seller_package_id is None
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert Auction.objects.count() == 0
         assert PackageUsageLog.objects.count() == 0

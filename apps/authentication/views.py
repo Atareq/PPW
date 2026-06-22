@@ -5,7 +5,7 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rest_framework import serializers, status
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -89,9 +89,9 @@ class CustomerRegisterAPIView(APIView):
     )
 )
 class ManagerRegisterAPIView(APIView):
-    """Public manager registration endpoint; intentionally documents a known gap."""
+    """Compatibility manager registration path protected by superuser access."""
 
-    permission_classes = [ AllowAny]
+    permission_classes = [IsSuperUser]
 
     def post(self, request):
         with transaction.atomic():

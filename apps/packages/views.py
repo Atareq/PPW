@@ -47,6 +47,7 @@ class PackageViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "PACKAGE"
+    manager_permission_namespace = "packages"
     queryset = Package.objects.all()
     serializer_class = PackageSerializer
 
@@ -149,8 +150,24 @@ class ManagerSellerPackageViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "SELLER_PACKAGE"
+    manager_permission_map = {
+        "list": "seller_packages.list",
+        "retrieve": "seller_packages.retrieve",
+    }
     queryset = SellerPackage.objects.all()
     serializer_class = SellerPackageSerializer
+
+    def get_required_manager_permission(self):
+        if self.action in {"list", "retrieve"}:
+            return self.manager_permission_map.get(self.action)
+        if self.action != "partial_update":
+            return None
+        next_status = self.request.data.get("status")
+        if next_status == SellerPackageStatus.ACTIVE:
+            return "seller_packages.activate"
+        if next_status == SellerPackageStatus.CANCELLED:
+            return "seller_packages.cancel"
+        return None
 
     def get_queryset(self):
         return seller_package_queryset()

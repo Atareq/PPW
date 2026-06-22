@@ -28,6 +28,9 @@ def active_profile(request):
 class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "NOTIFICATION"
+    manager_permission_map = {
+        "list": "notifications.list",
+    }
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     filter_backends = [DjangoFilterBackend]
@@ -49,6 +52,9 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 class NotificationUnreadCountViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "NOTIFICATION"
+    manager_permission_map = {
+        "list": "notifications.list",
+    }
     queryset = Notification.objects.all()
     serializer_class = UnreadCountSerializer
     http_method_names = ["get"]
@@ -106,4 +112,3 @@ class NotificationMarkAllReadViewSet(viewsets.GenericViewSet):
         )
         serializer = self.get_serializer({"updated_count": updated_count})
         return Response(serializer.data, status=status.HTTP_200_OK)
-

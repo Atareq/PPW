@@ -3,23 +3,20 @@ from rest_framework.exceptions import PermissionDenied
 
 from apps.users.constants import ProfileType
 from apps.users.manager_permissions import (
-    MANAGER_PERMISSION_LEVELS,
-    build_manager_permission_code,
+    is_manager_permission_allowed,
     normalize_manager_permissions,
-    permission_level_satisfies,
     validate_manager_permissions,
 )
 
 
 class ManagerPermissionService:
-    METHOD_LEVEL_MAP = {
-        "GET": "list",
-        "HEAD": "list",
-        "OPTIONS": "list",
-        "POST": "edit",
-        "PUT": "edit",
-        "PATCH": "edit",
-        "DELETE": "full_control",
+    DEFAULT_ACTION_MAP = {
+        "list": "list",
+        "retrieve": "retrieve",
+        "create": "create",
+        "update": "update",
+        "partial_update": "update",
+        "destroy": "delete",
     }
 
     @staticmethod
@@ -32,14 +29,19 @@ class ManagerPermissionService:
 
     @classmethod
     def has_permission(cls, manager_profile, required_permission: str) -> bool:
+        if not is_manager_permission_allowed(required_permission):
+            return False
 
-        normalized_permissions = cls.normalize_permissions(
-            getattr(manager_profile, "permissions", [])
-        )
-        return any(
-            permission_level_satisfies(permission, required_permission)
-            for permission in normalized_permissions
-        )
+        assigned_permissions = getattr(manager_profile, "permissions", []) or []
+        if not isinstance(assigned_permissions, list):
+            return False
+
+        allowed_assigned_permissions = {
+            permission
+            for permission in assigned_permissions
+            if is_manager_permission_allowed(permission)
+        }
+        return required_permission in allowed_assigned_permissions
 
     @classmethod
     def require_permission(cls, user, required_permission: str) -> bool:
@@ -67,10 +69,9 @@ class ManagerPermissionService:
         return True
 
     @classmethod
-    def get_required_permission(
-        cls, module: str, request_method: str
-    ) -> str:
-        level = cls.METHOD_LEVEL_MAP.get(request_method.upper(), "list")
-        if level not in MANAGER_PERMISSION_LEVELS:
-            level = "list"
-        return build_manager_permission_code(module, level)
+    def get_required_permission(cls, namespace: str, action: str) -> str | None:
+        normalized_action = cls.DEFAULT_ACTION_MAP.get(action, action)
+        permission_code = f"{namespace}.{normalized_action}"
+        if not is_manager_permission_allowed(permission_code):
+            return None
+        return permission_code

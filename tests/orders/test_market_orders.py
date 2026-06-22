@@ -257,9 +257,7 @@ class TestCartEndpoints:
         assert add_response.status_code == 403
         assert checkout_response.status_code == 403
 
-    def test_manager_mode_reaches_service_validation_for_cart_and_checkout(
-        self,
-    ):
+    def test_manager_mode_is_denied_before_cart_and_checkout_services(self):
         manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
         client = authenticated_client(manager)
 
@@ -268,10 +266,8 @@ class TestCartEndpoints:
             "/api/orders/checkout/", {}, format="json"
         )
 
-        assert cart_response.status_code == 400
-        assert checkout_response.status_code == 400
-        assert "Only customer profiles" in str(cart_response.data)
-        assert "Only customer profiles" in str(checkout_response.data)
+        assert cart_response.status_code == 403
+        assert checkout_response.status_code == 403
 
     def test_user_without_active_role_is_denied_by_app_permission(self):
         user = UserAccountFactory(with_profile=False)

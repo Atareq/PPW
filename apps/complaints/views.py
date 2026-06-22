@@ -43,6 +43,10 @@ class ComplaintViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "COMPLAINT"
+    manager_permission_map = {
+        "list": "complaints.list",
+        "retrieve": "complaints.retrieve",
+    }
     queryset = Complaint.objects.all()
     http_method_names = ["get", "post"]
     allow_scoped_read_access = True
@@ -140,6 +144,15 @@ class ComplaintAdminActionViewSet(viewsets.GenericViewSet):
     queryset = Complaint.objects.all()
     http_method_names = ["post"]
     action_type = None
+
+    def get_required_manager_permission(self):
+        if self.action_type == "mark_in_review":
+            return "complaints.mark_in_review"
+        if self.action_type == "resolve":
+            return "complaints.resolve"
+        if self.action_type == "reject":
+            return "complaints.reject"
+        return None
 
     def create(self, request, *args, **kwargs):
         profile = active_profile(request)

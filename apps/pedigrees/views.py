@@ -35,6 +35,10 @@ class PedigreeDocumentViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "PEDIGREE_DOCUMENT"
+    manager_permission_map = {
+        "list": "pedigrees.documents.list",
+        "retrieve": "pedigrees.documents.retrieve",
+    }
     allow_scoped_read_access = True
     queryset = PedigreeDocument.objects.all()
     http_method_names = ["get", "post"]
@@ -93,6 +97,9 @@ class PedigreeDocumentReviewViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "PEDIGREE_DOCUMENT"
+    manager_permission_map = {
+        "partial_update": "pedigrees.documents.review",
+    }
     serializer_class = PedigreeDocumentReviewSerializer
     queryset = PedigreeDocument.objects.all()
     http_method_names = ["patch"]

@@ -47,20 +47,14 @@ from apps.promotions.models import (
 )
 from apps.races.models import Race, RaceResult
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
-from apps.users.manager_permissions import (
-    MANAGER_PERMISSION_MODULES,
-    build_manager_permission_code,
-)
+from apps.users.manager_permissions import get_manager_permission_codes
 from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
 
 faker = Faker()
 
 
 def default_manager_permissions():
-    return [
-        build_manager_permission_code(module, "full_control")
-        for module in MANAGER_PERMISSION_MODULES
-    ]
+    return sorted(get_manager_permission_codes())
 
 
 # ============================================================================
