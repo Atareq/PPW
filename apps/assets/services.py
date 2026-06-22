@@ -2,11 +2,18 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.assets.models import AssetSaleChannel, Supply
+from apps.authentication.models import UserAccount
 from apps.general.models import AssetMedia
 from apps.packages.models import PackageUsageType
 from apps.packages.services import PackageService
-from apps.users.constants import ProfileType
-from apps.users.models import Profile
+from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
+from apps.users.models import Profile, SellerProfile
+
+
+PLATFORM_SUPPLY_USERNAME = "ppw-platform-supplies"
+PLATFORM_SUPPLY_PHONE_NUMBER = "+201099999999"
+PLATFORM_SUPPLY_NICKNAME = "PPW Platform"
 
 
 class BirdValidator:
@@ -39,7 +46,7 @@ class BirdValidator:
 
     @staticmethod
     def _validate_owner_profile(errors, owner):
-        if owner.type != ProfileType.SELLER:
+        if owner is None or owner.type != ProfileType.SELLER:
             errors["owner"] = "Only SELLER profiles can own birds."
 
     @staticmethod
@@ -101,15 +108,18 @@ class ProductAssetCreationService:
     """Create product assets and consume seller package points when required."""
 
     @staticmethod
-    def create_product(model_class, owner, validated_data, media_data=None):
-        if owner.type == ProfileType.MANAGER:
-            with transaction.atomic():
-                product = model_class.objects.create(
-                    owner=owner,
-                    **validated_data,
-                )
-                AssetMediaWriteService.create_media(product, media_data)
-                return product
+    def create_product(
+        model_class,
+        owner,
+        validated_data,
+        media_data=None,
+    ):
+        if model_class is Supply:
+            return ProductAssetCreationService.create_platform_supply(
+                validated_data,
+                media_data=media_data,
+                actor_profile=owner,
+            )
 
         if owner.type != ProfileType.SELLER:
             raise serializers.ValidationError(
@@ -123,6 +133,7 @@ class ProductAssetCreationService:
         with transaction.atomic():
             product = model_class.objects.create(
                 owner=owner,
+                sale_channel=AssetSaleChannel.SELLER_MARKET,
                 **validated_data,
             )
             AssetMediaWriteService.create_media(product, media_data)
@@ -136,6 +147,58 @@ class ProductAssetCreationService:
                 owner,
             )
             return product
+
+    @staticmethod
+    def create_platform_supply(
+        validated_data,
+        media_data=None,
+        actor_profile=None,
+    ):
+        if actor_profile and actor_profile.type not in {ProfileType.MANAGER}:
+            raise serializers.ValidationError(
+                "Supply products are platform-controlled and cannot be created by sellers."
+            )
+
+        platform_seller = ProductAssetCreationService.get_platform_seller_profile()
+        validated_data.pop("sale_channel", None)
+        validated_data.pop("managed_by", None)
+
+        with transaction.atomic():
+            product = Supply.objects.create(
+                owner=platform_seller,
+                sale_channel=AssetSaleChannel.PLATFORM,
+                managed_by=actor_profile if actor_profile else None,
+                **validated_data,
+            )
+            AssetMediaWriteService.create_media(product, media_data)
+            return product
+
+    @staticmethod
+    def get_platform_seller_profile():
+        user = UserAccount.objects.filter(
+            phone_number=PLATFORM_SUPPLY_PHONE_NUMBER
+        ).first()
+        if user is None:
+            user = UserAccount.objects.create_user(
+                username=PLATFORM_SUPPLY_USERNAME,
+                phone_number=PLATFORM_SUPPLY_PHONE_NUMBER,
+                password=None,
+            )
+            user.set_unusable_password()
+            user.save(update_fields=["password"])
+
+        seller = SellerProfile.objects.filter(user=user).first()
+        if seller is None:
+            seller = SellerProfile.objects.create(
+                user=user,
+                is_active=False,
+                activated=True,
+                is_valid=True,
+                nickname=PLATFORM_SUPPLY_NICKNAME,
+                country=CountryOptions.EGYPT,
+                currency=CurrencyOptions.EGP,
+            )
+        return seller
 
     @staticmethod
     def _handle_market_item_reward(product, owner):

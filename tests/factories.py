@@ -73,7 +73,6 @@ class UserAccountFactory(factory.django.DjangoModelFactory):
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
     email = factory.Sequence(lambda n: f"user{n}@example.com")
-    permissions = factory.LazyFunction(list)
 
     @factory.post_generation
     def with_profile(obj, create, extracted, **kwargs):

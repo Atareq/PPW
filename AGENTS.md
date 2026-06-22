@@ -275,7 +275,7 @@ Current profile behavior:
 - live manager accounts are exclusive: a user with a live `ManagerProfile` cannot create live seller/customer profiles, and a live seller/customer user cannot create a live `ManagerProfile`
 - customer registration creates an active customer profile
 - manager creation keeps the account manager-only, creates an active/activated `ManagerProfile`, and sets `is_staff=True`
-- `ManagerProfile.permissions` is the source of truth for manager authorization; legacy `UserAccount.permissions` is no longer consulted for manager access checks
+- `ManagerProfile.permissions` is the source of truth for manager authorization; legacy `UserAccount.permissions` has been removed from the runtime model
 - manager permissions are centrally defined in `apps.users.manager_permissions` as a static action catalog, not generated module levels
 - manager permission codes are exact action strings such as `assets.list`, `assets.update`, `users.sellers.retrieve`, `payments.list`, and `complaints.resolve`
 - manager permissions do not have hierarchy; `assets.update` does not imply `assets.list`, and there is no current `edit` or `full_control` authorization behavior
@@ -327,12 +327,17 @@ Current model shape:
   - `price`
   - `is_market_listed`
   - `is_for_auction`
+  - `sale_channel`
+  - `managed_by`
 - `Asset.thumbnail_url` has been removed; asset media are represented by related `AssetMedia` rows
 - current asset statuses are:
   - `available`
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
+- asset `sale_channel` values are `seller_market` and `platform`
+- `Supply` is platform-controlled: sellers cannot create supply products through the API
+- platform supplies are owned by a hidden platform seller profile and use `sale_channel=platform`; manager/superuser creators are tracked through `managed_by` when an active manager profile exists
 - `Bird.public_id` is a stable UUID for public bird identity and QR payload URLs
 - `apps.general.models.Media` is a concrete base media-reference model with `media_url`, `media_type`, and optional `alt_text`
 - `Media.media_type` currently supports `image` and `video`; existing and omitted media types default to `image`
@@ -379,10 +384,12 @@ Current product asset API behavior:
 - product asset serializers replace the full media set when `media` is supplied on update; omitted `media` preserves existing media rows and `media: []` clears them
 - `images` and `image_url` are no longer accepted product media API field names
 - `thumbnail_url` is no longer accepted in product asset API payloads
-- create sets `owner` from `request.user.active_profile`
+- create sets `owner` from `request.user.active_profile` for seller-created accessory, feed, and supplement assets
 - seller product creation goes through `ProductAssetCreationService.create_product()`
-- seller-created `Supply`, `Accessory`, `Feed`, and `Supplement` assets consume `Package.product_cost` from the seller's active `AssetSellerPackage`, even when `is_market_listed=False`
-- manager-created product assets bypass seller package consumption and create no `PackageUsageLog`
+- seller-created `Accessory`, `Feed`, and `Supplement` assets consume `Package.product_cost` from the seller's active `AssetSellerPackage`, even when `is_market_listed=False`
+- supply creation goes through the platform supply branch, sets the hidden platform seller profile as owner, sets `sale_channel=platform`, and does not consume seller package points
+- managers manage supplies through `platform_products.list`, `platform_products.retrieve`, `platform_products.create`, `platform_products.update`, and `platform_products.delete`; generic `assets.create` must not create platform supplies
+- manager-created accessory, feed, and supplement assets are not part of the current manager API contract
 - product edits, listing changes, price/count/status/title changes, and deletes do not consume package points
 - `BirdSerializer` and bird creation do not consume package points
 - subtype `save()` remains responsible for enforcing `category`
@@ -1414,7 +1421,7 @@ Current design choice:
 - activation and cancellation happen through service methods, not direct serializer field updates
 - package point consumption is connected to seller-created auctions and seller-created product assets
 - package point consumption is not connected to pedigrees yet
-- manager-created auctions and product assets bypass package point consumption
+- manager-created platform supplies bypass package point consumption
 
 #### PackageUsageLog
 
@@ -1854,9 +1861,10 @@ Not currently implemented:
 
 Current product asset visibility:
 
-- managers can list, retrieve, create, update, and delete all product assets
-- manager-created products are owned by the manager active profile because create always sets `owner=request.user.active_profile`
-- sellers can create, update, and delete only their own product assets
+- managers can list, retrieve, create, update, and delete platform supplies only with `platform_products.*` permissions
+- managers can list, retrieve, create, update, and delete non-supply product assets only where explicit `assets.*` manager mappings remain declared
+- platform supplies are not owned by manager profiles; they are owned by the hidden platform seller profile
+- sellers can create, update, and delete only their own accessory, feed, and supplement assets
 - sellers can read their own product assets plus market-listed product assets
 - customers can read only market-listed product assets
 - product safe-read visibility is scoped before django-filter filters and ordering run
@@ -2039,6 +2047,8 @@ Current product asset permission pattern:
 - set `permission_resource = "PRODUCT_ASSET"`
 - set `allow_scoped_read_access = True`
 - scope readable objects in `get_queryset()` before filters run
+- `SupplyViewSet` overrides manager permission resolution with `manager_permission_namespace = "platform_products"`
+- `AccessoryViewSet`, `FeedViewSet`, and `SupplementViewSet` keep generic product asset behavior
 
 Current bird permission pattern:
 

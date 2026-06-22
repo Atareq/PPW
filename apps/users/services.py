@@ -3,6 +3,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from apps.users.constants import ProfileType
 from apps.users.manager_permissions import (
+    get_manager_permission_codes,
     is_manager_permission_allowed,
     normalize_manager_permissions,
     validate_manager_permissions,
@@ -26,6 +27,28 @@ class ManagerPermissionService:
     @staticmethod
     def validate_permissions(permissions) -> list[str]:
         return validate_manager_permissions(permissions)
+
+    @staticmethod
+    def get_effective_permissions(user) -> set[str]:
+        if user.is_superuser:
+            return get_manager_permission_codes()
+
+        try:
+            active_profile = user.active_profile
+        except DjangoPermissionDenied:
+            return set()
+
+        if active_profile.type != ProfileType.MANAGER:
+            return set()
+
+        assigned_permissions = getattr(active_profile, "permissions", []) or []
+        if not isinstance(assigned_permissions, list):
+            return set()
+        return {
+            permission
+            for permission in assigned_permissions
+            if is_manager_permission_allowed(permission)
+        }
 
     @classmethod
     def has_permission(cls, manager_profile, required_permission: str) -> bool:

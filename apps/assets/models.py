@@ -21,6 +21,11 @@ class AssetStatus(models.TextChoices):
     INACTIVE = "inactive", "Inactive"
 
 
+class AssetSaleChannel(models.TextChoices):
+    SELLER_MARKET = "seller_market", "Seller Market"
+    PLATFORM = "platform", "Platform"
+
+
 class Asset(OwnerBaseModel):
 
     title = models.CharField(max_length=255)
@@ -43,6 +48,18 @@ class Asset(OwnerBaseModel):
     )
     is_market_listed = models.BooleanField(default=False)
     is_for_auction = models.BooleanField(default=False)
+    sale_channel = models.CharField(
+        max_length=20,
+        choices=AssetSaleChannel.choices,
+        default=AssetSaleChannel.SELLER_MARKET,
+    )
+    managed_by = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_assets",
+    )
     avg_rating = models.DecimalField(
         max_digits=3,
         decimal_places=2,
@@ -55,6 +72,7 @@ class Asset(OwnerBaseModel):
             models.Index(fields=["status"]),
             models.Index(fields=["category"]),
             models.Index(fields=["owner", "status"]),
+            models.Index(fields=["sale_channel", "category"]),
         ]
 
     def __str__(self):

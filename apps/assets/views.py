@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.core.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, viewsets
 from rest_framework.filters import OrderingFilter
@@ -14,6 +15,7 @@ from apps.assets.filters import (
 )
 from apps.assets.models import (
     Accessory,
+    AssetSaleChannel,
     AssetStatus,
     Bird,
     Feed,
@@ -83,12 +85,18 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         asset = self.get_object()
-        SellerInsightEventService.record_event(
-            seller=asset.owner,
-            event_type=SellerInsightEventType.MARKET_ITEM_VIEW,
-            object_id=asset.pk,
-            actor_profile=request.user.active_profile,
-        )
+        if asset.sale_channel == AssetSaleChannel.SELLER_MARKET:
+            try:
+                actor_profile = request.user.active_profile
+            except PermissionDenied:
+                actor_profile = None
+            if actor_profile is not None:
+                SellerInsightEventService.record_event(
+                    seller=asset.owner,
+                    event_type=SellerInsightEventType.MARKET_ITEM_VIEW,
+                    object_id=asset.pk,
+                    actor_profile=actor_profile,
+                )
         serializer = self.get_serializer(asset)
         return Response(serializer.data)
 
@@ -99,6 +107,9 @@ class ProductAssetViewSet(viewsets.ModelViewSet):
             "-created"
         )
         user = self.request.user
+        if user.is_superuser:
+            return queryset
+
         role = user.role
 
         if role == ProfileType.MANAGER:
@@ -122,6 +133,11 @@ class SupplyViewSet(ProductAssetViewSet):
     queryset = Supply.objects.all()
     serializer_class = SupplySerializer
     filterset_class = SupplyFilter
+    manager_permission_namespace = "platform_products"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.filter(sale_channel=AssetSaleChannel.PLATFORM)
 
 
 class AccessoryViewSet(ProductAssetViewSet):

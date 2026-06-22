@@ -1,4 +1,3 @@
-from django.apps import apps as django_apps
 from django.core.exceptions import ValidationError
 from importlib import import_module
 import pytest
@@ -6,7 +5,6 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient
 
-from apps.authentication.models import UserAccount
 from apps.authentication.services import build_token_for_user
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
 from apps.users.manager_permissions import (
@@ -23,6 +21,9 @@ from tests.factories import UserAccountFactory
 copy_user_permissions_to_manager_profiles = import_module(
     "apps.users.migrations.0002_managerprofile_permissions"
 ).copy_user_permissions_to_manager_profiles
+remove_user_permissions_migration = import_module(
+    "apps.authentication.migrations.0002_remove_useraccount_permissions"
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -163,21 +164,19 @@ def test_invalid_injected_manager_permission_does_not_authorize(manager_user):
     )
 
 
-def test_permissions_are_stored_on_manager_profile_not_user_permissions(manager_user):
-    manager_user.permissions = ["assets.list"]
-    manager_user.save(update_fields=["permissions"])
-
+def test_user_account_no_longer_has_permissions_field(manager_user):
     manager_profile = manager_user.active_profile
     manager_profile.permissions = []
     manager_profile.save()
 
-    assert not manager_user.has_app_permission("assets.list")
+    assert not hasattr(manager_user, "permissions")
+    assert not ManagerPermissionService.has_permission(
+        manager_profile,
+        "assets.list",
+    )
 
 
 def test_customer_permissions_do_not_grant_manager_permission(customer_user):
-    customer_user.permissions = ["assets.list"]
-    customer_user.save(update_fields=["permissions"])
-
     with pytest.raises(PermissionDenied):
         ManagerPermissionService.require_permission(
             customer_user,
@@ -194,6 +193,17 @@ def test_superuser_bypass_works_without_manager_profile():
     assert ManagerPermissionService.require_permission(
         user, "assets.delete"
     )
+
+
+def test_superuser_effective_permissions_are_full_catalog():
+    user = UserAccountFactory(with_profile=False)
+    user.is_superuser = True
+    user.is_staff = True
+    user.save(update_fields=["is_superuser", "is_staff"])
+
+    assert ManagerPermissionService.get_effective_permissions(
+        user
+    ) == get_manager_permission_codes()
 
 
 def test_superuser_can_create_manager(superuser_manager):
@@ -354,28 +364,25 @@ def test_manager_admin_create_remains_superuser_only(manager_user):
 def test_manager_catalog_contains_action_codes_only():
     assert is_manager_permission_allowed("assets.list")
     assert is_manager_permission_allowed("users.sellers.update")
+    assert is_manager_permission_allowed("platform_products.create")
     assert not is_manager_permission_allowed("assets.full_control")
     assert not is_manager_permission_allowed("users.full_control")
 
 
-def test_migration_copies_permissions_to_existing_manager_profile():
-    user = UserAccount.objects.create_user(
-        username="legacy-manager",
-        phone_number="+201001239999",
-        password="SecurePass123!@",
-        permissions=["assets", "users", "orders.full_control"],
-    )
-    manager_profile = ManagerProfile.objects.create(
-        user=user,
-        is_active=True,
-        activated=True,
-        permissions=[],
-    )
+def test_legacy_user_permission_normalization_expands_to_catalog_codes():
+    valid_codes = get_manager_permission_codes()
+    expanded = []
+    for permission in ["assets", "users", "orders.full_control", "assets.nope"]:
+        expanded.extend(
+            remove_user_permissions_migration._expand_legacy_permission(
+                permission,
+                valid_codes,
+            )
+        )
 
-    copy_user_permissions_to_manager_profiles(django_apps, None)
-
-    manager_profile.refresh_from_db()
-    assert manager_profile.permissions == [
+    assert normalize_manager_permissions(
+        [permission for permission in expanded if permission in valid_codes]
+    ) == [
         "users.sellers.list",
         "users.sellers.retrieve",
         "users.sellers.update",
@@ -397,14 +404,5 @@ def test_migration_copies_permissions_to_existing_manager_profile():
     ]
 
 
-def test_migration_does_not_create_missing_manager_profile():
-    user = UserAccount.objects.create_user(
-        username="legacy-user-no-manager",
-        phone_number="+201001238888",
-        password="SecurePass123!@",
-        permissions=["assets"],
-    )
-
-    copy_user_permissions_to_manager_profiles(django_apps, None)
-
-    assert not ManagerProfile.objects.filter(user=user).exists()
+def test_old_user_manager_permission_migration_helper_remains_importable():
+    assert callable(copy_user_permissions_to_manager_profiles)

@@ -9,14 +9,17 @@ from rest_framework.test import APIClient
 from apps.assets.models import (
     Accessory,
     AssetCategory,
+    AssetSaleChannel,
     Bird,
     Feed,
     Supplement,
     Supply,
 )
+from apps.assets.services import ProductAssetCreationService
 from apps.authentication.services import build_token_for_user
 from apps.general.models import AssetMedia, Media, MediaType
 from apps.packages.models import PackageUsageLog, PackageUsageType
+from apps.users.constants import ProfileType
 from tests.factories import (
     ActiveAssetSellerPackageFactory,
     AssetMediaFactory,
@@ -24,7 +27,6 @@ from tests.factories import (
 )
 
 PRODUCT_ENDPOINTS = [
-    (Supply, "supplies", AssetCategory.SUPPLY),
     (Accessory, "accessories", AssetCategory.ACCESSORY),
     (Feed, "feeds", AssetCategory.FEED),
     (Supplement, "supplements", AssetCategory.SUPPLEMENT),
@@ -113,6 +115,21 @@ def create_product(model, owner, **overrides):
     return model.objects.create(**data)
 
 
+def create_platform_supply(**overrides):
+    data = {
+        "owner": ProductAssetCreationService.get_platform_seller_profile(),
+        "sale_channel": AssetSaleChannel.PLATFORM,
+        "title": "Stored platform supply",
+        "description": "Existing platform supply",
+        "count": 3,
+        "price": Decimal("10.00"),
+        "is_market_listed": True,
+        "is_for_auction": False,
+    }
+    data.update(overrides)
+    return Supply.objects.create(**data)
+
+
 def create_active_package(owner, remaining_points=50, product_cost=7):
     return ActiveAssetSellerPackageFactory(
         owner=owner,
@@ -127,7 +144,7 @@ def create_active_package(owner, remaining_points=50, product_cost=7):
 
 @pytest.mark.django_db
 def test_asset_can_have_image_and_video_media_with_primary_media(seller_user):
-    product = create_product(Supply, seller_user.active_profile)
+    product = create_product(Accessory, seller_user.active_profile)
 
     first = AssetMediaFactory(asset=product)
     primary = AssetMediaFactory(
@@ -154,7 +171,7 @@ def test_asset_can_have_image_and_video_media_with_primary_media(seller_user):
 
 @pytest.mark.django_db
 def test_asset_media_defaults_to_image(seller_user):
-    product = create_product(Supply, seller_user.active_profile)
+    product = create_product(Accessory, seller_user.active_profile)
 
     media = AssetMedia.objects.create(
         asset=product,
@@ -166,7 +183,7 @@ def test_asset_media_defaults_to_image(seller_user):
 
 @pytest.mark.django_db
 def test_asset_media_ordering_uses_order_then_created(seller_user):
-    product = create_product(Supply, seller_user.active_profile)
+    product = create_product(Accessory, seller_user.active_profile)
     now = timezone.now()
     first_same_order = AssetMediaFactory(asset=product, order=1)
     second_same_order = AssetMediaFactory(asset=product, order=1)
@@ -276,7 +293,7 @@ def test_product_media_create_replace_preserve_and_clear(
     )
 
     create_response = authenticated_seller_client.post(
-        product_url("supplies"),
+        product_url("accessories"),
         product_payload(
             media=[
                 media_payload(
@@ -298,16 +315,16 @@ def test_product_media_create_replace_preserve_and_clear(
     assert "thumbnail_url" not in create_response.data
     assert len(create_response.data["media"]) == 2
     assert create_response.data["media"][1]["media_type"] == MediaType.VIDEO
-    product = Supply.objects.get(pk=create_response.data["id"])
+    product = Accessory.objects.get(pk=create_response.data["id"])
     assert product.media.count() == 2
     seller_package.refresh_from_db()
     assert seller_package.remaining_points == 43
     assert PackageUsageLog.objects.count() == 1
 
     retrieve_response = authenticated_seller_client.get(
-        product_url("supplies", product.pk)
+        product_url("accessories", product.pk)
     )
-    list_response = authenticated_seller_client.get(product_url("supplies"))
+    list_response = authenticated_seller_client.get(product_url("accessories"))
     list_item = next(
         item
         for item in list_response.data["results"]
@@ -319,7 +336,7 @@ def test_product_media_create_replace_preserve_and_clear(
     assert len(list_item["media"]) == 2
 
     preserve_response = authenticated_seller_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {"title": "Media preserved"},
         format="json",
     )
@@ -329,7 +346,7 @@ def test_product_media_create_replace_preserve_and_clear(
     assert product.media.count() == 2
 
     replace_response = authenticated_seller_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {
             "media": [
                 media_payload(
@@ -348,7 +365,7 @@ def test_product_media_create_replace_preserve_and_clear(
     assert AssetMedia.objects.filter(asset=product).count() == 1
 
     clear_response = authenticated_seller_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {"media": []},
         format="json",
     )
@@ -477,14 +494,14 @@ def test_seller_product_creation_fails_without_active_package(
     authenticated_seller_client,
 ):
     response = authenticated_seller_client.post(
-        product_url("supplies"),
+        product_url("accessories"),
         product_payload(title="No package product"),
         format="json",
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "No active package" in str(response.data)
-    assert not Supply.objects.filter(title="No package product").exists()
+    assert not Accessory.objects.filter(title="No package product").exists()
     assert PackageUsageLog.objects.count() == 0
 
 
@@ -500,7 +517,7 @@ def test_seller_product_creation_fails_with_insufficient_points(
     )
 
     response = authenticated_seller_client.post(
-        product_url("supplies"),
+        product_url("accessories"),
         product_payload(title="Insufficient product"),
         format="json",
     )
@@ -509,7 +526,7 @@ def test_seller_product_creation_fails_with_insufficient_points(
     assert "Insufficient package points" in str(response.data)
     seller_package.refresh_from_db()
     assert seller_package.remaining_points == 2
-    assert not Supply.objects.filter(title="Insufficient product").exists()
+    assert not Accessory.objects.filter(title="Insufficient product").exists()
     assert PackageUsageLog.objects.count() == 0
 
 
@@ -521,7 +538,7 @@ def test_failed_product_validation_does_not_consume_points(
     seller_package = create_active_package(seller_user.active_profile)
 
     response = authenticated_seller_client.post(
-        product_url("supplies"),
+        product_url("accessories"),
         product_payload(title=""),
         format="json",
     )
@@ -537,20 +554,20 @@ def test_customer_cannot_create_update_or_delete_product_assets(
     authenticated_customer_client,
     seller_user,
 ):
-    product = create_product(Supply, seller_user.active_profile)
+    product = create_product(Accessory, seller_user.active_profile)
 
     create_response = authenticated_customer_client.post(
-        product_url("supplies"),
+        product_url("accessories"),
         product_payload(),
         format="json",
     )
     update_response = authenticated_customer_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {"title": "Customer edit"},
         format="json",
     )
     delete_response = authenticated_customer_client.delete(
-        product_url("supplies", product.pk)
+        product_url("accessories", product.pk)
     )
 
     assert create_response.status_code == status.HTTP_403_FORBIDDEN
@@ -563,11 +580,11 @@ def test_seller_can_update_and_delete_own_product(
     authenticated_seller_client,
     seller_user,
 ):
-    product = create_product(Supply, seller_user.active_profile)
+    product = create_product(Accessory, seller_user.active_profile)
     seller_package = create_active_package(seller_user.active_profile)
 
     update_response = authenticated_seller_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {"title": "Updated by owner"},
         format="json",
     )
@@ -577,11 +594,11 @@ def test_seller_can_update_and_delete_own_product(
     assert product.title == "Updated by owner"
 
     delete_response = authenticated_seller_client.delete(
-        product_url("supplies", product.pk)
+        product_url("accessories", product.pk)
     )
 
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
-    assert not Supply.objects.filter(pk=product.pk).exists()
+    assert not Accessory.objects.filter(pk=product.pk).exists()
     seller_package.refresh_from_db()
     assert seller_package.remaining_points == 50
     assert PackageUsageLog.objects.count() == 0
@@ -593,14 +610,14 @@ def test_product_listing_change_does_not_consume_points(
     seller_user,
 ):
     product = create_product(
-        Supply,
+        Accessory,
         seller_user.active_profile,
         is_market_listed=False,
     )
     seller_package = create_active_package(seller_user.active_profile)
 
     response = authenticated_seller_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {"is_market_listed": True},
         format="json",
     )
@@ -616,15 +633,15 @@ def test_seller_cannot_update_or_delete_another_sellers_product(
     authenticated_seller_client,
     seller_user_2,
 ):
-    product = create_product(Supply, seller_user_2.active_profile)
+    product = create_product(Accessory, seller_user_2.active_profile)
 
     update_response = authenticated_seller_client.patch(
-        product_url("supplies", product.pk),
+        product_url("accessories", product.pk),
         {"title": "Wrong seller edit"},
         format="json",
     )
     delete_response = authenticated_seller_client.delete(
-        product_url("supplies", product.pk)
+        product_url("accessories", product.pk)
     )
 
     assert update_response.status_code == status.HTTP_403_FORBIDDEN
@@ -639,22 +656,22 @@ def test_customer_only_sees_market_listed_products(
     seller_user,
 ):
     listed = create_product(
-        Supply,
+        Accessory,
         seller_user.active_profile,
-        title="Listed supply",
+        title="Listed accessory",
         is_market_listed=True,
     )
     unlisted = create_product(
-        Supply,
+        Accessory,
         seller_user.active_profile,
-        title="Hidden supply",
+        title="Hidden accessory",
         is_market_listed=False,
     )
 
-    list_response = authenticated_customer_client.get(product_url("supplies"))
+    list_response = authenticated_customer_client.get(product_url("accessories"))
     listed_ids = {item["id"] for item in list_response.data["results"]}
     hidden_response = authenticated_customer_client.get(
-        product_url("supplies", unlisted.pk)
+        product_url("accessories", unlisted.pk)
     )
 
     assert list_response.status_code == status.HTTP_200_OK
@@ -670,25 +687,25 @@ def test_seller_sees_own_unlisted_and_market_listed_products(
     seller_user_2,
 ):
     owned_unlisted = create_product(
-        Supply,
+        Accessory,
         seller_user.active_profile,
-        title="Own hidden supply",
+        title="Own hidden accessory",
         is_market_listed=False,
     )
     other_unlisted = create_product(
-        Supply,
+        Accessory,
         seller_user_2.active_profile,
-        title="Other hidden supply",
+        title="Other hidden accessory",
         is_market_listed=False,
     )
     listed_other = create_product(
-        Supply,
+        Accessory,
         seller_user_2.active_profile,
-        title="Other listed supply",
+        title="Other listed accessory",
         is_market_listed=True,
     )
 
-    response = authenticated_seller_client.get(product_url("supplies"))
+    response = authenticated_seller_client.get(product_url("accessories"))
     ids = {item["id"] for item in response.data["results"]}
 
     assert response.status_code == status.HTTP_200_OK
@@ -698,18 +715,12 @@ def test_seller_sees_own_unlisted_and_market_listed_products(
 
 
 @pytest.mark.django_db
-def test_manager_can_list_create_update_and_delete_all_products(
+def test_manager_can_list_create_update_and_delete_platform_supplies(
     manager_user,
-    seller_user,
-    seller_user_2,
 ):
     manager_client = authenticated_client_for(manager_user)
-    product = create_product(Supply, seller_user.active_profile)
-    other_product = create_product(
-        Supply,
-        seller_user_2.active_profile,
-        title="Other seller supply",
-    )
+    product = create_platform_supply()
+    other_product = create_platform_supply(title="Other platform supply")
 
     list_response = manager_client.get(product_url("supplies"))
     ids = {item["id"] for item in list_response.data["results"]}
@@ -731,13 +742,52 @@ def test_manager_can_list_create_update_and_delete_all_products(
     assert product.pk in ids
     assert other_product.pk in ids
     assert create_response.status_code == status.HTTP_201_CREATED
-    assert create_response.data["owner"] == manager_user.active_profile.id
+    created_product = Supply.objects.get(pk=create_response.data["id"])
+    assert created_product.owner.type == ProfileType.SELLER
+    assert created_product.owner_id != manager_user.active_profile.id
+    assert created_product.managed_by_id == manager_user.active_profile.id
+    assert created_product.sale_channel == AssetSaleChannel.PLATFORM
     assert create_response.data["category"] == AssetCategory.SUPPLY
     assert PackageUsageLog.objects.count() == 0
     assert update_response.status_code == status.HTTP_200_OK
     other_product.refresh_from_db()
     assert other_product.title == "Manager edit"
     assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+
+@pytest.mark.django_db
+def test_seller_cannot_create_supply(authenticated_seller_client, seller_user):
+    create_active_package(seller_user.active_profile)
+
+    response = authenticated_seller_client.post(
+        product_url("supplies"),
+        product_payload(title="Seller supply"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "platform-controlled" in str(response.data)
+    assert not Supply.objects.filter(title="Seller supply").exists()
+    assert PackageUsageLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_manager_without_platform_product_permission_cannot_create_supply(
+    manager_user,
+):
+    manager_profile = manager_user.active_profile
+    manager_profile.permissions = ["assets.create"]
+    manager_profile.save(update_fields=["permissions"])
+    manager_client = authenticated_client_for(manager_user)
+
+    response = manager_client.post(
+        product_url("supplies"),
+        product_payload(title="Blocked manager supply"),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert not Supply.objects.filter(title="Blocked manager supply").exists()
 
 
 @pytest.mark.django_db
@@ -782,7 +832,7 @@ def test_product_filters_support_ranges_search_owner_and_ordering(
     seller_user_2,
 ):
     matching = create_product(
-        Supply,
+        Accessory,
         seller_user.active_profile,
         title="Premium grain mix",
         description="High protein feed",
@@ -791,7 +841,7 @@ def test_product_filters_support_ranges_search_owner_and_ordering(
         is_market_listed=True,
     )
     cheaper = create_product(
-        Supply,
+        Accessory,
         seller_user.active_profile,
         title="Premium grain budget",
         description="Budget feed",
@@ -800,7 +850,7 @@ def test_product_filters_support_ranges_search_owner_and_ordering(
         is_market_listed=True,
     )
     other_owner = create_product(
-        Supply,
+        Accessory,
         seller_user_2.active_profile,
         title="Premium grain other",
         description="Other seller feed",
@@ -810,7 +860,7 @@ def test_product_filters_support_ranges_search_owner_and_ordering(
     )
 
     response = authenticated_customer_client.get(
-        product_url("supplies"),
+        product_url("accessories"),
         {
             "search": "grain",
             "owner": seller_user.active_profile.id,
@@ -836,15 +886,17 @@ def test_product_filters_support_boolean_values(
     manager_client = authenticated_client_for(manager_user)
     listed = create_product(
         Supply,
-        seller_user.active_profile,
+        ProductAssetCreationService.get_platform_seller_profile(),
         title="Listed supply",
         is_market_listed=True,
+        sale_channel=AssetSaleChannel.PLATFORM,
     )
     unlisted = create_product(
         Supply,
-        seller_user.active_profile,
+        ProductAssetCreationService.get_platform_seller_profile(),
         title="Unlisted supply",
         is_market_listed=False,
+        sale_channel=AssetSaleChannel.PLATFORM,
     )
 
     response = manager_client.get(

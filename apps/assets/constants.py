@@ -8,6 +8,8 @@ PRODUCT_ASSET_FIELDS = [
     "status",
     "is_market_listed",
     "is_for_auction",
+    "sale_channel",
+    "managed_by",
     "category",
     "owner",
     "created",
@@ -17,6 +19,8 @@ PRODUCT_ASSET_FIELDS = [
 PRODUCT_ASSET_READ_ONLY_FIELDS = [
     "id",
     "owner",
+    "sale_channel",
+    "managed_by",
     "category",
     "created",
     "modified",

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from rest_framework import serializers
 
@@ -132,7 +133,13 @@ class ProductAssetSerializer(
     def create(self, validated_data):
         media_data = validated_data.pop("media", [])
         request = self.context.get("request")
-        owner = request.user.active_profile
+        try:
+            owner = request.user.active_profile
+        except PermissionDenied:
+            if request.user.is_superuser:
+                owner = None
+            else:
+                raise
 
         return ProductAssetCreationService.create_product(
             self.Meta.model,
