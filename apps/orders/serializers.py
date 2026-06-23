@@ -227,6 +227,9 @@ class OrderItemSummarySerializer(serializers.ModelSerializer):
 class OrderListSerializer(serializers.ModelSerializer):
     item_count = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
+    customer_name = serializers.CharField(source="owner.nickname", read_only=True, default="")
+    customer_username = serializers.CharField(source="owner.user.username", read_only=True, default="")
+    customer_phone = serializers.CharField(source="owner.user.phone_number", read_only=True, default="")
 
     class Meta:
         model = Order
@@ -236,6 +239,9 @@ class OrderListSerializer(serializers.ModelSerializer):
             "total_price",
             "item_count",
             "total_amount",
+            "customer_name",
+            "customer_username",
+            "customer_phone",
             "created",
             "modified",
         ]

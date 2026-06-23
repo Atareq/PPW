@@ -57,6 +57,7 @@ class PaymentRequestService:
         auction_item_id,
         buyer_profile,
         buyer_note=None,
+        payment_proof=None,
     ):
         """Create the winner's pending request for a sold auction item."""
 
@@ -97,6 +98,7 @@ class PaymentRequestService:
             amount=item.current_price,
             status=PaymentRequestStatus.PENDING,
             buyer_note=buyer_note or "",
+            payment_proof=payment_proof,
             auction_item=item,
         )
         PaymentRequestService._log_event(
@@ -121,6 +123,7 @@ class PaymentRequestService:
         order_item_id,
         buyer_profile,
         buyer_note=None,
+        payment_proof=None,
     ):
         """Create the order owner's pending request for an approved order item."""
 
@@ -150,6 +153,7 @@ class PaymentRequestService:
             amount=item.total_price,
             status=PaymentRequestStatus.PENDING,
             buyer_note=buyer_note or "",
+            payment_proof=payment_proof,
             order_item=item,
         )
         PaymentRequestService._log_event(
@@ -170,8 +174,8 @@ class PaymentRequestService:
 
     @staticmethod
     @transaction.atomic
-    def update_by_buyer(payment_request_id, buyer_profile, buyer_note=None):
-        """Update buyer note; rejected requests are resubmitted as pending."""
+    def update_by_buyer(payment_request_id, buyer_profile, buyer_note=None, payment_proof=None):
+        """Update buyer note and/or payment proof; rejected requests are resubmitted as pending."""
 
         PaymentRequestValidator.ensure_customer(buyer_profile)
         payment_request = PaymentRequestService._get_locked_request(payment_request_id)
@@ -186,6 +190,9 @@ class PaymentRequestService:
         if buyer_note is not None:
             payment_request.buyer_note = buyer_note
             update_fields.append("buyer_note")
+        if payment_proof is not None:
+            payment_request.payment_proof = payment_proof
+            update_fields.append("payment_proof")
 
         if payment_request.status == PaymentRequestStatus.REJECTED:
             payment_request.status = PaymentRequestStatus.PENDING

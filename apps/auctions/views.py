@@ -46,6 +46,19 @@ from apps.users.constants import ProfileType
 
 
 @extend_schema_view(
+    list=extend_schema(
+        tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter auctions by status (manager only).",
+            )
+        ],
+        responses={200: AuctionListSerializer(many=True)},
+    ),
     create=extend_schema(
         tags=["Auctions"],
         request=AuctionCreateSerializer,
@@ -134,7 +147,12 @@ class AuctionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter based on action"""
         if self.request.user.role == ProfileType.MANAGER:
-            return self._base_queryset()
+            qs = self._base_queryset()
+            if self.action == "list":
+                status_filter = self.request.query_params.get("status")
+                if status_filter:
+                    qs = qs.filter(status=status_filter)
+            return qs
         else:
             if self.action in [
                 "my_auctions",
