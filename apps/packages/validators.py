@@ -52,6 +52,4 @@ class SellerPackageValidator:
         try:
             return SellerProfile.objects.get(pk=profile.pk)
         except SellerProfile.DoesNotExist as exc:
-            raise ValidationError(
-                {"seller": "Seller profile was not found."}
-            ) from exc
+            raise ValidationError({"seller": "Seller profile was not found."}) from exc

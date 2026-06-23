@@ -171,9 +171,7 @@ class AuctionItem(BaseModel):
     - Pair → 1 item (representing both birds)
     """
 
-    auction = models.ForeignKey(
-        Auction, on_delete=models.CASCADE, related_name="items"
-    )
+    auction = models.ForeignKey(Auction, on_delete=models.CASCADE, related_name="items")
 
     # Bidding target: Primary subject
     bird = models.ForeignKey(
@@ -240,10 +238,7 @@ class AuctionItem(BaseModel):
 
     def is_active(self):
         """Check if item is actively accepting bids"""
-        return (
-            self.status == AuctionItemStatus.ACTIVE
-            and self.auction.is_active()
-        )
+        return self.status == AuctionItemStatus.ACTIVE and self.auction.is_active()
 
     def current_highest_bid(self):
         """Get the current highest bid for this item"""
@@ -252,9 +247,7 @@ class AuctionItem(BaseModel):
     def current_highest_bid_amount(self):
         """Get the current highest bid for this item"""
         return (
-            self.bids.order_by("-amount").first().amount
-            if self.bids.exists()
-            else None
+            self.bids.order_by("-amount").first().amount if self.bids.exists() else None
         )
 
     def current_highest_bidder(self):
@@ -277,9 +270,7 @@ class Bid(BaseModel):
     - Item is active
     """
 
-    item = models.ForeignKey(
-        AuctionItem, on_delete=models.CASCADE, related_name="bids"
-    )
+    item = models.ForeignKey(AuctionItem, on_delete=models.CASCADE, related_name="bids")
 
     bidder = models.ForeignKey(
         Profile, on_delete=models.CASCADE, related_name="bids_placed"

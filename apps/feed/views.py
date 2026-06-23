@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from django.db.models import Count, Q
 from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -23,6 +24,7 @@ from apps.general.authorizations import HasAppAccess
 from apps.general.permissions import IsNotManagerProfile
 from apps.users.constants import ProfileType
 from apps.users.models import SellerProfile
+from apps.orders.models import OrderItemStatus
 
 
 def active_profile(request):
@@ -198,12 +200,24 @@ class SellerDiscoveryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     def get_queryset(self):
         profile = active_profile(self.request)
-        queryset = SellerProfile.objects.filter(
-            is_active=True,
-            activated=True,
-            is_valid=True,
-            deleted__isnull=True,
-        ).select_related("user")
+        queryset = (
+            SellerProfile.objects.filter(
+                is_active=True,
+                activated=True,
+                is_valid=True,
+                deleted__isnull=True,
+            )
+            .select_related("user")
+            .annotate(
+                completed_orders_count=Count(
+                    "sold_order_items",
+                    filter=Q(
+                        sold_order_items__status=OrderItemStatus.COMPLETED,
+                        sold_order_items__deleted__isnull=True,
+                    ),
+                )
+            )
+        )
 
         if profile.type == ProfileType.SELLER:
             queryset = queryset.exclude(pk=profile.pk)
@@ -215,7 +229,12 @@ class SellerDiscoveryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             if blocked_seller_ids:
                 queryset = queryset.exclude(pk__in=blocked_seller_ids)
 
-        return queryset.order_by("-avg_rating", "-ratings_count", "id")
+        return queryset.order_by(
+            "-completed_orders_count",
+            "-avg_rating",
+            "-ratings_count",
+            "id",
+        )
 
 
 @extend_schema_view(

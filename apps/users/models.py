@@ -31,6 +31,8 @@ class Profile(BaseModel):
         default=True,
         help_text='will be "False" if profile is under punishment',
     )
+    national_id = models.CharField(max_length=50, null=True, blank=True)
+    address = models.TextField(blank=True)
 
     class Meta:
         unique_together = ("user", "type")
@@ -97,9 +99,7 @@ class Profile(BaseModel):
 
 
 class SellerProfile(Profile):
-    balance = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00
-    )
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     nickname = models.CharField(max_length=150, blank=True)
     recoded_voice = models.CharField(max_length=150, blank=True)
     country = models.CharField(max_length=2, choices=CountryOptions.choices)
@@ -113,9 +113,7 @@ class SellerProfile(Profile):
 
 
 class CustomerProfile(Profile):
-    balance = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00
-    )
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     cashback_balance = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -140,3 +138,62 @@ class ManagerProfile(Profile):
     def clean(self):
         super().clean()
         self.permissions = normalize_manager_permissions(self.permissions)
+
+
+class ProfileBalanceTransactionType(models.TextChoices):
+    MANAGER_ADJUSTMENT = "manager_adjustment", "Manager Adjustment"
+    SYSTEM_CREDIT = "system_credit", "System Credit"
+    SYSTEM_DEBIT = "system_debit", "System Debit"
+
+
+class ProfileBalanceTransaction(BaseModel):
+    profile = models.ForeignKey(
+        Profile,
+        on_delete=models.PROTECT,
+        related_name="balance_transactions",
+    )
+    transaction_type = models.CharField(
+        max_length=30,
+        choices=ProfileBalanceTransactionType.choices,
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2)
+    adjusted_by = models.ForeignKey(
+        ManagerProfile,
+        on_delete=models.SET_NULL,
+        related_name="profile_balance_adjustments",
+        null=True,
+        blank=True,
+    )
+    note = models.TextField(blank=True)
+    source_type = models.CharField(max_length=100, blank=True)
+    source_id = models.CharField(max_length=100, blank=True)
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created"]
+        indexes = [
+            models.Index(
+                fields=["profile", "-created"],
+                name="profile_bal_txn_prof_idx",
+            ),
+            models.Index(
+                fields=["transaction_type"],
+                name="profile_bal_txn_type_idx",
+            ),
+            models.Index(
+                fields=["source_type", "source_id"],
+                name="profile_bal_txn_src_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=~Q(amount=0),
+                name="profile_balance_txn_amount_not_zero_ck",
+            ),
+            models.CheckConstraint(
+                check=Q(balance_after__gte=0),
+                name="profile_balance_txn_after_gte_0_ck",
+            ),
+        ]

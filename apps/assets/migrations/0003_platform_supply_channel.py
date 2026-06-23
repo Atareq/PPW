@@ -11,9 +11,7 @@ def get_platform_seller_profile(apps):
     UserAccount = apps.get_model("authentication", "UserAccount")
     SellerProfile = apps.get_model("users", "SellerProfile")
 
-    user = UserAccount.objects.filter(
-        phone_number=PLATFORM_SUPPLY_PHONE_NUMBER
-    ).first()
+    user = UserAccount.objects.filter(phone_number=PLATFORM_SUPPLY_PHONE_NUMBER).first()
     if user is None:
         user = UserAccount.objects.create(
             username=PLATFORM_SUPPLY_USERNAME,

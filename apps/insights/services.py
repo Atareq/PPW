@@ -56,9 +56,7 @@ class SellerInsightEventService:
         try:
             seller_profile = SellerInsightEventService._resolve_seller(seller)
             if object_type is None:
-                object_type = SellerInsightEventService._default_object_type(
-                    event_type
-                )
+                object_type = SellerInsightEventService._default_object_type(event_type)
             if event_type not in SellerInsightEventType.values:
                 raise ValueError("Invalid seller insight event type.")
             if object_type not in SellerInsightObjectType.values:
@@ -152,9 +150,7 @@ class SellerInsightsService:
                 end_time__lte=now + timedelta(hours=ENDING_SOON_WINDOW_HOURS),
             ).count(),
             "total_bids_received": seller_bids.count(),
-            "unique_bidders_count": seller_bids.values("bidder_id")
-            .distinct()
-            .count(),
+            "unique_bidders_count": seller_bids.values("bidder_id").distinct().count(),
             "pending_payment_requests_count": PaymentRequest.objects.filter(
                 seller_id=seller.pk,
                 request_type=PaymentRequestType.AUCTION,
@@ -301,12 +297,10 @@ class SellerInsightsService:
                 "remaining_points": active_package.remaining_points,
             },
             "remaining_auction_quota": (
-                active_package.remaining_points
-                // active_package.package.auction_cost
+                active_package.remaining_points // active_package.package.auction_cost
             ),
             "remaining_market_quota": (
-                active_package.remaining_points
-                // active_package.package.product_cost
+                active_package.remaining_points // active_package.package.product_cost
             ),
             "promoted_auctions_count": 0,
             "promoted_market_items_count": 0,

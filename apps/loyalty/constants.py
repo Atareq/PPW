@@ -9,6 +9,24 @@ class PointTransactionType(models.TextChoices):
     EXPIRE = "expire", "Expire"
 
 
+class RewardSourceType(models.TextChoices):
+    ONBOARDING = "onboarding", "Onboarding"
+    LUCKY_WHEEL = "lucky_wheel", "Lucky Wheel"
+    AUCTION_COMPLETED = "auction_completed", "Auction Completed"
+    ORDER_COMPLETED_AMOUNT = "order_completed_amount", "Order Completed Amount"
+    ORDER_COMPLETED_BONUS = "order_completed_bonus", "Order Completed Bonus"
+    AUCTION_POSTED = "auction_posted", "Auction Posted"
+    RATING_RECEIVED = "rating_received", "Rating Received"
+    REFERRAL_ACCEPTED = "referral_accepted", "Referral Accepted"
+    FIRST_BID_COMPLETED = "first_bid_completed", "First Bid Completed"
+    SEASON_WINNER = "season_winner", "Season Winner"
+    CASHBACK_POINTS_PURCHASE = (
+        "cashback_points_purchase",
+        "Cashback Points Purchase",
+    )
+    MANAGER_ADJUSTMENT = "manager_adjustment", "Manager Adjustment"
+
+
 class BadgeType(models.TextChoices):
     FIRST_ORDER = "first_order", "First Order"
     POINTS_STARTER = "points_starter", "Points Starter"

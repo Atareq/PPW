@@ -39,11 +39,7 @@ class PackageService:
             seller_package = PackageService._get_locked_active_package(seller)
             if seller_package is None:
                 raise ValidationError(
-                    {
-                        "package": (
-                            "No active package available for this action."
-                        )
-                    }
+                    {"package": ("No active package available for this action.")}
                 )
 
             now = timezone.now()
@@ -59,11 +55,7 @@ class PackageService:
                 )
                 if seller_package.remaining_points < required_cost:
                     raise ValidationError(
-                        {
-                            "package": (
-                                "Insufficient package points for this action."
-                            )
-                        }
+                        {"package": ("Insufficient package points for this action.")}
                     )
                 return seller_package
 
@@ -81,11 +73,7 @@ class PackageService:
             seller_package = PackageService._get_locked_active_package(seller)
             if seller_package is None:
                 raise ValidationError(
-                    {
-                        "package": (
-                            "No active package available for this action."
-                        )
-                    }
+                    {"package": ("No active package available for this action.")}
                 )
 
             now = timezone.now()
@@ -110,9 +98,7 @@ class PackageService:
             PackageUsageType.AUCTION_CREATED,
             PackageUsageType.PRODUCT_CREATED,
         }:
-            raise ValidationError(
-                {"usage_type": "Unsupported package usage type."}
-            )
+            raise ValidationError({"usage_type": "Unsupported package usage type."})
 
     @staticmethod
     def _get_locked_active_package(seller):
@@ -170,17 +156,13 @@ class PackageService:
             return seller_package.package.auction_cost
         if usage_type == PackageUsageType.PRODUCT_CREATED:
             return seller_package.package.product_cost
-        raise ValidationError(
-            {"usage_type": "Unsupported package usage type."}
-        )
+        raise ValidationError({"usage_type": "Unsupported package usage type."})
 
     @staticmethod
     def _is_unusable(seller_package):
         return seller_package.remaining_points == 0 or (
-            seller_package.remaining_points
-            < seller_package.package.auction_cost
-            and seller_package.remaining_points
-            < seller_package.package.product_cost
+            seller_package.remaining_points < seller_package.package.auction_cost
+            and seller_package.remaining_points < seller_package.package.product_cost
         )
 
     @staticmethod
@@ -233,14 +215,10 @@ class SellerPackageService:
         try:
             package = Package.objects.get(pk=package_id)
         except Package.DoesNotExist as exc:
-            raise ValidationError(
-                {"package_id": "Package was not found."}
-            ) from exc
+            raise ValidationError({"package_id": "Package was not found."}) from exc
 
         if not package.is_available:
-            raise ValidationError(
-                {"package_id": "Package is not currently available."}
-            )
+            raise ValidationError({"package_id": "Package is not currently available."})
 
         if SellerPackage.objects.filter(
             owner=seller,
@@ -248,11 +226,7 @@ class SellerPackageService:
             status=SellerPackageStatus.PENDING,
         ).exists():
             raise ValidationError(
-                {
-                    "package_id": (
-                        "A pending request for this package already exists."
-                    )
-                }
+                {"package_id": ("A pending request for this package already exists.")}
             )
 
         return AssetSellerPackage.objects.create(
@@ -288,9 +262,7 @@ class SellerPackageService:
             now = timezone.now()
             if package.expires_at and package.expires_at <= now:
                 PackageService._mark_exhausted(package, now)
-                expired_error = NotFound(
-                    "Active seller package was not found."
-                )
+                expired_error = NotFound("Active seller package was not found.")
             else:
                 return package
 
@@ -313,9 +285,7 @@ class SellerPackageService:
             )
 
         if locked_package.activated:
-            raise ValidationError(
-                {"activated": "Seller package is already activated."}
-            )
+            raise ValidationError({"activated": "Seller package is already activated."})
 
         if not locked_package.package.is_available:
             raise ValidationError(

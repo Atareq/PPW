@@ -52,9 +52,7 @@ class AuthorizationService:
 
             if obj:
                 # Ownership checks are profile-scoped, not account-scoped.
-                return (
-                    getattr(obj, owner_field, None) == user.active_profile.id
-                )
+                return getattr(obj, owner_field, None) == user.active_profile.id
 
             return True
 

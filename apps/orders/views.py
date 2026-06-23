@@ -63,9 +63,7 @@ class OrderViewSet(
     def get_queryset(self):
         queryset = (
             Order.objects.select_related("owner", "owner__user")
-            .prefetch_related(
-                Prefetch("items", queryset=order_item_queryset())
-            )
+            .prefetch_related(Prefetch("items", queryset=order_item_queryset()))
             .order_by("-created")
         )
         active_profile = self.request.user.active_profile
@@ -108,9 +106,7 @@ class ActiveCartViewSet(viewsets.GenericViewSet):
         responses={200: CartSerializer},
     )
     def retrieve(self, request):
-        cart = CartService.get_or_create_active_cart(
-            request.user.active_profile
-        )
+        cart = CartService.get_or_create_active_cart(request.user.active_profile)
         return Response(CartSerializer(cart).data, status=status.HTTP_200_OK)
 
     @extend_schema(
@@ -129,9 +125,7 @@ class ActiveCartViewSet(viewsets.GenericViewSet):
             serializer.validated_data["asset_id"],
             serializer.validated_data["quantity"],
         )
-        return Response(
-            CartSerializer(cart).data, status=status.HTTP_201_CREATED
-        )
+        return Response(CartSerializer(cart).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         tags=["Cart"],
@@ -258,7 +252,5 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def _get_active_seller_profile(self):
         active_profile = self.request.user.active_profile
         if active_profile.type != ProfileType.SELLER:
-            raise PermissionDenied(
-                "Only seller profiles can manage order items."
-            )
+            raise PermissionDenied("Only seller profiles can manage order items.")
         return active_profile

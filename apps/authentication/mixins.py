@@ -45,9 +45,7 @@ class PhoneValidationMixin:
         region = attrs.get("region")
 
         if not region:
-            raise serializers.ValidationError(
-                {"region": "Region is required."}
-            )
+            raise serializers.ValidationError({"region": "Region is required."})
 
         region = str(region).strip().upper()
 

@@ -53,9 +53,7 @@ class NotificationService:
         idempotency_key = normalize_optional_string(idempotency_key)
         if idempotency_key is not None:
             existing = (
-                notification_queryset()
-                .filter(idempotency_key=idempotency_key)
-                .first()
+                notification_queryset().filter(idempotency_key=idempotency_key).first()
             )
             if existing is not None:
                 return existing
@@ -77,9 +75,7 @@ class NotificationService:
             if idempotency_key is None:
                 raise
             existing = (
-                notification_queryset()
-                .filter(idempotency_key=idempotency_key)
-                .first()
+                notification_queryset().filter(idempotency_key=idempotency_key).first()
             )
             if existing is not None:
                 return existing

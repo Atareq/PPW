@@ -38,9 +38,7 @@ class PurchaseRuleValidator:
         try:
             return SellerProfile.objects.get(pk=profile.pk)
         except SellerProfile.DoesNotExist as exc:
-            raise ValidationError(
-                {"seller": "Seller profile was not found."}
-            ) from exc
+            raise ValidationError({"seller": "Seller profile was not found."}) from exc
 
     @staticmethod
     def get_asset(asset_id, *, lock=False):
@@ -51,9 +49,7 @@ class PurchaseRuleValidator:
         try:
             return queryset.get(pk=asset_id)
         except Asset.DoesNotExist as exc:
-            raise ValidationError(
-                {"asset_id": "Asset was not found."}
-            ) from exc
+            raise ValidationError({"asset_id": "Asset was not found."}) from exc
 
     @staticmethod
     def get_seller_for_asset(asset):
@@ -82,9 +78,7 @@ class PurchaseRuleValidator:
     @staticmethod
     def validate_asset_available(asset):
         if asset.status != AssetStatus.AVAILABLE:
-            raise ValidationError(
-                {"items": f"Asset #{asset.pk} is not available."}
-            )
+            raise ValidationError({"items": f"Asset #{asset.pk} is not available."})
 
         if not asset.is_market_listed:
             raise ValidationError(
@@ -115,9 +109,7 @@ class PurchaseRuleValidator:
     @staticmethod
     def validate_quantity(asset, quantity):
         if quantity < 1:
-            raise ValidationError(
-                {"quantity": "Quantity must be greater than 0."}
-            )
+            raise ValidationError({"quantity": "Quantity must be greater than 0."})
 
         if asset.category == AssetCategory.BIRD and quantity != 1:
             raise ValidationError(
@@ -197,9 +189,7 @@ class OrderCreationValidator:
 
         missing_ids = set(asset_ids) - set(self.asset_map)
         if missing_ids:
-            raise ValidationError(
-                {"items": "One or more assets were not found."}
-            )
+            raise ValidationError({"items": "One or more assets were not found."})
 
     def _retrieve_sellers(self):
         seller_ids = {

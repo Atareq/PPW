@@ -175,9 +175,7 @@ class ManagerSellerPackageViewSet(
     def partial_update(self, request, *args, **kwargs):
         active_profile = request.user.active_profile
         if active_profile.type != ProfileType.MANAGER:
-            raise PermissionDenied(
-                "Only manager profiles can update seller packages."
-            )
+            raise PermissionDenied("Only manager profiles can update seller packages.")
 
         seller_package = self.get_object()
         serializer = SellerPackageStatusTransitionSerializer(data=request.data)
@@ -185,13 +183,9 @@ class ManagerSellerPackageViewSet(
         next_status = serializer.validated_data["status"]
 
         if next_status == SellerPackageStatus.ACTIVE:
-            seller_package = SellerPackageService.activate_package(
-                seller_package
-            )
+            seller_package = SellerPackageService.activate_package(seller_package)
         elif next_status == SellerPackageStatus.CANCELLED:
-            seller_package = SellerPackageService.cancel_package(
-                seller_package
-            )
+            seller_package = SellerPackageService.cancel_package(seller_package)
 
         response_serializer = SellerPackageSerializer(
             seller_package,

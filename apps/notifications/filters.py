@@ -10,4 +10,3 @@ class NotificationFilter(django_filters.FilterSet):
     class Meta:
         model = Notification
         fields = ["type", "is_read"]
-

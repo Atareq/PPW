@@ -39,7 +39,6 @@ class PedigreeDocument(OwnerBaseModel):
     extracted_boxes = models.JSONField(default=list, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
-
     class Meta:
         ordering = ["-created"]
         indexes = [

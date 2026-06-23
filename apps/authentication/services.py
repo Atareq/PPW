@@ -16,9 +16,7 @@ def switch_user_profile(user, new_profile_type: str) -> tuple[bool, str]:
             return False, None
 
         if user.role != new_profile_type:
-            Profile.objects.filter(user=user, is_active=True).update(
-                is_active=False
-            )
+            Profile.objects.filter(user=user, is_active=True).update(is_active=False)
             profile = Profile.objects.filter(
                 user=user,
                 type=new_profile_type,

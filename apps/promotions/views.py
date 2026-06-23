@@ -11,6 +11,7 @@ from apps.promotions.models import (
     CashbackOffer,
     CashbackTransaction,
     DiscountOffer,
+    OfferTriggerType,
 )
 from apps.promotions.serializers import (
     CashbackAdjustmentSerializer,
@@ -37,15 +38,12 @@ def cashback_offer_queryset():
 
 
 def cashback_transaction_queryset():
-    return (
-        CashbackTransaction.objects.select_related(
-            "customer",
-            "cashback_offer",
-            "order_item",
-            "adjusted_by",
-        )
-        .order_by("-created")
-    )
+    return CashbackTransaction.objects.select_related(
+        "customer",
+        "cashback_offer",
+        "order_item",
+        "adjusted_by",
+    ).order_by("-created")
 
 
 class CurrentDiscountOfferViewSet(
@@ -58,7 +56,10 @@ class CurrentDiscountOfferViewSet(
     queryset = DiscountOffer.objects.all()
 
     def get_queryset(self):
-        return discount_offer_queryset().filter(is_active=True)
+        return discount_offer_queryset().filter(
+            is_active=True,
+            trigger_type=OfferTriggerType.GLOBAL,
+        )
 
 
 class CurrentCashbackOfferViewSet(
@@ -71,7 +72,10 @@ class CurrentCashbackOfferViewSet(
     queryset = CashbackOffer.objects.all()
 
     def get_queryset(self):
-        return cashback_offer_queryset().filter(is_active=True)
+        return cashback_offer_queryset().filter(
+            is_active=True,
+            trigger_type=OfferTriggerType.GLOBAL,
+        )
 
 
 @extend_schema_view(
@@ -96,7 +100,13 @@ class AdminDiscountOfferViewSet(
     serializer_class = DiscountOfferSerializer
     queryset = DiscountOffer.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ["is_active", "target_type", "category", "asset"]
+    filterset_fields = [
+        "is_active",
+        "trigger_type",
+        "target_type",
+        "category",
+        "asset",
+    ]
     ordering_fields = ["created", "modified", "priority", "value"]
     ordering = ["-created"]
 
@@ -129,7 +139,13 @@ class AdminCashbackOfferViewSet(
     serializer_class = CashbackOfferSerializer
     queryset = CashbackOffer.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ["is_active", "target_type", "category", "asset"]
+    filterset_fields = [
+        "is_active",
+        "trigger_type",
+        "target_type",
+        "category",
+        "asset",
+    ]
     ordering_fields = ["created", "modified", "priority", "value"]
     ordering = ["-created"]
 
@@ -233,9 +249,7 @@ class CashbackBalanceViewSet(viewsets.GenericViewSet):
             return self._balance_response(customer)
 
         if active_profile.type != ProfileType.CUSTOMER:
-            raise PermissionDenied(
-                "Only customer profiles can view cashback balance."
-            )
+            raise PermissionDenied("Only customer profiles can view cashback balance.")
         customer = CustomerProfile.objects.get(pk=active_profile.pk)
         return self._balance_response(customer)
 

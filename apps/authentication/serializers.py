@@ -23,9 +23,7 @@ class CustomerTokenSerializer(PhoneValidationMixin, TokenObtainPairSerializer):
         return build_token_for_user(user)
 
 
-class CustomerRegisterSerializer(
-    PhoneValidationMixin, serializers.ModelSerializer
-):
+class CustomerRegisterSerializer(PhoneValidationMixin, serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     customer_profile = CustomerProfileMobileSerializer()
     region = serializers.CharField(max_length=2, read_only=True)
@@ -57,9 +55,7 @@ class CustomerRegisterSerializer(
         with transaction.atomic():
             user = UserAccount.objects.create_user(**validated_data)
             customer_profile = CustomerProfile.objects.create(
-                user=user,
-                is_active=True,  # The user's first profile
-                **profile_data
+                user=user, is_active=True, **profile_data  # The user's first profile
             )
             from apps.loyalty.constants import RewardEventType
             from apps.loyalty.reward_engine import RewardEngine
@@ -69,13 +65,14 @@ class CustomerRegisterSerializer(
                 actor=customer_profile,
                 profile=customer_profile,
             )
+            from apps.lucky_wheel.services import LuckyWheelGrantService
+
+            LuckyWheelGrantService.grant_onboarding_attempt(customer_profile)
 
         return user
 
 
-class ManagerRegisterSerializer(
-    PhoneValidationMixin, serializers.ModelSerializer
-):
+class ManagerRegisterSerializer(PhoneValidationMixin, serializers.ModelSerializer):
     manager_profile = ManagerProfileadminSerializer()
     region = serializers.CharField(max_length=2)
 
@@ -106,9 +103,7 @@ class ManagerRegisterSerializer(
         permissions = profile_data.pop("permissions", [])
 
         with transaction.atomic():
-            user = UserAccount.objects.create_user(
-                **validated_data, is_staff=True
-            )
+            user = UserAccount.objects.create_user(**validated_data, is_staff=True)
             ManagerProfile.objects.create(
                 user=user,
                 is_active=True,  # Already made by admins

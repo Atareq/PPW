@@ -259,9 +259,7 @@ class OrderItem(BaseModel):
     def save(self, *args, **kwargs):
         self.gross_total = self.quantity * self.unit_price_snapshot
         self.total_price = (
-            self.gross_total
-            - self.discount_amount
-            - self.cashback_redeemed_amount
+            self.gross_total - self.discount_amount - self.cashback_redeemed_amount
         )
         if self.total_price < 0:
             self.total_price = Decimal("0.00")

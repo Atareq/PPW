@@ -9,7 +9,12 @@ from apps.general.authorizations import HasAppAccess
 from apps.general.permissions import IsSuperUser
 from apps.users.constants import ProfileType
 from apps.users.manager_permissions import get_manager_permission_groups
-from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
+from apps.users.models import (
+    CustomerProfile,
+    ManagerProfile,
+    ProfileBalanceTransaction,
+    SellerProfile,
+)
 from apps.users.serializers import (
     CustomerProfileAdminSerializer,
     CustomerProfileMobileSerializer,
@@ -17,6 +22,8 @@ from apps.users.serializers import (
     ManagerAdminUpdateSerializer,
     ManagerPermissionUpdateSerializer,
     ManagerProfileAdminDetailSerializer,
+    ProfileBalanceAdjustmentSerializer,
+    ProfileBalanceTransactionSerializer,
     SellerProfileAdminSerializer,
     SellerProfileMobileSerializer,
 )
@@ -26,7 +33,7 @@ class SellerProfileAdminViewSet(viewsets.ModelViewSet):
     """Admin/staff CRUD for seller profile moderation and correction."""
 
     serializer_class = SellerProfileAdminSerializer
-    queryset = SellerProfile.objects.select_related('user').all().order_by("-created")
+    queryset = SellerProfile.objects.select_related("user").all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated, HasAppAccess]
     manager_permission_map = {
         "list": "users.sellers.list",
@@ -40,7 +47,7 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
     """Admin/staff CRUD for customer profile moderation and correction."""
 
     serializer_class = CustomerProfileAdminSerializer
-    queryset = CustomerProfile.objects.select_related('user').all().order_by("-created")
+    queryset = CustomerProfile.objects.select_related("user").all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated, HasAppAccess]
     manager_permission_map = {
         "list": "users.customers.list",
@@ -53,9 +60,7 @@ class CustomerProfileAdminViewSet(viewsets.ModelViewSet):
 class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
     """Manager account reads with superuser-only mutation."""
 
-    queryset = ManagerProfile.objects.select_related("user").all().order_by(
-        "-created"
-    )
+    queryset = ManagerProfile.objects.select_related("user").all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated, HasAppAccess]
     manager_permission_map = {
         "list": "managers.list",
@@ -147,6 +152,25 @@ class ManagerPermissionUpdateViewSet(viewsets.GenericViewSet):
         )
 
 
+class ProfileBalanceAdjustmentViewSet(viewsets.GenericViewSet):
+    permission_classes = [permissions.IsAuthenticated, HasAppAccess]
+    manager_permission_map = {"create": "profile_balances.adjust"}
+    serializer_class = ProfileBalanceAdjustmentSerializer
+    queryset = ProfileBalanceTransaction.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        balance_transaction = serializer.save()
+        return Response(
+            ProfileBalanceTransactionSerializer(balance_transaction).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class SellerProfileMobileViewSet(viewsets.ModelViewSet):
     """User-facing seller profile flow; creation starts inactive for review."""
 
@@ -157,7 +181,9 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         user = request.user
-        if user.profiles.filter(type=ProfileType.MANAGER, deleted__isnull=True).exists():
+        if user.profiles.filter(
+            type=ProfileType.MANAGER, deleted__isnull=True
+        ).exists():
             return Response(
                 {"message": "Manager accounts cannot create seller profiles"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -185,15 +211,20 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
             actor=seller_profile,
             profile=seller_profile,
         )
+        from apps.lucky_wheel.services import LuckyWheelGrantService
+
+        LuckyWheelGrantService.grant_onboarding_attempt(seller_profile)
         return Response(
             {"message": "Seller profile created successfully"},
             status=status.HTTP_201_CREATED,
         )
 
     def get_queryset(self):
-        return SellerProfile.objects.select_related('user').filter(
-            user=self.request.user, deleted__isnull=True, is_active=True
-        ).order_by("-created")
+        return (
+            SellerProfile.objects.select_related("user")
+            .filter(user=self.request.user, deleted__isnull=True, is_active=True)
+            .order_by("-created")
+        )
 
     def get_object(self):
         if self.get_queryset():
@@ -204,9 +235,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
         """Soft-delete the profile and move the user away from it when active."""
 
         if instance.is_active:
-            other_profile = instance.user.profiles.exclude(
-                id=instance.id
-            ).first()
+            other_profile = instance.user.profiles.exclude(id=instance.id).first()
             if other_profile:
                 switch_user_profile(instance.user, other_profile.type)
             instance.is_active = False
@@ -230,20 +259,33 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
                 {"message": "Manager accounts cannot create customer profiles"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        customer_profile = self.get_queryset().first()
+        if customer_profile is not None:
+            from apps.loyalty.constants import RewardEventType
+            from apps.loyalty.reward_engine import RewardEngine
+            from apps.lucky_wheel.services import LuckyWheelGrantService
+
+            RewardEngine.handle_event(
+                RewardEventType.CUSTOMER_PROFILE_CREATED,
+                actor=customer_profile,
+                profile=customer_profile,
+            )
+            LuckyWheelGrantService.grant_onboarding_attempt(customer_profile)
+        return response
 
     def get_queryset(self):
-        return CustomerProfile.objects.select_related('user').filter(
-            user=self.request.user, deleted__isnull=True
-        ).order_by("-created")
+        return (
+            CustomerProfile.objects.select_related("user")
+            .filter(user=self.request.user, deleted__isnull=True)
+            .order_by("-created")
+        )
 
     def perform_destroy(self, instance):
         """Soft-delete the profile and move the user away from it when active."""
 
         if instance.is_active:
-            other_profile = instance.user.profiles.exclude(
-                id=instance.id
-            ).first()
+            other_profile = instance.user.profiles.exclude(id=instance.id).first()
             if other_profile:
                 switch_user_profile(instance.user, other_profile.type)
             instance.is_active = False

@@ -4,6 +4,7 @@ from apps.promotions.models import (
     CashbackOffer,
     CashbackTransaction,
     DiscountOffer,
+    UserPromotionGrant,
 )
 from apps.promotions.services import CashbackService
 from apps.users.models import CustomerProfile
@@ -24,6 +25,7 @@ class DiscountOfferSerializer(serializers.ModelSerializer):
             "asset",
             "category",
             "minimum_order_price",
+            "trigger_type",
             "is_active",
             "priority",
             "created_by_id",
@@ -54,6 +56,7 @@ class CashbackOfferSerializer(serializers.ModelSerializer):
             "asset",
             "category",
             "minimum_order_price",
+            "trigger_type",
             "allowed_redemption_amount",
             "is_active",
             "priority",
@@ -94,6 +97,44 @@ class CashbackTransactionSerializer(serializers.ModelSerializer):
             "adjusted_by_id",
             "note",
             "idempotency_key",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+
+class UserPromotionGrantSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(read_only=True)
+    profile_id = serializers.IntegerField(read_only=True, allow_null=True)
+    discount_offer_title = serializers.CharField(
+        source="discount_offer.title",
+        read_only=True,
+        allow_null=True,
+    )
+    cashback_offer_title = serializers.CharField(
+        source="cashback_offer.title",
+        read_only=True,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = UserPromotionGrant
+        fields = [
+            "id",
+            "user_id",
+            "profile_id",
+            "grant_type",
+            "discount_offer",
+            "discount_offer_title",
+            "cashback_offer",
+            "cashback_offer_title",
+            "source_type",
+            "source_id",
+            "status",
+            "expires_at",
+            "redeemed_at",
+            "order_item",
+            "metadata",
             "created",
             "modified",
         ]

@@ -103,9 +103,7 @@ class AuctionPaymentRequest(PaymentRequest):
     def save(self, *args, **kwargs):
         self.request_type = PaymentRequestType.AUCTION
         if kwargs.get("update_fields") is not None:
-            kwargs["update_fields"] = set(kwargs["update_fields"]) | {
-                "request_type"
-            }
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"request_type"}
         super().save(*args, **kwargs)
 
 
@@ -119,9 +117,7 @@ class MarketPaymentRequest(PaymentRequest):
     def save(self, *args, **kwargs):
         self.request_type = PaymentRequestType.MARKET
         if kwargs.get("update_fields") is not None:
-            kwargs["update_fields"] = set(kwargs["update_fields"]) | {
-                "request_type"
-            }
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"request_type"}
         super().save(*args, **kwargs)
 
 

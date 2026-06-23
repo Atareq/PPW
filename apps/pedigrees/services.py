@@ -11,9 +11,9 @@ from PIL import Image
 import pytesseract
 from PIL import Image, ImageOps, ImageEnhance
 
+
 class PedigreeExtractionError(ValueError):
     pass
-
 
 
 class PedigreeDocumentService:
@@ -56,7 +56,8 @@ class PedigreeDocumentService:
             )
 
         boxes_with_lines = PedigreeBoxOCRService().extract_lines_for_boxes(
-            document.original_file,boxes)
+            document.original_file, boxes
+        )
         document.extracted_boxes = boxes_with_lines
         document.status = PedigreeDocumentStatus.PROCESSED
         document.processing_error = ""
@@ -66,10 +67,9 @@ class PedigreeDocumentService:
                 "status",
                 "processing_error",
                 "modified",
-            ]   
+            ]
         )
         return PedigreeDocumentService.get_document(document.pk)
-
 
     @staticmethod
     @transaction.atomic
@@ -143,7 +143,6 @@ class PedigreeDocumentService:
             raise NotFound("Pedigree document was not found.") from exc
 
 
-
 class PedigreeBoxOCRService:
     def extract_lines_for_boxes(self, image_file, boxes):
         image = self._load_image(image_file)
@@ -204,11 +203,8 @@ class PedigreeBoxOCRService:
         return crop
 
     def _text_to_lines(self, text):
-        return [
-            line.strip()
-            for line in text.splitlines()
-            if line.strip()
-        ]
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
 
 def pedigree_document_queryset():
     return PedigreeDocument.objects.select_related(
@@ -216,8 +212,6 @@ def pedigree_document_queryset():
         "owner",
         "bird",
     ).order_by("-created")
-
-
 
 
 class PedigreeImageBoxDetectionService:

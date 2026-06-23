@@ -105,9 +105,7 @@ class SellerCustomerBlock(BaseModel):
         errors = {}
         if self.customer_id and self.seller_id:
             if self.customer.user_id == self.seller.user_id:
-                errors["seller"] = (
-                    "Customer and seller must belong to different users."
-                )
+                errors["seller"] = "Customer and seller must belong to different users."
         if self.blocked_by_id and self.customer_id and self.seller_id:
             if self.blocked_by_id not in {self.customer_id, self.seller_id}:
                 errors["blocked_by"] = (

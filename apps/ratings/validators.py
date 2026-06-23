@@ -33,9 +33,7 @@ class RatingValidator:
         try:
             return SellerProfile.objects.get(pk=seller_id)
         except SellerProfile.DoesNotExist as exc:
-            raise ValidationError(
-                {"seller": "Seller profile was not found."}
-            ) from exc
+            raise ValidationError({"seller": "Seller profile was not found."}) from exc
 
     @staticmethod
     def validate_asset_completed_order(customer_profile, asset):
@@ -46,12 +44,7 @@ class RatingValidator:
         ).exists()
         if not has_completed_item:
             raise ValidationError(
-                {
-                    "asset": (
-                        "A completed order item is required to rate this "
-                        "asset."
-                    )
-                }
+                {"asset": ("A completed order item is required to rate this " "asset.")}
             )
 
     @staticmethod
@@ -65,8 +58,7 @@ class RatingValidator:
             raise ValidationError(
                 {
                     "seller": (
-                        "A completed order item is required to rate this "
-                        "seller."
+                        "A completed order item is required to rate this " "seller."
                     )
                 }
             )
@@ -77,9 +69,7 @@ class RatingValidator:
             owner=customer_profile,
             asset=asset,
         ).exists():
-            raise ValidationError(
-                {"asset": "You have already rated this asset."}
-            )
+            raise ValidationError({"asset": "You have already rated this asset."})
 
     @staticmethod
     def validate_duplicate_seller_rating(customer_profile, seller):
@@ -87,9 +77,7 @@ class RatingValidator:
             owner=customer_profile,
             seller=seller,
         ).exists():
-            raise ValidationError(
-                {"seller": "You have already rated this seller."}
-            )
+            raise ValidationError({"seller": "You have already rated this seller."})
 
 
 class CommentValidator:
@@ -105,10 +93,5 @@ class CommentValidator:
         ).exists()
         if recent_comment_exists:
             raise ValidationError(
-                {
-                    "detail": (
-                        "You must wait before commenting again on this "
-                        "target."
-                    )
-                }
+                {"detail": ("You must wait before commenting again on this " "target.")}
             )

@@ -467,6 +467,9 @@ class TestPeopleYouMayKnow:
             "ratings_count": 0,
             "avatar_url": "",
             "is_followed": False,
+            "completed_orders_count": 0,
+            "seller_level": "basic",
+            "seller_level_label": "Basic",
         }
         assert "user" not in response.data[0]
         assert "balance" not in response.data[0]

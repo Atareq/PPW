@@ -174,9 +174,7 @@ class PaymentRequestService:
         """Update buyer note; rejected requests are resubmitted as pending."""
 
         PaymentRequestValidator.ensure_customer(buyer_profile)
-        payment_request = PaymentRequestService._get_locked_request(
-            payment_request_id
-        )
+        payment_request = PaymentRequestService._get_locked_request(payment_request_id)
 
         if payment_request.buyer_id != buyer_profile.pk:
             raise NotFound("Payment request was not found.")
@@ -217,9 +215,7 @@ class PaymentRequestService:
         """Finalize a pending request; market and auction sources differ."""
 
         PaymentRequestValidator.ensure_seller(seller_profile)
-        payment_request = PaymentRequestService._get_locked_request(
-            payment_request_id
-        )
+        payment_request = PaymentRequestService._get_locked_request(payment_request_id)
 
         if payment_request.seller_id != seller_profile.pk:
             raise NotFound("Payment request was not found.")
@@ -268,9 +264,7 @@ class PaymentRequestService:
         """Reject a pending request without mutating stock, ownership, or order state."""
 
         PaymentRequestValidator.ensure_seller(seller_profile)
-        payment_request = PaymentRequestService._get_locked_request(
-            payment_request_id
-        )
+        payment_request = PaymentRequestService._get_locked_request(payment_request_id)
 
         if payment_request.seller_id != seller_profile.pk:
             raise NotFound("Payment request was not found.")
@@ -419,9 +413,7 @@ class PaymentRequestService:
 
         locked_assets = {
             asset.pk: asset
-            for asset in Asset.all_objects.select_for_update().filter(
-                pk__in=assets
-            )
+            for asset in Asset.all_objects.select_for_update().filter(pk__in=assets)
         }
         for asset_id in assets:
             PaymentRequestService._transfer_asset_owner(
@@ -435,9 +427,7 @@ class PaymentRequestService:
         try:
             return Asset.all_objects.select_for_update().get(pk=asset_id)
         except Asset.DoesNotExist as exc:
-            raise ValidationError(
-                {"asset": "Asset is no longer available."}
-            ) from exc
+            raise ValidationError({"asset": "Asset is no longer available."}) from exc
 
     @staticmethod
     def _reduce_market_stock(asset, quantity):

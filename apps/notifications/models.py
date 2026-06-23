@@ -97,10 +97,7 @@ class Notification(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["idempotency_key"],
-                condition=(
-                    Q(idempotency_key__isnull=False)
-                    & ~Q(idempotency_key="")
-                ),
+                condition=(Q(idempotency_key__isnull=False) & ~Q(idempotency_key="")),
                 name="notifications_unique_idempotency_key",
             ),
         ]

@@ -31,9 +31,7 @@ class CreateListViewSet(
 
     def get_serializer_class(self):
         if self.action == "create":
-            return self._get_required_serializer_class(
-                "create_serializer_class"
-            )
+            return self._get_required_serializer_class("create_serializer_class")
         return self._get_required_serializer_class("list_serializer_class")
 
     def create(self, request, *args, **kwargs):

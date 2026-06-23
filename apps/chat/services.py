@@ -61,11 +61,7 @@ class ChatService:
 
         if sender.pk == receiver.pk:
             raise ValidationError(
-                {
-                    "receiver_profile_id": (
-                        "Cannot create a conversation with yourself."
-                    )
-                }
+                {"receiver_profile_id": ("Cannot create a conversation with yourself.")}
             )
 
         if sender.user_id == receiver.user_id:
@@ -97,9 +93,12 @@ class ChatService:
         if existing is not None:
             return existing
 
-        if sender.type == ProfileType.CUSTOMER and not SellerFollowService.is_following(
-            customer,
-            seller,
+        if (
+            sender.type == ProfileType.CUSTOMER
+            and not SellerFollowService.is_following(
+                customer,
+                seller,
+            )
         ):
             raise ValidationError(
                 {
@@ -219,8 +218,7 @@ class ChatService:
             raise ValidationError(
                 {
                     "receiver_profile_id": (
-                        "Conversations must be between one customer and one "
-                        "seller."
+                        "Conversations must be between one customer and one " "seller."
                     )
                 }
             )

@@ -8,18 +8,12 @@ from apps.general.models import BaseModel
 
 class Race(BaseModel):
     title = models.CharField(max_length=255)
-    season_year = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)]
-    )
+    season_year = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     station_name = models.CharField(max_length=255)
     release_datetime = models.DateTimeField()
     weather_condition = models.TextField(blank=True)
-    total_birds = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)]
-    )
-    competitors_count = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)]
-    )
+    total_birds = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    competitors_count = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     planned_distance_km = models.DecimalField(
         max_digits=10,
         decimal_places=3,

@@ -115,9 +115,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    @extend_schema_field(
-        serializers.DecimalField(max_digits=10, decimal_places=2)
-    )
+    @extend_schema_field(serializers.DecimalField(max_digits=10, decimal_places=2))
     def get_total(self, obj):
         return format_money(obj.quantity * obj.unit_price_snapshot)
 
@@ -140,15 +138,10 @@ class CartSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    @extend_schema_field(
-        serializers.DecimalField(max_digits=10, decimal_places=2)
-    )
+    @extend_schema_field(serializers.DecimalField(max_digits=10, decimal_places=2))
     def get_subtotal(self, obj):
         subtotal = sum(
-            (
-                item.quantity * item.unit_price_snapshot
-                for item in obj.items.all()
-            ),
+            (item.quantity * item.unit_price_snapshot for item in obj.items.all()),
             Decimal("0.00"),
         )
         return format_money(subtotal)
@@ -281,8 +274,6 @@ class OrderSummarySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    @extend_schema_field(
-        serializers.ListField(child=serializers.IntegerField())
-    )
+    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_sellers_involved(self, obj):
         return sorted({item.seller_id for item in obj.items.all()})

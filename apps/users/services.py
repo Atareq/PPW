@@ -1,6 +1,10 @@
-from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
-from rest_framework.exceptions import PermissionDenied
+from decimal import Decimal, ROUND_HALF_UP
 
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.db import transaction
+from rest_framework.exceptions import PermissionDenied, ValidationError
+
+from apps.loyalty.constants import RewardSourceType
 from apps.users.constants import ProfileType
 from apps.users.manager_permissions import (
     get_manager_permission_codes,
@@ -8,6 +12,76 @@ from apps.users.manager_permissions import (
     normalize_manager_permissions,
     validate_manager_permissions,
 )
+from apps.users.models import (
+    CustomerProfile,
+    ManagerProfile,
+    Profile,
+    ProfileBalanceTransaction,
+    ProfileBalanceTransactionType,
+    SellerProfile,
+)
+
+
+MONEY_QUANT = Decimal("0.01")
+
+
+def quantize_money(value):
+    return Decimal(value).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
+class ProfileBalanceService:
+    @staticmethod
+    @transaction.atomic
+    def manager_adjust(*, profile, amount, manager_profile, note, idempotency_key):
+        if manager_profile.type != ProfileType.MANAGER:
+            raise PermissionDenied("Only manager profiles can adjust balances.")
+        idempotency_key = str(idempotency_key or "").strip()
+        if not idempotency_key:
+            raise ValidationError({"idempotency_key": "This field is required."})
+
+        amount = quantize_money(amount)
+        if amount == 0:
+            raise ValidationError({"amount": "Adjustment amount cannot be zero."})
+
+        existing = ProfileBalanceTransaction.objects.filter(
+            idempotency_key=idempotency_key
+        ).first()
+        if existing is not None:
+            return existing
+
+        base_profile = Profile.objects.select_for_update().get(pk=profile.pk)
+        if base_profile.type == ProfileType.CUSTOMER:
+            concrete_profile = CustomerProfile.objects.select_for_update().get(
+                pk=base_profile.pk
+            )
+        elif base_profile.type == ProfileType.SELLER:
+            concrete_profile = SellerProfile.objects.select_for_update().get(
+                pk=base_profile.pk
+            )
+        else:
+            raise ValidationError(
+                {"profile_id": "Only customer and seller balances are adjustable."}
+            )
+
+        next_balance = quantize_money(concrete_profile.balance + amount)
+        if next_balance < 0:
+            raise ValidationError(
+                {"amount": "Adjustment would make profile balance negative."}
+            )
+
+        concrete_profile.balance = next_balance
+        concrete_profile.save(update_fields=["balance", "modified"])
+        return ProfileBalanceTransaction.objects.create(
+            profile=base_profile,
+            transaction_type=ProfileBalanceTransactionType.MANAGER_ADJUSTMENT,
+            amount=amount,
+            balance_after=next_balance,
+            adjusted_by=ManagerProfile.objects.get(pk=manager_profile.pk),
+            note=note or "",
+            source_type=RewardSourceType.MANAGER_ADJUSTMENT,
+            idempotency_key=idempotency_key,
+            metadata={},
+        )
 
 
 class ManagerPermissionService:

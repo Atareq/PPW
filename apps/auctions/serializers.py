@@ -32,9 +32,7 @@ class BidSerializer(serializers.ModelSerializer):
     """Bid display serializer"""
 
     is_winning_bid = serializers.BooleanField(read_only=True)
-    bidder_username = serializers.CharField(
-        source="bidder.username", read_only=True
-    )
+    bidder_username = serializers.CharField(source="bidder.username", read_only=True)
 
     class Meta:
         model = Bid
@@ -64,9 +62,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
         source="winner.username", read_only=True, allow_null=True
     )
     is_active = serializers.SerializerMethodField()
-    auction_title = serializers.CharField(
-        source="auction.title", read_only=True
-    )
+    auction_title = serializers.CharField(source="auction.title", read_only=True)
     auction_id = serializers.IntegerField(source="auction.id", read_only=True)
     winner_payment_request_id = serializers.SerializerMethodField()
 
@@ -271,9 +267,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
         source="owner.sellerprofile.nickname", read_only=True
     )
     item_count = serializers.SerializerMethodField()
-    status_display = serializers.CharField(
-        source="get_status_display", read_only=True
-    )
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
     auction_type_display = serializers.CharField(
         source="get_auction_type_display", read_only=True
     )
@@ -485,18 +479,14 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
         if data.get("auto_extend_enabled"):
             if not data.get("auto_extend_minutes"):
                 raise serializers.ValidationError(
-                    {
-                        "auto_extend_minutes": "Required when auto_extend_enabled=True"
-                    }
+                    {"auto_extend_minutes": "Required when auto_extend_enabled=True"}
                 )
 
         # ===== DEPOSIT VALIDATION =====
         if data.get("deposit_required"):
             if not data.get("payment_deadline_days"):
                 raise serializers.ValidationError(
-                    {
-                        "payment_deadline_days": "Required when deposit_required=True"
-                    }
+                    {"payment_deadline_days": "Required when deposit_required=True"}
                 )
 
         if data.get("buy_now_enabled"):

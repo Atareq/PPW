@@ -14,6 +14,22 @@ from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
 from apps.loyalty.validators import BadgeValidator, PointValidator
 
 
+class Level:
+    def __init__(self, code, label):
+        self.code = code
+        self.label = label
+
+
+LEVEL_THRESHOLDS = [
+    (10000, Level("legendary", "Legendary")),
+    (5000, Level("elite", "Elite")),
+    (1000, Level("golden", "Golden")),
+    (500, Level("reliable", "Reliable")),
+    (100, Level("verified", "Verified")),
+]
+BASIC_LEVEL = Level("basic", "Basic")
+
+
 def normalize_optional_string(value):
     if value is None:
         return ""
@@ -140,9 +156,7 @@ class PointService:
         source_id = normalize_optional_string(source_id)
         idempotency_key = normalize_idempotency_key(idempotency_key)
 
-        existing_transaction = PointService._get_idempotent_transaction(
-            idempotency_key
-        )
+        existing_transaction = PointService._get_idempotent_transaction(idempotency_key)
         if existing_transaction is not None:
             PointService._validate_idempotent_match(
                 existing_transaction,
@@ -257,10 +271,7 @@ class BadgeService:
 
     @staticmethod
     def get_badge_catalog():
-        return [
-            dict(BADGE_DEFINITIONS[badge_type])
-            for badge_type in BadgeType.values
-        ]
+        return [dict(BADGE_DEFINITIONS[badge_type]) for badge_type in BadgeType.values]
 
     @staticmethod
     @transaction.atomic
@@ -343,9 +354,7 @@ class BadgeService:
         if not include_expired:
             queryset = queryset.filter(
                 revoked_at__isnull=True,
-            ).filter(
-                Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
-            )
+            ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
         return queryset
 
     @staticmethod
@@ -381,3 +390,45 @@ class BadgeService:
                 idempotency_key=f"badge_awarded:{award.pk}",
             )
         )
+
+
+class SellerLevelService:
+    @staticmethod
+    def get_level(completed_orders_count):
+        completed_orders_count = int(completed_orders_count or 0)
+        for threshold, level in LEVEL_THRESHOLDS:
+            if completed_orders_count >= threshold:
+                return level
+        return BASIC_LEVEL
+
+
+class CustomerLevelService:
+    @staticmethod
+    def get_level(completed_orders_count):
+        completed_orders_count = int(completed_orders_count or 0)
+        for threshold, level in LEVEL_THRESHOLDS:
+            if completed_orders_count >= threshold:
+                return level
+        return BASIC_LEVEL
+
+    @staticmethod
+    def get_discount_percent(profile_or_completed_orders_count):
+        count = CustomerLevelService._count_value(profile_or_completed_orders_count)
+        level = CustomerLevelService.get_level(count)
+        if level.code in {"reliable", "golden", "elite", "legendary"}:
+            return 2
+        return 0
+
+    @staticmethod
+    def get_cashback_percent(profile_or_completed_orders_count):
+        count = CustomerLevelService._count_value(profile_or_completed_orders_count)
+        level = CustomerLevelService.get_level(count)
+        if level.code in {"golden", "elite", "legendary"}:
+            return 1
+        return 0
+
+    @staticmethod
+    def _count_value(profile_or_count):
+        if isinstance(profile_or_count, int):
+            return profile_or_count
+        return getattr(profile_or_count, "completed_orders_count", 0)

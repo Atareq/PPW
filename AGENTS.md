@@ -35,6 +35,10 @@ The platform currently supports and will continue to expand around:
 - seller home-page insights summaries from current marketplace data
 - internal pedigree certificate OCR extraction MVP with a null local OCR adapter
 - loyalty reward automation for selected profile, bid, listing, rating, follow, and seller-approved payment-request events
+- ledger-backed Lucky Wheel attempts, backend-selected spins, and user-owned promotion prizes
+- link-sharing referral codes with inviter PP Coin rewards
+- seller/customer level summaries derived from completed order counts
+- reward seasons with seller insight snapshots and idempotent top-seller PP Coin awards
 - future media, pedigree, expanded QR, reviews, expanded reward campaigns, realtime chat, and expanded promotion modules
 
 PPW is currently a marketplace coordination platform.
@@ -144,14 +148,17 @@ Current major apps:
 - `apps.races`
 - `apps.packages`
 - `apps.loyalty`
+- `apps.lucky_wheel`
 - `apps.notifications`
 - `apps.payments`
 - `apps.promotions`
+- `apps.referrals`
 - `apps.complaints`
 - `apps.chat`
 - `apps.feed`
 - `apps.insights`
 - `apps.pedigrees`
+- `apps.seasons`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -258,6 +265,8 @@ Current user/profile API:
   - `PATCH`: authenticated superuser replaces manager permissions with normalized validated codes
 - `/api/users/admin/manager-permissions/`
   - `GET`: authenticated superuser lists the central manager permission registry
+- `/api/users/admin/profile-balance-adjustments/`
+  - `POST`: manager with `profile_balances.adjust` creates an idempotent customer/seller normal balance adjustment
 - `/api/users/mobile/sellers/`
   - authenticated user-facing seller profile API
 - `/api/users/mobile/customers/`
@@ -276,6 +285,9 @@ Current profile behavior:
 - customer registration creates an active customer profile
 - manager creation keeps the account manager-only, creates an active/activated `ManagerProfile`, and sets `is_staff=True`
 - `ManagerProfile.permissions` is the source of truth for manager authorization; legacy `UserAccount.permissions` has been removed from the runtime model
+- all profile rows support optional private `national_id` and `address`; public feed/seller discovery serializers do not expose `national_id`
+- `ProfileBalanceTransaction` is the ledger for normal `CustomerProfile.balance` and `SellerProfile.balance` manager adjustments
+- normal balance adjustments lock the target profile, reject zero amounts and negative resulting balances, and use unique idempotency keys
 - manager permissions are centrally defined in `apps.users.manager_permissions` as a static action catalog, not generated module levels
 - manager permission codes are exact action strings such as `assets.list`, `assets.update`, `users.sellers.retrieve`, `payments.list`, and `complaints.resolve`
 - manager permissions do not have hierarchy; `assets.update` does not imply `assets.list`, and there is no current `edit` or `full_control` authorization behavior
@@ -984,6 +996,10 @@ Current promotions API:
 Current promotions behavior:
 
 - offer value types are `percentage` and `fixed_amount`
+- offer trigger types are `global`, `lucky_wheel`, `onboarding`, `referral`, `season`, and `manager_grant`
+- normal automatic checkout discount and cashback selection considers only active `global` offers
+- non-global offers must be tied to a user through `UserPromotionGrant` before they are treated as a user-owned prize/grant
+- `UserPromotionGrant` records belong to a `UserAccount`, optionally keep the causing `Profile`, point to exactly one `DiscountOffer` or `CashbackOffer`, and use a unique idempotency key
 - offer target types are `all`, `category`, and `asset`
 - offer values must be greater than zero
 - percentage offer values cannot exceed `100`
@@ -1000,6 +1016,7 @@ Current promotions behavior:
 - every cashback balance change must create exactly one `CashbackTransaction`
 - cashback balance mutations use `transaction.atomic()` and `select_for_update()` on `CustomerProfile`
 - `CashbackService.refund_redeemed_for_order_item()` exists for future approved-item cancellation flows; current seller rejection and seller timeout paths do not call it because they only affect pending seller items
+- `CashbackService.buy_points_with_cashback()` atomically deducts customer cashback, writes a `points_purchase` cashback transaction, and awards PP Coins at 20 points per 1 cashback unit
 
 Current promotions service implementation names:
 
@@ -1012,6 +1029,7 @@ Current promotions service implementation names:
 - `CashbackService.earn_for_completed_order_item()` credits earned cashback and writes an earned transaction
 - `CashbackService.refund_redeemed_for_order_item()` refunds redeemed cashback idempotently when applicable
 - `CashbackService.admin_adjust()` applies manager-only manual balance adjustments
+- `UserPromotionGrantService.grant_discount()` and `grant_cashback()` create idempotent user-owned promotion grants
 
 ### `apps.auctions`
 
@@ -1265,12 +1283,14 @@ Current responsibilities:
 
 Important note:
 
-This app implements an MVP rewards engine, not a campaign platform. It does not implement point purchase, cashback conversion, withdrawal, payment gateway behavior, notification preferences, leaderboards, referral rewards, paid badges, shipping/receipt rewards, or a full scheduled reward campaign system. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`.
+This app implements an MVP rewards engine, not a campaign platform. It does not implement withdrawal, payment gateway behavior, notification preferences, paid badges, shipping/receipt rewards, or a full scheduled reward campaign system. Marketplace discount and cashback offers live in `apps.promotions`, not `apps.loyalty`; Lucky Wheel lives in `apps.lucky_wheel`, referrals live in `apps.referrals`, and seasons live in `apps.seasons`.
 
 Current loyalty API:
 
 - `/api/loyalty/points/`
   - `GET`: authenticated user retrieves their user-level point balance
+- `/api/loyalty/points/buy-with-cashback/`
+  - `POST`: active customer converts cashback into PP Coins atomically at 20 PP per 1 cashback unit
 - `/api/loyalty/points/transactions/`
   - `GET`: authenticated users list their own account point transactions; managers list all transactions by default
 - `/api/loyalty/badges/`
@@ -1290,6 +1310,7 @@ Current point behavior:
 - `PointTransaction` belongs to both `PointWallet` and `UserAccount`
 - `PointTransaction.profile` is optional and stores the active profile context that caused the transaction when applicable
 - point transaction types are `earn`, `spend`, and `expire`
+- reward source constants include `onboarding`, `lucky_wheel`, `auction_completed`, `order_completed_amount`, `order_completed_bonus`, `auction_posted`, `rating_received`, `referral_accepted`, `first_bid_completed`, `season_winner`, `cashback_points_purchase`, and `manager_adjustment`
 - point transactions require positive points, non-negative `balance_after`, and a non-empty reason
 - `PointService.earn_points()`, `spend_points()`, and `expire_points()` run in DB transactions and lock the wallet row before changing balance
 - spending and expiring points cannot make wallet balance negative
@@ -1342,10 +1363,99 @@ Current badge behavior:
 - reward idempotency keys use `reward:{reward_code}:{event_type}:{source_type}:{source_id}:profile:{profile_id}`
 - implemented synchronous reward events include customer profile creation, seller profile creation, auction creation/publishing, market product listing, bid placement, seller-approved auction payment requests, seller-approved market payment requests, rating creation, and seller follow creation/reactivation
 - sale-completion rewards are granted only after seller approval of `AuctionPaymentRequest` or `MarketPaymentRequest`
+- auction posting now also awards 50 PP with source `auction_posted`
+- market order-item completion through an approved `MarketPaymentRequest` awards amount-based PP plus a 100 PP bonus to both customer and seller using order-item idempotency keys
+- seller-approved auction payment completion grants the winning customer one Lucky Wheel attempt and a one-time 200 PP `first_bid_completed` reward
+- receiving an asset or seller rating awards 30 PP to the rated profile owner with source `rating_received`
 - `OrderItem` seller approval, payment request creation/update/rejection, cashback redemption/earning, complaint creation, shipping, handoff, and buyer receipt confirmation do not grant sale-completion rewards
 - `LAST_MINUTE_FIGHTER` is a 7-day temporary badge and uses the bid's pre-auto-extend final-window state
 - `TRUSTED_BUYER` and `TRUSTED_SELLER` aggregate checks exist as Celery task entry points and are enqueued with `transaction.on_commit()` after payment approval
 - the detailed implementation/status report lives at `docs/rewards/rewarding-system-report.md`
+
+### `apps.lucky_wheel`
+
+Current responsibilities:
+
+- user-account Lucky Wheel attempt grants
+- backend-selected weighted spin results
+- prize inventory counters
+- idempotent spin records
+- delegation to PP Coin, badge, and user promotion grant services
+
+Current Lucky Wheel API:
+
+- `/api/lucky-wheel/current/`
+  - `GET`: authenticated user reads eligibility, remaining attempts, active display segments, active attempt grants, and active user promotion grants
+- `/api/lucky-wheel/spin/`
+  - `POST`: authenticated user spends one attempt using a required `idempotency_key`; backend chooses the prize
+- `/api/lucky-wheel/spins/my/`
+  - `GET`: authenticated user lists own spin history
+- `/api/lucky-wheel/admin/prizes/`
+  - `GET` / `POST`: manager prize configuration with `lucky_wheel.prizes.list` or `lucky_wheel.prizes.create`
+- `/api/lucky-wheel/admin/prizes/<id>/`
+  - `PATCH`: manager prize update with `lucky_wheel.prizes.update`
+- `/api/lucky-wheel/admin/spins/`
+  - `GET`: manager spin listing with `lucky_wheel.spins.list`
+
+Current Lucky Wheel behavior:
+
+- PP Coin wallet remains user-account-level; spin profile is only the context profile
+- onboarding customer/seller profile creation grants one idempotent onboarding attempt
+- seller-approved auction payment completion grants the winner one idempotent `auction_completed` attempt
+- frontend clients cannot submit `prize_id`; the backend chooses from active weighted prizes
+- prize types are `pp_coins`, `discount_offer`, `cashback_offer`, `badge`, and `no_prize`
+- discount/cashback prizes require offers whose `trigger_type` is `lucky_wheel`
+- discount/cashback prizes create `UserPromotionGrant` rows instead of applying to every customer automatically
+- PP Coin, promotion grant, and badge rewards use spin-id-based idempotency keys
+
+### `apps.referrals`
+
+Current responsibilities:
+
+- one-time link-sharing referral codes
+- new-account referral redemption
+- inviter PP Coin reward
+
+Current referral API:
+
+- `/api/referrals/codes/`
+  - `POST`: authenticated active profile creates a code expiring after 24 hours
+- `/api/referrals/redeem/`
+  - `POST`: authenticated active profile redeems a code when the account is at most 2 hours old
+
+Current referral behavior:
+
+- referral codes are locked on redeem and can be used once
+- users cannot redeem their own account/profile code
+- successful redemption marks the code used, stores the redeeming profile, and awards the inviter 30 PP with source `referral_accepted`
+- referral redemption currently does not create a Lucky Wheel attempt
+
+### `apps.seasons`
+
+Current responsibilities:
+
+- reward season records
+- seller insight snapshots for a season window
+- deterministic winner ranking and idempotent PP Coin awards
+
+Current seasons API:
+
+- `/api/seasons/`
+  - `GET` / `POST`: manager list/create with `seasons.list` or `seasons.create`
+- `/api/seasons/<id>/`
+  - `PATCH`: manager update with `seasons.update`
+- `/api/seasons/<id>/calculate-winners/`
+  - `POST`: manager calculates seller insights and awards top sellers with `seasons.calculate`
+- `/api/seasons/<id>/seller-insights/`
+  - `GET`: manager reads snapshot insights with `seasons.insights.list`
+
+Current seasons behavior:
+
+- seasons require `starts_at < ends_at`
+- seller qualification currently requires at least 10 completed order items in the season window
+- ranking sorts by completed order count descending, average rating descending, total sales amount descending, then seller id ascending
+- top 3 rewards are 100000, 50000, and 25000 PP with source `season_winner`
+- repeated calculation recreates the insight snapshot but does not double-award points because winner rewards use deterministic idempotency keys
 
 ### `apps.general`
 
@@ -2063,6 +2173,9 @@ Current permission resources:
 - `CASHBACK_OFFER_ADMIN`
 - `CASHBACK_TRANSACTION_ADMIN`
 - `CASHBACK_ADJUSTMENT_ADMIN`
+- `LUCKY_WHEEL_PRIZE_ADMIN`
+- `LUCKY_WHEEL_SPIN_ADMIN`
+- `SEASONS_ADMIN`
 - `PEDIGREE_DOCUMENT`
 - `FEED_BLOCK`
 
@@ -2152,8 +2265,17 @@ Current promotions permission pattern:
 - admin transaction and adjustment endpoints use `CASHBACK_TRANSACTION_ADMIN` and `CASHBACK_ADJUSTMENT_ADMIN`
 - customers can list current offers and their own cashback balance/transactions
 - managers can create, activate, deactivate, and list offers, list all cashback transactions, retrieve customer cashback balances with `cashback.balance.retrieve`, and perform cashback adjustments
+- managers can adjust normal customer/seller profile balances only through `/api/users/admin/profile-balance-adjustments/` with `profile_balances.adjust`
 - sellers have no direct promotions permissions in this sprint
 - promotion services still enforce concrete customer/manager profile requirements where endpoint-level permission is not enough
+
+Current reward admin permission pattern:
+
+- Lucky Wheel prize admin endpoints use `HasAppAccess` with `LUCKY_WHEEL_PRIZE_ADMIN`
+- Lucky Wheel spin admin listing uses `HasAppAccess` with `LUCKY_WHEEL_SPIN_ADMIN`
+- seasons endpoints use `HasAppAccess` with `SEASONS_ADMIN`
+- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, and `seasons.insights.list`
+- user-triggered Lucky Wheel spin, referral redeem, and cashback-to-points conversion do not require manager permission codes
 
 Current pedigree permission pattern:
 

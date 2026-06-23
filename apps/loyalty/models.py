@@ -54,9 +54,7 @@ class PointTransaction(BaseModel):
         choices=PointTransactionType.choices,
     )
     points = models.PositiveIntegerField(validators=[MinValueValidator(1)])
-    balance_after = models.PositiveIntegerField(
-        validators=[MinValueValidator(0)]
-    )
+    balance_after = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     reason = models.TextField()
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=100, blank=True)
@@ -86,19 +84,13 @@ class PointTransaction(BaseModel):
             ),
             models.UniqueConstraint(
                 fields=["idempotency_key"],
-                condition=(
-                    Q(idempotency_key__isnull=False)
-                    & ~Q(idempotency_key="")
-                ),
+                condition=(Q(idempotency_key__isnull=False) & ~Q(idempotency_key="")),
                 name="loyalty_unique_transaction_idempotency_key",
             ),
         ]
 
     def __str__(self):
-        return (
-            f"PointTransaction #{self.pk} "
-            f"{self.transaction_type} {self.points}"
-        )
+        return f"PointTransaction #{self.pk} " f"{self.transaction_type} {self.points}"
 
 
 class BadgeAward(BaseModel):
@@ -133,10 +125,7 @@ class BadgeAward(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["idempotency_key"],
-                condition=(
-                    Q(idempotency_key__isnull=False)
-                    & ~Q(idempotency_key="")
-                ),
+                condition=(Q(idempotency_key__isnull=False) & ~Q(idempotency_key="")),
                 name="loyalty_unique_badge_idempotency_key",
             ),
         ]

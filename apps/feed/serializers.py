@@ -4,6 +4,7 @@ from apps.assets.models import Asset
 from apps.auctions.serializers import AuctionListSerializer
 from apps.general.serializers import AssetMediaSerializer
 from apps.feed.models import SellerCustomerBlock, SellerFollow
+from apps.loyalty.services import SellerLevelService
 from apps.users.constants import ProfileType
 
 
@@ -88,6 +89,9 @@ class SellerFollowSellerSerializer(serializers.Serializer):
     currency = serializers.CharField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
     is_followed = serializers.BooleanField(read_only=True, default=True)
+    completed_orders_count = serializers.IntegerField(read_only=True)
+    seller_level = serializers.SerializerMethodField()
+    seller_level_label = serializers.SerializerMethodField()
 
     def to_representation(self, instance):
         data = {
@@ -97,11 +101,20 @@ class SellerFollowSellerSerializer(serializers.Serializer):
             "currency": instance.currency,
             "avatar_url": self.get_avatar_url(instance),
             "is_followed": True,
+            "completed_orders_count": _seller_completed_orders_count(instance),
+            "seller_level": self.get_seller_level(instance),
+            "seller_level_label": self.get_seller_level_label(instance),
         }
         return data
 
     def get_avatar_url(self, obj):
         return _seller_avatar_url(obj)
+
+    def get_seller_level(self, obj):
+        return SellerLevelService.get_level(_seller_completed_orders_count(obj)).code
+
+    def get_seller_level_label(self, obj):
+        return SellerLevelService.get_level(_seller_completed_orders_count(obj)).label
 
 
 class SellerSuggestionSerializer(serializers.Serializer):
@@ -117,12 +130,21 @@ class SellerSuggestionSerializer(serializers.Serializer):
     ratings_count = serializers.IntegerField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
     is_followed = serializers.SerializerMethodField()
+    completed_orders_count = serializers.IntegerField(read_only=True)
+    seller_level = serializers.SerializerMethodField()
+    seller_level_label = serializers.SerializerMethodField()
 
     def get_is_followed(self, obj):
         return False
 
     def get_avatar_url(self, obj):
         return _seller_avatar_url(obj)
+
+    def get_seller_level(self, obj):
+        return SellerLevelService.get_level(_seller_completed_orders_count(obj)).code
+
+    def get_seller_level_label(self, obj):
+        return SellerLevelService.get_level(_seller_completed_orders_count(obj)).label
 
 
 class SellerDiscoverySerializer(serializers.Serializer):
@@ -138,12 +160,21 @@ class SellerDiscoverySerializer(serializers.Serializer):
     )
     ratings_count = serializers.IntegerField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
+    completed_orders_count = serializers.IntegerField(read_only=True)
+    seller_level = serializers.SerializerMethodField()
+    seller_level_label = serializers.SerializerMethodField()
 
     def get_description(self, obj):
         return getattr(obj, "description", "") or ""
 
     def get_avatar_url(self, obj):
         return _seller_avatar_url(obj)
+
+    def get_seller_level(self, obj):
+        return SellerLevelService.get_level(_seller_completed_orders_count(obj)).code
+
+    def get_seller_level_label(self, obj):
+        return SellerLevelService.get_level(_seller_completed_orders_count(obj)).label
 
 
 class SellerFollowSerializer(serializers.ModelSerializer):
@@ -242,3 +273,7 @@ def _seller_avatar_url(obj):
         if value:
             return value
     return ""
+
+
+def _seller_completed_orders_count(obj):
+    return int(getattr(obj, "completed_orders_count", 0) or 0)

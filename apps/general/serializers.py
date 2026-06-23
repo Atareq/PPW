@@ -19,11 +19,6 @@ class AssetMediaSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict) and "id" in data:
             raise serializers.ValidationError(
-                {
-                    "id": (
-                        "Media ids are not accepted for nested asset media "
-                        "writes."
-                    )
-                }
+                {"id": ("Media ids are not accepted for nested asset media " "writes.")}
             )
         return super().to_internal_value(data)

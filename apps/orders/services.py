@@ -220,9 +220,7 @@ class OrderService:
         """Derive aggregate order status from current item statuses."""
 
         order = (
-            Order.objects.select_for_update()
-            .prefetch_related("items")
-            .get(pk=order_id)
+            Order.objects.select_for_update().prefetch_related("items").get(pk=order_id)
         )
         statuses = list(order.items.values_list("status", flat=True))
 
@@ -237,9 +235,7 @@ class OrderService:
             OrderItemStatus.COMPLETED,
         }
 
-        if statuses and all(
-            status in terminal_rejected for status in statuses
-        ):
+        if statuses and all(status in terminal_rejected for status in statuses):
             next_status = OrderStatus.CANCELLED
         elif any(status in terminal_rejected for status in statuses):
             next_status = OrderStatus.PARTIAL_REJECTED
@@ -590,9 +586,7 @@ class OrderItemService:
             item=item,
             recipient=item.order.owner,
             event_type=OrderEventType.SELLER_APPROVED,
-            message=(
-                "Seller approved your order you need to complete the payment."
-            ),
+            message=("Seller approved your order you need to complete the payment."),
             metadata={"asset_id": item.asset_id},
         )
 

@@ -13,6 +13,8 @@ from apps.loyalty.serializers import (
     BadgeAwardCreateSerializer,
     BadgeAwardSerializer,
     BadgeDefinitionSerializer,
+    BuyPointsWithCashbackResponseSerializer,
+    BuyPointsWithCashbackSerializer,
     PointBalanceSerializer,
     PointTransactionSerializer,
 )
@@ -68,6 +70,36 @@ class PointTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             return queryset
 
         return queryset.filter(user=self.request.user)
+
+
+class BuyPointsWithCashbackViewSet(viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = BuyPointsWithCashbackSerializer
+    queryset = PointTransaction.objects.none()
+
+    @extend_schema(
+        tags=["Loyalty"],
+        request=BuyPointsWithCashbackSerializer,
+        responses={200: BuyPointsWithCashbackResponseSerializer},
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        customer = result["cashback_transaction"].customer
+        return Response(
+            {
+                "cashback_balance": customer.cashback_balance,
+                "point_balance": result["point_transaction"].balance_after,
+                "points_awarded": result["point_transaction"].points,
+                "cashback_transaction_id": result["cashback_transaction"].pk,
+                "point_transaction_id": result["point_transaction"].pk,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class BadgeViewSet(viewsets.GenericViewSet):

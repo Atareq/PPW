@@ -1,7 +1,8 @@
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.orders.models import OrderItem
@@ -11,13 +12,18 @@ from apps.promotions.models import (
     CashbackTransactionType,
     DiscountOffer,
     OfferTargetType,
+    OfferTriggerType,
     OfferValueType,
+    UserPromotionGrant,
+    UserPromotionGrantStatus,
+    UserPromotionGrantType,
 )
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 
 MONEY_QUANT = Decimal("0.01")
 ADMIN_ADJUSTMENT_OFFER_TITLE = "Manual Admin Adjustment"
+POINTS_PURCHASE_OFFER_TITLE = "Cashback Points Purchase"
 
 
 def quantize_money(value):
@@ -36,19 +42,19 @@ class OfferSelectionMixin:
     model = None
 
     @classmethod
-    def get_active_offers(cls):
+    def get_active_offers(cls, *, trigger_type=OfferTriggerType.GLOBAL):
         return cls.model.objects.select_related("asset", "created_by").filter(
-            is_active=True
+            is_active=True,
+            trigger_type=trigger_type,
         )
 
     @classmethod
-    def _eligible_offers(cls, asset, amount):
-        offers = cls.get_active_offers()
+    def _eligible_offers(cls, asset, amount, *, trigger_type=OfferTriggerType.GLOBAL):
+        offers = cls.get_active_offers(trigger_type=trigger_type)
         return [
             offer
             for offer in offers
-            if amount >= offer.minimum_order_price
-            and cls._target_matches(offer, asset)
+            if amount >= offer.minimum_order_price and cls._target_matches(offer, asset)
         ]
 
     @staticmethod
@@ -69,8 +75,14 @@ class OfferSelectionMixin:
         return quantize_money(min(offer.value, amount))
 
     @classmethod
-    def _choose_best(cls, asset, amount, calculate):
-        eligible_offers = cls._eligible_offers(asset, amount)
+    def _choose_best(
+        cls, asset, amount, calculate, *, trigger_type=OfferTriggerType.GLOBAL
+    ):
+        eligible_offers = cls._eligible_offers(
+            asset,
+            amount,
+            trigger_type=trigger_type,
+        )
         if not eligible_offers:
             return None
 
@@ -90,8 +102,15 @@ class DiscountOfferService(OfferSelectionMixin):
     model = DiscountOffer
 
     @classmethod
-    def choose_best_offer(cls, asset, gross_total):
-        return cls._choose_best(asset, gross_total, cls.calculate_discount)
+    def choose_best_offer(
+        cls, asset, gross_total, *, trigger_type=OfferTriggerType.GLOBAL
+    ):
+        return cls._choose_best(
+            asset,
+            gross_total,
+            cls.calculate_discount,
+            trigger_type=trigger_type,
+        )
 
     @staticmethod
     def calculate_discount(offer, gross_total):
@@ -116,11 +135,14 @@ class CashbackOfferService(OfferSelectionMixin):
     model = CashbackOffer
 
     @classmethod
-    def choose_best_offer(cls, asset, payable_amount):
+    def choose_best_offer(
+        cls, asset, payable_amount, *, trigger_type=OfferTriggerType.GLOBAL
+    ):
         return cls._choose_best(
             asset,
             payable_amount,
             cls.calculate_cashback_earned,
+            trigger_type=trigger_type,
         )
 
     @staticmethod
@@ -177,18 +199,14 @@ class CashbackService:
         customer = CustomerProfile.objects.select_for_update().get(
             pk=item.order.owner_id
         )
-        cashback_earned_amount = (
-            CashbackOfferService.calculate_cashback_earned(
-                offer,
-                payable_amount,
-            )
+        cashback_earned_amount = CashbackOfferService.calculate_cashback_earned(
+            offer,
+            payable_amount,
         )
-        cashback_redeemed_amount = (
-            CashbackOfferService.calculate_redemption_amount(
-                offer,
-                customer.cashback_balance,
-                payable_amount,
-            )
+        cashback_redeemed_amount = CashbackOfferService.calculate_redemption_amount(
+            offer,
+            customer.cashback_balance,
+            payable_amount,
         )
 
         if cashback_redeemed_amount > 0:
@@ -239,9 +257,7 @@ class CashbackService:
             pk=item.order.owner_id
         )
         amount = item.cashback_earned_amount
-        customer.cashback_balance = quantize_money(
-            customer.cashback_balance + amount
-        )
+        customer.cashback_balance = quantize_money(customer.cashback_balance + amount)
         customer.save(update_fields=["cashback_balance", "modified"])
         return CashbackService._create_transaction(
             customer=customer,
@@ -271,9 +287,7 @@ class CashbackService:
             pk=item.order.owner_id
         )
         amount = item.cashback_redeemed_amount
-        customer.cashback_balance = quantize_money(
-            customer.cashback_balance + amount
-        )
+        customer.cashback_balance = quantize_money(customer.cashback_balance + amount)
         customer.save(update_fields=["cashback_balance", "modified"])
         return CashbackService._create_transaction(
             customer=customer,
@@ -334,9 +348,7 @@ class CashbackService:
 
         customer.cashback_balance = next_balance
         customer.save(update_fields=["cashback_balance", "modified"])
-        offer = CashbackService._get_or_create_admin_adjustment_offer(
-            admin_profile
-        )
+        offer = CashbackService._get_or_create_admin_adjustment_offer(admin_profile)
         return CashbackService._create_transaction(
             customer=customer,
             cashback_offer=offer,
@@ -350,6 +362,69 @@ class CashbackService:
         )
 
     @staticmethod
+    @transaction.atomic
+    def buy_points_with_cashback(customer_profile, cashback_amount, idempotency_key):
+        from apps.loyalty.constants import RewardSourceType
+        from apps.loyalty.services import PointService
+
+        amount = quantize_money(cashback_amount)
+        if amount <= 0:
+            raise ValidationError(
+                {"cashback_amount": "Cashback amount must be greater than zero."}
+            )
+        idempotency_key = str(idempotency_key or "").strip()
+        if not idempotency_key:
+            raise ValidationError({"idempotency_key": "This field is required."})
+
+        cashback_key = (
+            f"cashback_points_purchase:{customer_profile.pk}:{idempotency_key}"
+        )
+        existing = CashbackService._existing_transaction(cashback_key)
+        if existing is not None:
+            point_transaction = PointService.earn_points(
+                user=customer_profile.user,
+                profile=customer_profile,
+                points=int(existing.amount * Decimal("20")),
+                reason="Purchased PP Coins with cashback",
+                source_type=RewardSourceType.CASHBACK_POINTS_PURCHASE,
+                source_id=str(existing.pk),
+                idempotency_key=f"points:cashback_purchase:{existing.pk}",
+                metadata={"cashback_transaction_id": existing.pk},
+            )
+            return existing, point_transaction
+
+        customer = CustomerProfile.objects.select_for_update().get(
+            pk=customer_profile.pk
+        )
+        if customer.cashback_balance < amount:
+            raise ValidationError({"cashback_amount": "Insufficient cashback balance."})
+
+        customer.cashback_balance = quantize_money(customer.cashback_balance - amount)
+        customer.save(update_fields=["cashback_balance", "modified"])
+        offer = CashbackService._get_or_create_points_purchase_offer()
+        cashback_transaction = CashbackService._create_transaction(
+            customer=customer,
+            cashback_offer=offer,
+            order_item=None,
+            transaction_type=CashbackTransactionType.POINTS_PURCHASE,
+            amount=amount,
+            balance_after=customer.cashback_balance,
+            idempotency_key=cashback_key,
+            note="Cashback converted into PP Coins.",
+        )
+        point_transaction = PointService.earn_points(
+            user=customer.user,
+            profile=customer,
+            points=int(amount * Decimal("20")),
+            reason="Purchased PP Coins with cashback",
+            source_type=RewardSourceType.CASHBACK_POINTS_PURCHASE,
+            source_id=str(cashback_transaction.pk),
+            idempotency_key=f"points:cashback_purchase:{cashback_transaction.pk}",
+            metadata={"cashback_transaction_id": cashback_transaction.pk},
+        )
+        return cashback_transaction, point_transaction
+
+    @staticmethod
     def _get_locked_order_item(order_item_id):
         return (
             OrderItem.objects.select_for_update()
@@ -359,15 +434,12 @@ class CashbackService:
 
     @staticmethod
     def _get_order_item(order_item_id):
-        return (
-            OrderItem.objects.select_related(
-                "order",
-                "order__owner",
-                "asset",
-                "cashback_offer",
-            )
-            .get(pk=order_item_id)
-        )
+        return OrderItem.objects.select_related(
+            "order",
+            "order__owner",
+            "asset",
+            "cashback_offer",
+        ).get(pk=order_item_id)
 
     @staticmethod
     def _existing_transaction(idempotency_key):
@@ -389,9 +461,7 @@ class CashbackService:
         try:
             return CashbackTransaction.objects.create(**kwargs)
         except IntegrityError:
-            existing = CashbackService._existing_transaction(
-                kwargs["idempotency_key"]
-            )
+            existing = CashbackService._existing_transaction(kwargs["idempotency_key"])
             if existing is not None:
                 return existing
             raise
@@ -441,3 +511,141 @@ class CashbackService:
             },
         )
         return offer
+
+    @staticmethod
+    def _get_or_create_points_purchase_offer():
+        offer, _ = CashbackOffer.objects.get_or_create(
+            title=POINTS_PURCHASE_OFFER_TITLE,
+            defaults={
+                "description": "System offer used for cashback-to-points purchases.",
+                "value_type": OfferValueType.FIXED_AMOUNT,
+                "value": Decimal("0.01"),
+                "target_type": OfferTargetType.ALL,
+                "minimum_order_price": Decimal("0.00"),
+                "allowed_redemption_amount": Decimal("0.00"),
+                "is_active": False,
+                "priority": -1000000,
+            },
+        )
+        return offer
+
+
+class UserPromotionGrantService:
+    """Idempotent user-owned grants for non-global promotion prizes."""
+
+    @staticmethod
+    @transaction.atomic
+    def grant_discount(
+        *,
+        user,
+        profile,
+        discount_offer,
+        source_type,
+        source_id="",
+        expires_at=None,
+        idempotency_key,
+        metadata=None,
+    ):
+        offer = DiscountOffer.objects.get(pk=discount_offer.pk)
+        return UserPromotionGrantService._grant(
+            user=user,
+            profile=profile,
+            grant_type=UserPromotionGrantType.DISCOUNT,
+            discount_offer=offer,
+            cashback_offer=None,
+            source_type=source_type,
+            source_id=source_id,
+            expires_at=expires_at,
+            idempotency_key=idempotency_key,
+            metadata=metadata,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def grant_cashback(
+        *,
+        user,
+        profile,
+        cashback_offer,
+        source_type,
+        source_id="",
+        expires_at=None,
+        idempotency_key,
+        metadata=None,
+    ):
+        offer = CashbackOffer.objects.get(pk=cashback_offer.pk)
+        return UserPromotionGrantService._grant(
+            user=user,
+            profile=profile,
+            grant_type=UserPromotionGrantType.CASHBACK,
+            discount_offer=None,
+            cashback_offer=offer,
+            source_type=source_type,
+            source_id=source_id,
+            expires_at=expires_at,
+            idempotency_key=idempotency_key,
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def get_active_grants_for_user(user, profile=None):
+        now = timezone.now()
+        queryset = (
+            UserPromotionGrant.objects.select_related(
+                "user",
+                "profile",
+                "discount_offer",
+                "cashback_offer",
+            )
+            .filter(
+                user=user,
+                status=UserPromotionGrantStatus.ACTIVE,
+            )
+            .filter(models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=now))
+            .order_by("expires_at", "-created")
+        )
+        if profile is not None:
+            queryset = queryset.filter(
+                models.Q(profile__isnull=True) | models.Q(profile=profile)
+            )
+        return queryset
+
+    @staticmethod
+    def _grant(
+        *,
+        user,
+        profile,
+        grant_type,
+        discount_offer,
+        cashback_offer,
+        source_type,
+        source_id,
+        expires_at,
+        idempotency_key,
+        metadata,
+    ):
+        idempotency_key = str(idempotency_key).strip()
+        if not idempotency_key:
+            raise ValidationError({"idempotency_key": "Idempotency key is required."})
+
+        existing = UserPromotionGrant.objects.filter(
+            idempotency_key=idempotency_key
+        ).first()
+        if existing is not None:
+            return existing
+
+        try:
+            return UserPromotionGrant.objects.create(
+                user=user,
+                profile=profile,
+                grant_type=grant_type,
+                discount_offer=discount_offer,
+                cashback_offer=cashback_offer,
+                source_type=source_type or "",
+                source_id=str(source_id or ""),
+                expires_at=expires_at,
+                idempotency_key=idempotency_key,
+                metadata=metadata or {},
+            )
+        except IntegrityError:
+            return UserPromotionGrant.objects.get(idempotency_key=idempotency_key)

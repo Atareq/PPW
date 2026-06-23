@@ -13,9 +13,7 @@ class PointValidator:
             raise ValidationError({"profile": "Profile was not found."})
 
         if profile.user_id != user.pk:
-            raise ValidationError(
-                {"profile": "Profile must belong to the user."}
-            )
+            raise ValidationError({"profile": "Profile must belong to the user."})
 
         return profile
 

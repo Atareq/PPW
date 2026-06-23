@@ -141,9 +141,7 @@ class AuctionBusinessValidator:
             return
 
         invalid_bird_ids = sorted(
-            bird.id
-            for bird in self.bird_map.values()
-            if bird.owner_id != owner.id
+            bird.id for bird in self.bird_map.values() if bird.owner_id != owner.id
         )
         if invalid_bird_ids:
             raise ValidationError(
@@ -466,9 +464,7 @@ class AuctionService:
         """
 
         # Extend end time
-        new_end_time = auction.end_time + timedelta(
-            minutes=auction.auto_extend_minutes
-        )
+        new_end_time = auction.end_time + timedelta(minutes=auction.auto_extend_minutes)
         auction.end_time = new_end_time
         auction.save()
 
@@ -562,9 +558,7 @@ class AuctionService:
             raise ValidationError("Auction cannot be updated after it starts.")
 
         if auction.items.filter(bids__isnull=False).exists():
-            raise ValidationError(
-                "Auction cannot be updated after it receives bids."
-            )
+            raise ValidationError("Auction cannot be updated after it receives bids.")
 
     @staticmethod
     def _log_event(
@@ -666,8 +660,7 @@ class BidBusinessValidator:
         # Must meet starting price
         if self.amount < self.item.starting_price:
             raise ValidationError(
-                f"Bid must be at least {self.item.starting_price} "
-                f"(starting price)"
+                f"Bid must be at least {self.item.starting_price} " f"(starting price)"
             )
 
         current_highest = self.item.current_highest_bid_amount()
@@ -751,9 +744,7 @@ class BiddingService:
         item.current_price = amount
         item.save()
         was_last_minute = (
-            timedelta(0)
-            < auction.end_time - timezone.now()
-            <= timedelta(minutes=5)
+            timedelta(0) < auction.end_time - timezone.now() <= timedelta(minutes=5)
         )
 
         # Check if auto-extend needed

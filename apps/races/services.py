@@ -6,9 +6,7 @@ from apps.races.models import RaceResult
 
 def _next_placeholder_rank(race_id: int) -> int:
     max_rank = (
-        RaceResult.objects.filter(race_id=race_id).aggregate(Max("rank"))[
-            "rank__max"
-        ]
+        RaceResult.objects.filter(race_id=race_id).aggregate(Max("rank"))["rank__max"]
         or 0
     )
     return max_rank + 1

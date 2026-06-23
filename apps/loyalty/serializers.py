@@ -3,6 +3,9 @@ from rest_framework import serializers
 from apps.loyalty.constants import BADGE_DEFINITIONS, BadgeType
 from apps.loyalty.models import BadgeAward, PointTransaction
 from apps.loyalty.services import BadgeService
+from apps.promotions.services import CashbackService
+from apps.users.constants import ProfileType
+from apps.users.models import CustomerProfile
 from apps.users.models import Profile
 
 
@@ -114,9 +117,7 @@ class BadgeAwardCreateSerializer(serializers.Serializer):
         try:
             return Profile.objects.get(pk=value)
         except Profile.DoesNotExist as exc:
-            raise serializers.ValidationError(
-                "Profile was not found."
-            ) from exc
+            raise serializers.ValidationError("Profile was not found.") from exc
 
     def create(self, validated_data):
         return BadgeService.award_badge(
@@ -127,3 +128,42 @@ class BadgeAwardCreateSerializer(serializers.Serializer):
             expires_at=validated_data.get("expires_at"),
             metadata=validated_data.get("metadata"),
         )
+
+
+class BuyPointsWithCashbackSerializer(serializers.Serializer):
+    cashback_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    idempotency_key = serializers.CharField()
+
+    def validate(self, attrs):
+        profile = self.context["request"].user.active_profile
+        if profile.type != ProfileType.CUSTOMER:
+            raise serializers.ValidationError(
+                "Only customer profiles can buy points with cashback."
+            )
+        attrs["customer_profile"] = CustomerProfile.objects.get(pk=profile.pk)
+        return attrs
+
+    def create(self, validated_data):
+        cashback_transaction, point_transaction = (
+            CashbackService.buy_points_with_cashback(
+                customer_profile=validated_data["customer_profile"],
+                cashback_amount=validated_data["cashback_amount"],
+                idempotency_key=validated_data["idempotency_key"],
+            )
+        )
+        return {
+            "cashback_transaction": cashback_transaction,
+            "point_transaction": point_transaction,
+        }
+
+
+class BuyPointsWithCashbackResponseSerializer(serializers.Serializer):
+    cashback_balance = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    point_balance = serializers.IntegerField(read_only=True)
+    points_awarded = serializers.IntegerField(read_only=True)
+    cashback_transaction_id = serializers.IntegerField(read_only=True)
+    point_transaction_id = serializers.IntegerField(read_only=True)

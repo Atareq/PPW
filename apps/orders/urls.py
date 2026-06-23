@@ -57,8 +57,6 @@ urlpatterns = [
         order_item_approve,
         name="order-item-approve",
     ),
-    path(
-        "items/<int:pk>/reject/", order_item_reject, name="order-item-reject"
-    ),
+    path("items/<int:pk>/reject/", order_item_reject, name="order-item-reject"),
     path("<int:pk>/", order_detail, name="order-detail"),
 ]

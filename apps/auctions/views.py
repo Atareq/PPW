@@ -185,25 +185,19 @@ class AuctionViewSet(viewsets.ModelViewSet):
             auction_type=validated_data["auction_type"],
             start_time=validated_data["start_time"],
             end_time=validated_data["end_time"],
-            auto_extend_enabled=validated_data.get(
-                "auto_extend_enabled", False
-            ),
+            auto_extend_enabled=validated_data.get("auto_extend_enabled", False),
             auto_extend_minutes=validated_data.get("auto_extend_minutes", 5),
             buy_now_enabled=validated_data.get("buy_now_enabled", False),
             buy_now_price=validated_data.get("buy_now_price", None),
             deposit_required=validated_data.get("deposit_required", False),
             payment_deadline_days=validated_data.get("payment_deadline_days"),
-            min_bid_increment=validated_data.get(
-                "min_bid_increment", Decimal("1.00")
-            ),
+            min_bid_increment=validated_data.get("min_bid_increment", Decimal("1.00")),
             tags=validated_data.get("tags", ""),
         )
         items_data = validated_data["items"]
 
         # Business validation (MUST pass before creation)
-        validator = AuctionBusinessValidator(
-            auction=auction, items_data=items_data
-        )
+        validator = AuctionBusinessValidator(auction=auction, items_data=items_data)
         validator.validate()
 
         auction = AuctionService.create_auction(
@@ -232,9 +226,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
 
         auction = self.get_object()
-        serializer = self.get_serializer(
-            auction, data=request.data, partial=True
-        )
+        serializer = self.get_serializer(auction, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
         try:
@@ -274,11 +266,15 @@ class AuctionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def active(self, request):
         """Get all active auctions"""
-        queryset = self._base_queryset().filter(
-            is_visible=True,
-            start_time__lte=timezone.now(),
-            end_time__gt=timezone.now(),
-        ).order_by("end_time")
+        queryset = (
+            self._base_queryset()
+            .filter(
+                is_visible=True,
+                start_time__lte=timezone.now(),
+                end_time__gt=timezone.now(),
+            )
+            .order_by("end_time")
+        )
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -298,9 +294,11 @@ class AuctionViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         later = now + timedelta(minutes=minutes)
 
-        queryset = self._base_queryset().filter(
-            is_visible=True, end_time__gt=now, end_time__lte=later
-        ).order_by("end_time")
+        queryset = (
+            self._base_queryset()
+            .filter(is_visible=True, end_time__gt=now, end_time__lte=later)
+            .order_by("end_time")
+        )
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -451,9 +449,7 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
                 amount=amount,
             )
 
-            return Response(
-                BidSerializer(bid).data, status=status.HTTP_201_CREATED
-            )
+            return Response(BidSerializer(bid).data, status=status.HTTP_201_CREATED)
         except ValidationError as e:
             raise ValidationError(str(e.detail))
 
@@ -476,9 +472,7 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
         bid = serializer.save()
 
-        return Response(
-            BidSerializer(bid).data, status=status.HTTP_201_CREATED
-        )
+        return Response(BidSerializer(bid).data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema_view(
@@ -564,9 +558,7 @@ class BidViewSet(viewsets.ReadOnlyModelViewSet):
         # Filter by auction type
         auction_type = request.query_params.get("auction_type")
         if auction_type:
-            queryset = queryset.filter(
-                item__auction__auction_type=auction_type
-            )
+            queryset = queryset.filter(item__auction__auction_type=auction_type)
 
         page = self.paginate_queryset(queryset)
         if page is not None:

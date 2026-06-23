@@ -6,9 +6,7 @@ from rest_framework.settings import api_settings
 
 
 class ProfileSyncJWTAuthenticationScheme(OpenApiAuthenticationExtension):
-    target_class = (
-        "apps.authentication.authentication.ProfileSyncJWTAuthentication"
-    )
+    target_class = "apps.authentication.authentication.ProfileSyncJWTAuthentication"
     name = "BearerAuth"
 
     def get_security_definition(self, auto_schema):

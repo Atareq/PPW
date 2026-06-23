@@ -33,4 +33,3 @@ class NotificationAdmin(admin.ModelAdmin):
         "modified",
         "read_at",
     ]
-

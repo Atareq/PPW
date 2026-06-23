@@ -3,7 +3,18 @@ from django.db import migrations
 
 LEGACY_LEVEL_ACTIONS = {
     "list": {"list", "retrieve"},
-    "edit": {"create", "update", "mark_in_review", "resolve", "reject", "activate", "deactivate", "cancel", "close", "review"},
+    "edit": {
+        "create",
+        "update",
+        "mark_in_review",
+        "resolve",
+        "reject",
+        "activate",
+        "deactivate",
+        "cancel",
+        "close",
+        "review",
+    },
     "full_control": None,
 }
 
@@ -48,9 +59,7 @@ def _expand_legacy_permission(permission, valid_codes):
         return []
 
     return [
-        code
-        for code in namespace_codes
-        if code.rsplit(".", 1)[1] in allowed_actions
+        code for code in namespace_codes if code.rsplit(".", 1)[1] in allowed_actions
     ]
 
 

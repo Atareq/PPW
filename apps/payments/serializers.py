@@ -102,19 +102,11 @@ class PaymentRequestDetailSerializer(PaymentRequestListSerializer):
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_approved_by(self, obj):
-        return (
-            self._profile_summary(obj.approved_by)
-            if obj.approved_by_id
-            else None
-        )
+        return self._profile_summary(obj.approved_by) if obj.approved_by_id else None
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_rejected_by(self, obj):
-        return (
-            self._profile_summary(obj.rejected_by)
-            if obj.rejected_by_id
-            else None
-        )
+        return self._profile_summary(obj.rejected_by) if obj.rejected_by_id else None
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_auction_item_id(self, obj):

@@ -67,9 +67,7 @@ class CustomerRegisterAPIView(APIView):
     def post(self, request):
         with transaction.atomic():
 
-            customer_register_serializer = CustomerRegisterSerializer(
-                data=request.data
-            )
+            customer_register_serializer = CustomerRegisterSerializer(data=request.data)
             customer_register_serializer.is_valid(raise_exception=True)
             customer_register_serializer.save()
 
@@ -96,9 +94,7 @@ class ManagerRegisterAPIView(APIView):
     def post(self, request):
         with transaction.atomic():
 
-            customer_register_serializer = ManagerRegisterSerializer(
-                data=request.data
-            )
+            customer_register_serializer = ManagerRegisterSerializer(data=request.data)
             customer_register_serializer.is_valid(raise_exception=True)
             customer_register_serializer.save()
 

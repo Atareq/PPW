@@ -14,9 +14,11 @@ from apps.loyalty.constants import (
     TRUSTED_BADGE_VALID_DAYS,
     TRUSTED_BUYER_PURCHASE_THRESHOLD,
     TRUSTED_SELLER_SALE_THRESHOLD,
+    RewardSourceType,
     RewardEventType,
 )
 from apps.loyalty.services import BadgeService, PointService
+from apps.loyalty.models import PointTransaction
 from apps.users.constants import ProfileType
 from apps.users.models import Profile
 
@@ -109,8 +111,7 @@ class RewardEngine:
                 event_type="trusted_buyer_aggregate",
                 source=profile,
                 result=result,
-                expires_at=timezone.now()
-                + timedelta(days=TRUSTED_BADGE_VALID_DAYS),
+                expires_at=timezone.now() + timedelta(days=TRUSTED_BADGE_VALID_DAYS),
             )
         return result.as_dict()
 
@@ -135,8 +136,7 @@ class RewardEngine:
                 event_type="trusted_seller_aggregate",
                 source=profile,
                 result=result,
-                expires_at=timezone.now()
-                + timedelta(days=TRUSTED_BADGE_VALID_DAYS),
+                expires_at=timezone.now() + timedelta(days=TRUSTED_BADGE_VALID_DAYS),
             )
         return result.as_dict()
 
@@ -150,7 +150,9 @@ class RewardEngine:
     def _handle_welcome_seller(cls, profile, event_type, result):
         if profile.type != ProfileType.SELLER:
             return
-        cls._grant_reward(profile, BadgeType.WELCOME_SELLER, event_type, profile, result)
+        cls._grant_reward(
+            profile, BadgeType.WELCOME_SELLER, event_type, profile, result
+        )
 
     @classmethod
     def _handle_auction_published(cls, profile, event_type, context, result):
@@ -159,7 +161,20 @@ class RewardEngine:
         auction = cls._context_object(context, "auction", Auction)
         if profile.type != ProfileType.SELLER or auction is None:
             return
-        if Auction.objects.filter(owner_id=profile.pk, deleted__isnull=True).count() != 1:
+        cls._grant_direct_points(
+            profile=profile,
+            points=50,
+            reason="Auction posted",
+            source_type=RewardSourceType.AUCTION_POSTED,
+            source_id=str(auction.pk),
+            idempotency_key=(f"points:auction_posted:{auction.pk}:seller:{profile.pk}"),
+            result=result,
+            code=RewardSourceType.AUCTION_POSTED,
+        )
+        if (
+            Auction.objects.filter(owner_id=profile.pk, deleted__isnull=True).count()
+            != 1
+        ):
             return
         cls._grant_reward(
             profile,
@@ -286,6 +301,7 @@ class RewardEngine:
             payment_request,
             result,
         )
+        cls._grant_auction_completion_extras(buyer, payment_request, result)
         approved_seller_count = PaymentRequest.objects.filter(
             seller_id=seller.pk,
             request_type=PaymentRequestType.AUCTION,
@@ -343,6 +359,7 @@ class RewardEngine:
             payment_request,
             result,
         )
+        cls._grant_order_completion_points(payment_request, buyer, seller, result)
         approved_seller_count = PaymentRequest.objects.filter(
             seller_id=seller.pk,
             request_type=PaymentRequestType.MARKET,
@@ -371,9 +388,31 @@ class RewardEngine:
         rating = context.get("rating")
         if profile.type != ProfileType.CUSTOMER or rating is None:
             return
+        rated_profile = None
+        if isinstance(rating, AssetRating):
+            rated_profile = rating.asset.owner
+        elif isinstance(rating, SellerRating):
+            rated_profile = rating.seller
+        if rated_profile is not None:
+            cls._grant_direct_points(
+                profile=rated_profile,
+                points=30,
+                reason="Rating received",
+                source_type=RewardSourceType.RATING_RECEIVED,
+                source_id=str(rating.pk),
+                idempotency_key=(
+                    f"points:rating_received:{rating.pk}:" f"profile:{rated_profile.pk}"
+                ),
+                result=result,
+                code=RewardSourceType.RATING_RECEIVED,
+            )
         rating_count = (
-            AssetRating.objects.filter(owner_id=profile.pk, deleted__isnull=True).count()
-            + SellerRating.objects.filter(owner_id=profile.pk, deleted__isnull=True).count()
+            AssetRating.objects.filter(
+                owner_id=profile.pk, deleted__isnull=True
+            ).count()
+            + SellerRating.objects.filter(
+                owner_id=profile.pk, deleted__isnull=True
+            ).count()
         )
         if rating_count != 1:
             return
@@ -394,6 +433,66 @@ class RewardEngine:
         if active_follow_count != 1:
             return
         cls._grant_reward(profile, BadgeType.LOYAL_FOLLOWER, event_type, follow, result)
+
+    @classmethod
+    def _grant_auction_completion_extras(cls, buyer, payment_request, result):
+        auction_request = getattr(payment_request, "auctionpaymentrequest", None)
+        if auction_request is None:
+            return
+
+        from apps.lucky_wheel.services import LuckyWheelGrantService
+
+        LuckyWheelGrantService.grant_for_auction_completed(
+            buyer,
+            auction_request.auction_item,
+        )
+
+        if PointTransaction.objects.filter(
+            user=buyer.user,
+            source_type=RewardSourceType.FIRST_BID_COMPLETED,
+            deleted__isnull=True,
+        ).exists():
+            return
+        cls._grant_direct_points(
+            profile=buyer,
+            points=200,
+            reason="First successful auction purchase after bidding",
+            source_type=RewardSourceType.FIRST_BID_COMPLETED,
+            source_id=str(payment_request.pk),
+            idempotency_key=f"points:first_bid_completed:user:{buyer.user_id}",
+            result=result,
+            code=RewardSourceType.FIRST_BID_COMPLETED,
+        )
+
+    @classmethod
+    def _grant_order_completion_points(cls, payment_request, buyer, seller, result):
+        market_request = getattr(payment_request, "marketpaymentrequest", None)
+        if market_request is None:
+            return
+        item = market_request.order_item
+        amount_points = int(item.total_price)
+        for profile, role in ((buyer, "customer"), (seller, "seller")):
+            if amount_points > 0:
+                cls._grant_direct_points(
+                    profile=profile,
+                    points=amount_points,
+                    reason="Order item completed amount reward",
+                    source_type=RewardSourceType.ORDER_COMPLETED_AMOUNT,
+                    source_id=str(item.pk),
+                    idempotency_key=(f"points:order_item:{item.pk}:{role}:amount"),
+                    result=result,
+                    code=RewardSourceType.ORDER_COMPLETED_AMOUNT,
+                )
+            cls._grant_direct_points(
+                profile=profile,
+                points=100,
+                reason="Order item completed bonus reward",
+                source_type=RewardSourceType.ORDER_COMPLETED_BONUS,
+                source_id=str(item.pk),
+                idempotency_key=f"points:order_item:{item.pk}:{role}:bonus",
+                result=result,
+                code=RewardSourceType.ORDER_COMPLETED_BONUS,
+            )
 
     @classmethod
     def _grant_reward(
@@ -427,7 +526,10 @@ class RewardEngine:
             metadata=cls._metadata(badge_type, event_type),
             one_per_profile=badge_one_per_profile,
         )
-        if award.created == award.modified and award.awarded_at >= timezone.now() - timedelta(seconds=5):
+        if (
+            award.created == award.modified
+            and award.awarded_at >= timezone.now() - timedelta(seconds=5)
+        ):
             result.badges_awarded.append({"code": badge_type, "badge_id": award.pk})
         else:
             result.already_awarded.append({"code": badge_type, "badge_id": award.pk})
@@ -462,14 +564,50 @@ class RewardEngine:
             )
         return transaction_obj
 
+    @classmethod
+    def _grant_direct_points(
+        cls,
+        *,
+        profile,
+        points,
+        reason,
+        source_type,
+        source_id,
+        idempotency_key,
+        result,
+        code,
+    ):
+        transaction_obj = PointService.earn_points(
+            user=profile.user,
+            profile=profile,
+            points=points,
+            reason=reason,
+            source_type=source_type,
+            source_id=source_id,
+            idempotency_key=idempotency_key,
+            metadata={"reward_code": str(code)},
+        )
+        if transaction_obj.created == transaction_obj.modified:
+            result.points_awarded.append({"code": str(code), "points": points})
+        else:
+            result.already_awarded.append(
+                {
+                    "code": str(code),
+                    "point_transaction_id": transaction_obj.pk,
+                }
+            )
+        return transaction_obj
+
     @staticmethod
     def _is_last_minute_bid(bid, context):
         if "was_last_minute" in context:
             return bool(context["was_last_minute"])
         auction = bid.item.auction
         remaining = auction.end_time - bid.created
-        return timedelta(0) < remaining <= timedelta(
-            minutes=LAST_MINUTE_BID_WINDOW_MINUTES
+        return (
+            timedelta(0)
+            < remaining
+            <= timedelta(minutes=LAST_MINUTE_BID_WINDOW_MINUTES)
         )
 
     @classmethod

@@ -63,9 +63,7 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         else:
             actor_profile = active_profile(request)
             if actor_profile.type != ProfileType.MANAGER:
-                raise PermissionDenied(
-                    "Only managers can create manual notifications."
-                )
+                raise PermissionDenied("Only managers can create manual notifications.")
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -105,9 +103,7 @@ class NotificationUnreadCountViewSet(viewsets.GenericViewSet):
     http_method_names = ["get"]
 
     def list(self, request, *args, **kwargs):
-        unread_count = NotificationService.get_unread_count(
-            active_profile(request)
-        )
+        unread_count = NotificationService.get_unread_count(active_profile(request))
         serializer = self.get_serializer({"unread_count": unread_count})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -152,8 +148,6 @@ class NotificationMarkAllReadViewSet(viewsets.GenericViewSet):
     http_method_names = ["post"]
 
     def create(self, request, *args, **kwargs):
-        updated_count = NotificationService.mark_all_as_read(
-            active_profile(request)
-        )
+        updated_count = NotificationService.mark_all_as_read(active_profile(request))
         serializer = self.get_serializer({"updated_count": updated_count})
         return Response(serializer.data, status=status.HTTP_200_OK)

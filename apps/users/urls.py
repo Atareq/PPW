@@ -7,6 +7,7 @@ from apps.users.views import (
     ManagerPermissionRegistryViewSet,
     ManagerPermissionUpdateViewSet,
     ManagerProfileAdminViewSet,
+    ProfileBalanceAdjustmentViewSet,
     SellerProfileAdminViewSet,
     SellerProfileMobileViewSet,
 )
@@ -14,17 +15,13 @@ from apps.users.views import (
 router = DefaultRouter()
 
 # Dashboard / admin
-router.register(
-    "admin/sellers", SellerProfileAdminViewSet, basename="admin-sellers"
-)
+router.register("admin/sellers", SellerProfileAdminViewSet, basename="admin-sellers")
 router.register(
     "admin/customers", CustomerProfileAdminViewSet, basename="admin-customers"
 )
 
 # Mobile / user
-router.register(
-    "mobile/sellers", SellerProfileMobileViewSet, basename="mobile-sellers"
-)
+router.register("mobile/sellers", SellerProfileMobileViewSet, basename="mobile-sellers")
 router.register(
     "mobile/customers",
     CustomerProfileMobileViewSet,
@@ -58,6 +55,11 @@ urlpatterns = [
         "admin/managers/<int:pk>/permissions/",
         ManagerPermissionUpdateViewSet.as_view({"patch": "partial_update"}),
         name="admin-manager-permission-update",
+    ),
+    path(
+        "admin/profile-balance-adjustments/",
+        ProfileBalanceAdjustmentViewSet.as_view({"post": "create"}),
+        name="admin-profile-balance-adjustment-create",
     ),
     path("", include(router.urls)),
 ]

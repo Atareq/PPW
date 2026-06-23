@@ -2,7 +2,7 @@ import base64
 import json
 
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db.models.functions import Random
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -13,6 +13,7 @@ from apps.auctions.models import Auction, AuctionStatus
 from apps.feed.models import SellerCustomerBlock, SellerFollow
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, Profile, SellerProfile
+from apps.orders.models import OrderItemStatus
 
 
 DEFAULT_FEED_LIMIT = 20
@@ -35,16 +36,17 @@ class BlockService:
         customer, seller = BlockService._resolve_customer_seller(actor, other)
 
         try:
-            block, created = (
-                SellerCustomerBlock.objects.select_for_update().get_or_create(
-                    customer_id=customer.pk,
-                    seller_id=seller.pk,
-                    defaults={
-                        "blocked_by_id": actor.pk,
-                        "reason": reason,
-                        "is_active": True,
-                    },
-                )
+            (
+                block,
+                created,
+            ) = SellerCustomerBlock.objects.select_for_update().get_or_create(
+                customer_id=customer.pk,
+                seller_id=seller.pk,
+                defaults={
+                    "blocked_by_id": actor.pk,
+                    "reason": reason,
+                    "is_active": True,
+                },
             )
         except IntegrityError:
             block = SellerCustomerBlock.objects.select_for_update().get(
@@ -183,9 +185,7 @@ class BlockService:
     def _require_active_customer_or_seller(profile_or_id):
         profile = BlockService._get_profile(profile_or_id)
         if profile.type not in {ProfileType.CUSTOMER, ProfileType.SELLER}:
-            raise PermissionDenied(
-                "Only customer and seller profiles can use blocks."
-            )
+            raise PermissionDenied("Only customer and seller profiles can use blocks.")
         if (
             not profile.is_active
             or not profile.activated
@@ -276,9 +276,7 @@ class SellerFollowService:
     @staticmethod
     def following_queryset(active_profile):
         customer = SellerFollowService._require_customer(active_profile)
-        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
-            customer
-        )
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
         queryset = (
             SellerFollow.objects.filter(
                 follower_id=customer.pk,
@@ -471,9 +469,7 @@ class FeedService:
     def get_people_you_may_know(customer_profile, limit):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
-        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
-            customer
-        )
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
 
         queryset = SellerProfile.objects.filter(
             is_active=True,
@@ -481,20 +477,27 @@ class FeedService:
             is_valid=True,
             deleted__isnull=True,
         ).exclude(user_id=customer.user_id)
+        queryset = queryset.annotate(
+            completed_orders_count=Count(
+                "sold_order_items",
+                filter=Q(
+                    sold_order_items__status=OrderItemStatus.COMPLETED,
+                    sold_order_items__deleted__isnull=True,
+                ),
+            )
+        )
         if followed_seller_ids:
             queryset = queryset.exclude(pk__in=followed_seller_ids)
         if blocked_seller_ids:
             queryset = queryset.exclude(pk__in=blocked_seller_ids)
 
-        return list(queryset.order_by(Random())[:limit])
+        return list(queryset.order_by("-completed_orders_count", Random())[:limit])
 
     @staticmethod
     def get_auction_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
-        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
-            customer
-        )
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
         cursor_state = FeedCursor.parse(cursor)
 
         now = timezone.now()
@@ -528,9 +531,7 @@ class FeedService:
     def get_market_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
-        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
-            customer
-        )
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
         cursor_state = FeedCursor.parse(cursor)
 
         base_queryset = (

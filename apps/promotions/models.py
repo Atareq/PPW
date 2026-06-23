@@ -8,6 +8,15 @@ from apps.assets.models import AssetCategory
 from apps.general.models import BaseModel
 
 
+class OfferTriggerType(models.TextChoices):
+    GLOBAL = "global", "Global"
+    LUCKY_WHEEL = "lucky_wheel", "Lucky Wheel"
+    ONBOARDING = "onboarding", "Onboarding"
+    REFERRAL = "referral", "Referral"
+    SEASON = "season", "Season"
+    MANAGER_GRANT = "manager_grant", "Manager Grant"
+
+
 class OfferValueType(models.TextChoices):
     PERCENTAGE = "percentage", "Percentage"
     FIXED_AMOUNT = "fixed_amount", "Fixed Amount"
@@ -24,6 +33,19 @@ class CashbackTransactionType(models.TextChoices):
     REDEEMED = "redeemed", "Redeemed"
     REFUNDED = "refunded", "Refunded"
     ADMIN_ADJUSTMENT = "admin_adjustment", "Admin Adjustment"
+    POINTS_PURCHASE = "points_purchase", "Points Purchase"
+
+
+class UserPromotionGrantType(models.TextChoices):
+    DISCOUNT = "discount", "Discount"
+    CASHBACK = "cashback", "Cashback"
+
+
+class UserPromotionGrantStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    REDEEMED = "redeemed", "Redeemed"
+    EXPIRED = "expired", "Expired"
+    CANCELLED = "cancelled", "Cancelled"
 
 
 class OfferBase(BaseModel):
@@ -57,6 +79,12 @@ class OfferBase(BaseModel):
         decimal_places=2,
         default=Decimal("0.00"),
         validators=[MinValueValidator(0)],
+    )
+    trigger_type = models.CharField(
+        max_length=30,
+        choices=OfferTriggerType.choices,
+        default=OfferTriggerType.GLOBAL,
+        db_index=True,
     )
     is_active = models.BooleanField(default=True)
     priority = models.IntegerField(default=0)
@@ -101,22 +129,15 @@ class OfferBase(BaseModel):
         ):
             errors["value"] = "Percentage offer value cannot exceed 100."
 
-        if (
-            self.minimum_order_price is not None
-            and self.minimum_order_price < 0
-        ):
-            errors["minimum_order_price"] = (
-                "Minimum order price cannot be negative."
-            )
+        if self.minimum_order_price is not None and self.minimum_order_price < 0:
+            errors["minimum_order_price"] = "Minimum order price cannot be negative."
 
     def _validate_target(self, errors):
         if self.target_type == OfferTargetType.ASSET:
             if self.asset_id is None:
                 errors["asset"] = "Asset is required for asset-targeted offers."
             if self.category:
-                errors["category"] = (
-                    "Category must be empty for asset-targeted offers."
-                )
+                errors["category"] = "Category must be empty for asset-targeted offers."
             return
 
         if self.target_type == OfferTargetType.CATEGORY:
@@ -125,9 +146,7 @@ class OfferBase(BaseModel):
                     "Category is required for category-targeted offers."
                 )
             if self.asset_id is not None:
-                errors["asset"] = (
-                    "Asset must be empty for category-targeted offers."
-                )
+                errors["asset"] = "Asset must be empty for category-targeted offers."
             return
 
         if self.target_type == OfferTargetType.ALL:
@@ -168,7 +187,7 @@ class DiscountOffer(OfferBase):
         ordering = ["-created"]
         indexes = [
             models.Index(
-                fields=["is_active", "target_type"],
+                fields=["is_active", "trigger_type", "target_type"],
                 name="disc_offer_active_target_idx",
             ),
             models.Index(
@@ -213,6 +232,7 @@ class DiscountOffer(OfferBase):
                 name="disc_offer_target_shape_ck",
             ),
         ]
+
     def __str__(self):
         return f"DiscountOffer #{self.pk} {self.title}"
 
@@ -229,7 +249,7 @@ class CashbackOffer(OfferBase):
         ordering = ["-created"]
         indexes = [
             models.Index(
-                fields=["is_active", "target_type"],
+                fields=["is_active", "trigger_type", "target_type"],
                 name="cb_offer_active_target_idx",
             ),
             models.Index(
@@ -278,6 +298,7 @@ class CashbackOffer(OfferBase):
                 name="cb_offer_target_shape_ck",
             ),
         ]
+
     def clean(self):
         super().clean()
         if (
@@ -294,6 +315,113 @@ class CashbackOffer(OfferBase):
 
     def __str__(self):
         return f"CashbackOffer #{self.pk} {self.title}"
+
+
+class UserPromotionGrant(BaseModel):
+    user = models.ForeignKey(
+        "authentication.UserAccount",
+        on_delete=models.CASCADE,
+        related_name="promotion_grants",
+    )
+    profile = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        related_name="promotion_grants",
+        null=True,
+        blank=True,
+    )
+    grant_type = models.CharField(
+        max_length=20,
+        choices=UserPromotionGrantType.choices,
+    )
+    discount_offer = models.ForeignKey(
+        DiscountOffer,
+        on_delete=models.PROTECT,
+        related_name="user_grants",
+        null=True,
+        blank=True,
+    )
+    cashback_offer = models.ForeignKey(
+        CashbackOffer,
+        on_delete=models.PROTECT,
+        related_name="user_grants",
+        null=True,
+        blank=True,
+    )
+    source_type = models.CharField(max_length=100, db_index=True)
+    source_id = models.CharField(max_length=100, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=UserPromotionGrantStatus.choices,
+        default=UserPromotionGrantStatus.ACTIVE,
+    )
+    expires_at = models.DateTimeField(null=True, blank=True)
+    redeemed_at = models.DateTimeField(null=True, blank=True)
+    order_item = models.ForeignKey(
+        "orders.OrderItem",
+        on_delete=models.SET_NULL,
+        related_name="promotion_grants",
+        null=True,
+        blank=True,
+    )
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created"]
+        indexes = [
+            models.Index(fields=["user", "status"], name="promo_grant_user_status_idx"),
+            models.Index(
+                fields=["profile", "status"],
+                name="promo_grant_profile_status_idx",
+            ),
+            models.Index(
+                fields=["source_type", "source_id"],
+                name="promo_grant_source_idx",
+            ),
+            models.Index(fields=["expires_at"], name="promo_grant_expires_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    (
+                        models.Q(discount_offer__isnull=False)
+                        & models.Q(cashback_offer__isnull=True)
+                        & models.Q(grant_type=UserPromotionGrantType.DISCOUNT)
+                    )
+                    | (
+                        models.Q(discount_offer__isnull=True)
+                        & models.Q(cashback_offer__isnull=False)
+                        & models.Q(grant_type=UserPromotionGrantType.CASHBACK)
+                    )
+                ),
+                name="promo_grant_exactly_one_matching_offer_ck",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if bool(self.discount_offer_id) == bool(self.cashback_offer_id):
+            errors["detail"] = "Exactly one promotion offer must be selected."
+        if (
+            self.discount_offer_id
+            and self.grant_type != UserPromotionGrantType.DISCOUNT
+        ):
+            errors["grant_type"] = "Grant type must match discount offer."
+        if (
+            self.cashback_offer_id
+            and self.grant_type != UserPromotionGrantType.CASHBACK
+        ):
+            errors["grant_type"] = "Grant type must match cashback offer."
+        if not self.idempotency_key:
+            errors["idempotency_key"] = "Idempotency key is required."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class CashbackTransaction(BaseModel):
@@ -329,6 +457,7 @@ class CashbackTransaction(BaseModel):
     )
     note = models.TextField(blank=True)
     idempotency_key = models.CharField(max_length=255, unique=True)
+
     class Meta:
         ordering = ["-created"]
         indexes = [
@@ -352,15 +481,11 @@ class CashbackTransaction(BaseModel):
             ),
             models.CheckConstraint(
                 check=(
-                    models.Q(
-                        transaction_type=CashbackTransactionType.ADMIN_ADJUSTMENT
-                    )
+                    models.Q(transaction_type=CashbackTransactionType.ADMIN_ADJUSTMENT)
                     & ~models.Q(amount=0)
                 )
                 | (
-                    ~models.Q(
-                        transaction_type=CashbackTransactionType.ADMIN_ADJUSTMENT
-                    )
+                    ~models.Q(transaction_type=CashbackTransactionType.ADMIN_ADJUSTMENT)
                     & models.Q(amount__gt=0)
                 ),
                 name="cb_txn_amount_sign_ck",
@@ -381,9 +506,7 @@ class CashbackTransaction(BaseModel):
             if self.amount == 0:
                 errors["amount"] = "Admin adjustment amount cannot be zero."
         elif self.amount is None or self.amount <= 0:
-            errors["amount"] = (
-                "Cashback transaction amount must be greater than 0."
-            )
+            errors["amount"] = "Cashback transaction amount must be greater than 0."
 
         if errors:
             raise ValidationError(errors)
@@ -394,6 +517,5 @@ class CashbackTransaction(BaseModel):
 
     def __str__(self):
         return (
-            f"CashbackTransaction #{self.pk} "
-            f"{self.transaction_type} {self.amount}"
+            f"CashbackTransaction #{self.pk} " f"{self.transaction_type} {self.amount}"
         )

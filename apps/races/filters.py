@@ -26,6 +26,5 @@ class RaceResultFilter(django_filters.FilterSet):
 
     def filter_q(self, queryset, name, value):
         return queryset.filter(
-            Q(bird_ring_number__icontains=value)
-            | Q(competitor_name__icontains=value)
+            Q(bird_ring_number__icontains=value) | Q(competitor_name__icontains=value)
         )

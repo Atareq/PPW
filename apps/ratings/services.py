@@ -115,9 +115,7 @@ def create_asset_rating(customer_profile, asset_id, stars, comment_data=None):
 
 
 @transaction.atomic
-def create_seller_rating(
-    customer_profile, seller_id, stars, comment_data=None
-):
+def create_seller_rating(customer_profile, seller_id, stars, comment_data=None):
     """Create a rating only after a completed order item for the seller."""
 
     customer_profile = RatingValidator.get_customer_profile(customer_profile)

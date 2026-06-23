@@ -36,12 +36,8 @@ class Package(BaseModel):
     activation_period_days = models.PositiveIntegerField(
         validators=[MinValueValidator(1)]
     )
-    auction_cost = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)]
-    )
-    product_cost = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)]
-    )
+    auction_cost = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    product_cost = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     is_available = models.BooleanField(default=True)
 
     class Meta:
@@ -109,9 +105,7 @@ class SellerPackage(OwnerBaseModel):
         on_delete=models.PROTECT,
         related_name="seller_packages",
     )
-    remaining_points = models.PositiveIntegerField(
-        validators=[MinValueValidator(0)]
-    )
+    remaining_points = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     activated = models.BooleanField(default=False)
     activated_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -181,9 +175,7 @@ class PackageUsageLog(BaseModel):
         max_length=30,
         choices=PackageUsageType.choices,
     )
-    points_used = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)]
-    )
+    points_used = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     related_object_type = models.CharField(max_length=100, blank=True)
     related_object_id = models.PositiveIntegerField(null=True, blank=True)
 
