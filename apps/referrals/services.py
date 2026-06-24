@@ -17,9 +17,13 @@ REFERRAL_INVITER_POINTS = 30
 
 
 class ReferralService:
+    """Referral code lifecycle and inviter PP Coin reward application."""
+
     @staticmethod
     @transaction.atomic
     def create_code(owner_profile):
+        """Create a short-lived share code for the active profile."""
+
         owner = Profile.objects.select_related("user").get(pk=owner_profile.pk)
         expires_at = timezone.now() + timezone.timedelta(hours=REFERRAL_CODE_TTL_HOURS)
         for _ in range(5):
@@ -37,6 +41,8 @@ class ReferralService:
     @staticmethod
     @transaction.atomic
     def redeem_code(active_profile, raw_code):
+        """Redeem one locked code for a new account and reward the inviter once."""
+
         code_value = str(raw_code or "").strip()
         if not code_value:
             raise ValidationError({"code": "This field is required."})

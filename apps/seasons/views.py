@@ -22,6 +22,8 @@ class SeasonViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Manager season configuration for reward snapshots."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "SEASONS_ADMIN"
     manager_permission_map = {
@@ -34,6 +36,8 @@ class SeasonViewSet(
 
 
 class SeasonCalculateWinnersViewSet(viewsets.GenericViewSet):
+    """Calculate seller rankings and award top season sellers once."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "SEASONS_ADMIN"
     manager_permission_map = {"create": "seasons.calculate"}
@@ -54,6 +58,8 @@ class SeasonCalculateWinnersViewSet(viewsets.GenericViewSet):
 
 
 class SeasonSellerInsightViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Read calculated seller insight snapshots for one season."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "SEASONS_ADMIN"
     manager_permission_map = {"list": "seasons.insights.list"}

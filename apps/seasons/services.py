@@ -17,9 +17,13 @@ SEASON_WINNER_POINTS = {1: 100000, 2: 50000, 3: 25000}
 
 
 class SeasonService:
+    """Snapshot seller performance for a season and award ranked winners."""
+
     @staticmethod
     @transaction.atomic
     def calculate_winners(season, manager_profile=None):
+        """Recalculate the seller snapshot without double-awarding winner points."""
+
         season = Season.objects.select_for_update().get(pk=season.pk)
         seller_rows = (
             SellerProfile.objects.filter(

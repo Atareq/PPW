@@ -31,6 +31,8 @@ class LuckyWheelSpinStatus(models.TextChoices):
 
 
 class LuckyWheelGrant(BaseModel):
+    """Attempt ledger row; the user owns coins while profile records context."""
+
     user = models.ForeignKey(
         "authentication.UserAccount",
         on_delete=models.CASCADE,
@@ -105,6 +107,8 @@ class LuckyWheelGrant(BaseModel):
 
 
 class LuckyWheelPrize(BaseModel):
+    """Weighted backend prize definition with optional finite inventory."""
+
     label = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     prize_type = models.CharField(max_length=30, choices=LuckyWheelPrizeType.choices)
@@ -200,6 +204,8 @@ class LuckyWheelPrize(BaseModel):
 
 
 class LuckyWheelSpin(BaseModel):
+    """Immutable spin result snapshot for idempotent client retries."""
+
     user = models.ForeignKey(
         "authentication.UserAccount",
         on_delete=models.CASCADE,

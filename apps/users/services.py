@@ -30,9 +30,13 @@ def quantize_money(value):
 
 
 class ProfileBalanceService:
+    """Ledger-backed normal balance adjustments for customer/seller profiles."""
+
     @staticmethod
     @transaction.atomic
     def manager_adjust(*, profile, amount, manager_profile, note, idempotency_key):
+        """Lock the concrete profile, mutate balance, and write one audit row."""
+
         if manager_profile.type != ProfileType.MANAGER:
             raise PermissionDenied("Only manager profiles can adjust balances.")
         idempotency_key = str(idempotency_key or "").strip()

@@ -12,6 +12,8 @@ from apps.referrals.services import ReferralService
 
 
 class LinkSharingCodeViewSet(viewsets.GenericViewSet):
+    """Create short-lived referral codes for the active profile."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = LinkSharingCodeSerializer
     queryset = LinkSharingCode.objects.all()
@@ -30,6 +32,8 @@ class LinkSharingCodeViewSet(viewsets.GenericViewSet):
 
 
 class ReferralRedeemViewSet(viewsets.GenericViewSet):
+    """Redeem a valid code for a new account and reward the inviter."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = ReferralRedeemSerializer
     queryset = LinkSharingCode.objects.all()

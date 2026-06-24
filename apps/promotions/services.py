@@ -39,10 +39,14 @@ def target_priority(target_type):
 
 
 class OfferSelectionMixin:
+    """Shared offer selection that defaults to normal marketplace global offers."""
+
     model = None
 
     @classmethod
     def get_active_offers(cls, *, trigger_type=OfferTriggerType.GLOBAL):
+        """Only global offers participate in automatic selection by default."""
+
         return cls.model.objects.select_related("asset", "created_by").filter(
             is_active=True,
             trigger_type=trigger_type,
@@ -364,6 +368,8 @@ class CashbackService:
     @staticmethod
     @transaction.atomic
     def buy_points_with_cashback(customer_profile, cashback_amount, idempotency_key):
+        """Convert customer cashback to PP Coins with paired idempotent ledgers."""
+
         from apps.loyalty.constants import RewardSourceType
         from apps.loyalty.services import PointService
 
@@ -589,6 +595,8 @@ class UserPromotionGrantService:
 
     @staticmethod
     def get_active_grants_for_user(user, profile=None):
+        """Return unredeemed grants that are still valid for the user/profile."""
+
         now = timezone.now()
         queryset = (
             UserPromotionGrant.objects.select_related(
@@ -624,6 +632,8 @@ class UserPromotionGrantService:
         idempotency_key,
         metadata,
     ):
+        """Persist a single user grant for an offer prize source."""
+
         idempotency_key = str(idempotency_key).strip()
         if not idempotency_key:
             raise ValidationError({"idempotency_key": "Idempotency key is required."})

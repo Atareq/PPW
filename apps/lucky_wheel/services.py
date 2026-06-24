@@ -21,8 +21,12 @@ from apps.lucky_wheel.models import (
 
 
 class LuckyWheelGrantService:
+    """Create and read attempt grants without moving the user-level point wallet."""
+
     @staticmethod
     def grant_onboarding_attempt(profile):
+        """Grant exactly one first-profile onboarding attempt."""
+
         return LuckyWheelGrantService.grant_attempt(
             profile=profile,
             source_type=LuckyWheelGrantSourceType.ONBOARDING,
@@ -33,6 +37,8 @@ class LuckyWheelGrantService:
 
     @staticmethod
     def grant_for_auction_completed(winner_profile, auction_item):
+        """Grant the auction winner only after seller-approved sale completion."""
+
         return LuckyWheelGrantService.grant_attempt(
             profile=winner_profile,
             source_type=LuckyWheelGrantSourceType.AUCTION_COMPLETED,
@@ -56,6 +62,8 @@ class LuckyWheelGrantService:
         metadata=None,
         idempotency_key=None,
     ):
+        """Create an attempt grant once for a source/profile idempotency key."""
+
         profile = Profile.objects.select_related("user").get(pk=profile.pk)
         attempts = int(attempts)
         if attempts <= 0:
@@ -110,9 +118,13 @@ class LuckyWheelGrantService:
 
 
 class LuckyWheelSpinService:
+    """Consume one grant attempt and apply the backend-selected prize atomically."""
+
     @staticmethod
     @transaction.atomic
     def spin(user, profile, idempotency_key):
+        """Return an existing spin for retries, otherwise lock and spend one attempt."""
+
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
             raise ValidationError({"idempotency_key": "This field is required."})
@@ -160,6 +172,8 @@ class LuckyWheelSpinService:
 
     @staticmethod
     def _choose_prize():
+        """Pick by configured weights, then lock the selected row for inventory."""
+
         available = list(
             LuckyWheelPrize.objects.filter(is_active=True)
             .filter(
@@ -193,6 +207,8 @@ class LuckyWheelSpinService:
 
     @staticmethod
     def _apply_prize(spin, prize):
+        """Route the awarded prize to the correct ledger/grant service."""
+
         if prize.prize_type == LuckyWheelPrizeType.NO_PRIZE:
             return None
         if prize.prize_type == LuckyWheelPrizeType.PP_COINS:

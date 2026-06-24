@@ -318,6 +318,8 @@ class CashbackOffer(OfferBase):
 
 
 class UserPromotionGrant(BaseModel):
+    """User-owned non-global offer grant, typically from wheel/referral/season."""
+
     user = models.ForeignKey(
         "authentication.UserAccount",
         on_delete=models.CASCADE,

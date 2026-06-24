@@ -26,6 +26,8 @@ from apps.users.models import CustomerProfile
 
 
 class LuckyWheelCurrentViewSet(viewsets.GenericViewSet):
+    """Read current wheel eligibility and displayable prize segments."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = LuckyWheelCurrentSerializer
     queryset = LuckyWheelPrize.objects.none()
@@ -70,6 +72,8 @@ class LuckyWheelCurrentViewSet(viewsets.GenericViewSet):
 
 
 class LuckyWheelSpinViewSet(viewsets.GenericViewSet):
+    """Spend one available attempt; the backend chooses the prize."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = LuckyWheelSpinRequestSerializer
     queryset = LuckyWheelSpin.objects.all()
@@ -114,6 +118,8 @@ class LuckyWheelSpinViewSet(viewsets.GenericViewSet):
 
 
 class MyLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """List the authenticated user's spin history."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = LuckyWheelSpinSerializer
     queryset = LuckyWheelSpin.objects.all()
@@ -140,6 +146,8 @@ class AdminLuckyWheelPrizeViewSet(
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Manager prize configuration for weighted Lucky Wheel results."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "LUCKY_WHEEL_PRIZE_ADMIN"
     manager_permission_map = {
@@ -155,6 +163,8 @@ class AdminLuckyWheelPrizeViewSet(
 
 
 class AdminLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Manager read-only spin audit list."""
+
     permission_classes = [HasAppAccess]
     permission_resource = "LUCKY_WHEEL_SPIN_ADMIN"
     manager_permission_map = {"list": "lucky_wheel.spins.list"}

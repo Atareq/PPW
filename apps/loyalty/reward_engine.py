@@ -156,6 +156,8 @@ class RewardEngine:
 
     @classmethod
     def _handle_auction_published(cls, profile, event_type, context, result):
+        """Award posting points on every auction and first-auction badge once."""
+
         from apps.auctions.models import Auction
 
         auction = cls._context_object(context, "auction", Auction)
@@ -436,6 +438,8 @@ class RewardEngine:
 
     @classmethod
     def _grant_auction_completion_extras(cls, buyer, payment_request, result):
+        """Attach wheel and first-bid rewards to trusted auction sale completion."""
+
         auction_request = getattr(payment_request, "auctionpaymentrequest", None)
         if auction_request is None:
             return
@@ -466,6 +470,8 @@ class RewardEngine:
 
     @classmethod
     def _grant_order_completion_points(cls, payment_request, buyer, seller, result):
+        """Award both sides once when a market payment approval completes an item."""
+
         market_request = getattr(payment_request, "marketpaymentrequest", None)
         if market_request is None:
             return
@@ -577,6 +583,8 @@ class RewardEngine:
         result,
         code,
     ):
+        """Create non-badge point rewards through the same idempotent wallet path."""
+
         transaction_obj = PointService.earn_points(
             user=profile.user,
             profile=profile,
