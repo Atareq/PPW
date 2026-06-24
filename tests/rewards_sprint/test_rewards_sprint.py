@@ -12,6 +12,7 @@ from apps.lucky_wheel.models import (
     LuckyWheelPrize,
     LuckyWheelPrizeType,
     LuckyWheelSpin,
+    LuckyWheelSpinStatus,
 )
 from apps.loyalty.constants import RewardSourceType
 from apps.loyalty.models import PointTransaction
@@ -142,6 +143,76 @@ def test_lucky_wheel_discount_prize_creates_user_promotion_grant():
         discount_offer=offer,
         source_type=RewardSourceType.LUCKY_WHEEL,
     ).count() == 1
+
+
+def test_admin_lucky_wheel_spin_list_includes_user_identity():
+    customer = CustomerProfileFactory(is_active=True)
+    manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+    grant = LuckyWheelGrant.objects.create(
+        user=customer.user,
+        profile=customer,
+        source_type=LuckyWheelGrantSourceType.ONBOARDING,
+        total_attempts=1,
+        remaining_attempts=0,
+        idempotency_key="admin-spin-grant",
+    )
+    prize = LuckyWheelPrize.objects.create(
+        label="No prize",
+        prize_type=LuckyWheelPrizeType.NO_PRIZE,
+        weight=1,
+    )
+    spin = LuckyWheelSpin.objects.create(
+        user=customer.user,
+        profile=customer,
+        grant=grant,
+        prize=prize,
+        status=LuckyWheelSpinStatus.NO_PRIZE,
+        prize_snapshot={"label": "No prize"},
+        idempotency_key="admin-spin",
+    )
+
+    response = authenticated_client(manager).get("/api/lucky-wheel/admin/spins/")
+
+    assert response.status_code == status.HTTP_200_OK
+    result = response.data["results"][0]
+    assert result["id"] == spin.pk
+    assert result["user_id"] == customer.user_id
+    assert result["profile_id"] == customer.pk
+    assert result["username"] == customer.user.username
+
+
+def test_customer_lucky_wheel_spin_list_uses_customer_serializer():
+    customer = CustomerProfileFactory(is_active=True)
+    grant = LuckyWheelGrant.objects.create(
+        user=customer.user,
+        profile=customer,
+        source_type=LuckyWheelGrantSourceType.ONBOARDING,
+        total_attempts=1,
+        remaining_attempts=0,
+        idempotency_key="customer-spin-grant",
+    )
+    prize = LuckyWheelPrize.objects.create(
+        label="No prize",
+        prize_type=LuckyWheelPrizeType.NO_PRIZE,
+        weight=1,
+    )
+    LuckyWheelSpin.objects.create(
+        user=customer.user,
+        profile=customer,
+        grant=grant,
+        prize=prize,
+        status=LuckyWheelSpinStatus.NO_PRIZE,
+        prize_snapshot={"label": "No prize"},
+        idempotency_key="customer-spin",
+    )
+
+    response = authenticated_client(customer.user).get("/api/lucky-wheel/spins/my/")
+
+    assert response.status_code == status.HTTP_200_OK
+    result = response.data["results"][0]
+    assert "user_id" not in result
+    assert "profile_id" not in result
+    assert "username" not in result
 
 
 def test_registration_grants_one_onboarding_lucky_wheel_attempt():

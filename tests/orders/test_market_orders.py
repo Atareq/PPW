@@ -953,6 +953,47 @@ class TestOrderReadEndpoints:
             matched.pk
         ]
 
+    def test_seller_can_retrieve_own_order_item(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        item = OrderItemFactory(seller=seller.active_profile)
+        client = authenticated_client(seller)
+
+        response = client.get(f"/api/orders/items/{item.pk}/")
+
+        assert response.status_code == 200
+        assert response.data["id"] == item.pk
+        assert response.data["seller"] == seller.active_profile.pk
+
+    def test_seller_cannot_retrieve_other_seller_order_item(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        other_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        item = OrderItemFactory(seller=other_seller.active_profile)
+        client = authenticated_client(seller)
+
+        response = client.get(f"/api/orders/items/{item.pk}/")
+
+        assert response.status_code == 404
+
+    def test_order_item_list_filters_by_status(self):
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        approved = OrderItemFactory(
+            seller=seller.active_profile,
+            status=OrderItemStatus.APPROVED,
+        )
+        OrderItemFactory(
+            seller=seller.active_profile,
+            status=OrderItemStatus.PENDING_SELLER,
+        )
+        client = authenticated_client(seller)
+
+        response = client.get(
+            "/api/orders/items/",
+            {"status": OrderItemStatus.APPROVED},
+        )
+
+        assert response.status_code == 200
+        assert [item["id"] for item in response.data["results"]] == [approved.pk]
+
     def test_customer_can_filter_own_orders_by_status(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

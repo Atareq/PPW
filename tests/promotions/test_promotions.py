@@ -1,6 +1,8 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 import pytest
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.test import APIClient
@@ -17,6 +19,9 @@ from apps.promotions.models import (
     DiscountOffer,
     OfferTargetType,
     OfferValueType,
+    UserPromotionGrant,
+    UserPromotionGrantStatus,
+    UserPromotionGrantType,
 )
 from apps.promotions.services import (
     CashbackOfferService,
@@ -408,6 +413,99 @@ class TestPromotionOrderIntegration:
         assert first_item.cashback_redeemed_amount == Decimal("8.00")
         assert second_item.cashback_redeemed_amount == Decimal("0.00")
         assert customer_profile.cashback_balance == Decimal("0.00")
+
+
+class TestMyPromotionGrantsApi:
+    def test_user_sees_only_own_active_non_expired_grants(self):
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        other_user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        discount = DiscountOfferFactory()
+        visible = UserPromotionGrant.objects.create(
+            user=user,
+            profile=user.active_profile,
+            grant_type=UserPromotionGrantType.DISCOUNT,
+            discount_offer=discount,
+            source_type="test",
+            source_id="visible",
+            status=UserPromotionGrantStatus.ACTIVE,
+            expires_at=timezone.now() + timedelta(days=1),
+            idempotency_key="grant-visible",
+        )
+        UserPromotionGrant.objects.create(
+            user=other_user,
+            profile=other_user.active_profile,
+            grant_type=UserPromotionGrantType.DISCOUNT,
+            discount_offer=discount,
+            source_type="test",
+            source_id="other",
+            status=UserPromotionGrantStatus.ACTIVE,
+            expires_at=timezone.now() + timedelta(days=1),
+            idempotency_key="grant-other",
+        )
+        UserPromotionGrant.objects.create(
+            user=user,
+            profile=user.active_profile,
+            grant_type=UserPromotionGrantType.DISCOUNT,
+            discount_offer=discount,
+            source_type="test",
+            source_id="expired",
+            status=UserPromotionGrantStatus.ACTIVE,
+            expires_at=timezone.now() - timedelta(minutes=1),
+            idempotency_key="grant-expired",
+        )
+        UserPromotionGrant.objects.create(
+            user=user,
+            profile=user.active_profile,
+            grant_type=UserPromotionGrantType.DISCOUNT,
+            discount_offer=discount,
+            source_type="test",
+            source_id="redeemed",
+            status=UserPromotionGrantStatus.REDEEMED,
+            idempotency_key="grant-redeemed",
+        )
+        UserPromotionGrant.objects.create(
+            user=user,
+            profile=user.active_profile,
+            grant_type=UserPromotionGrantType.DISCOUNT,
+            discount_offer=discount,
+            source_type="test",
+            source_id="cancelled",
+            status=UserPromotionGrantStatus.CANCELLED,
+            idempotency_key="grant-cancelled",
+        )
+
+        response = authenticated_client(user).get("/api/promotions/my-grants/")
+
+        assert response.status_code == 200
+        assert response.data["count"] == 1
+        assert [grant["id"] for grant in response_results(response)] == [visible.pk]
+
+    def test_user_promotion_grants_endpoint_is_paginated(self):
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        discount = DiscountOfferFactory()
+        for index in range(21):
+            UserPromotionGrant.objects.create(
+                user=user,
+                profile=user.active_profile,
+                grant_type=UserPromotionGrantType.DISCOUNT,
+                discount_offer=discount,
+                source_type="test",
+                source_id=str(index),
+                status=UserPromotionGrantStatus.ACTIVE,
+                idempotency_key=f"grant-page-{index}",
+            )
+
+        first_page = authenticated_client(user).get("/api/promotions/my-grants/")
+        second_page = authenticated_client(user).get(
+            "/api/promotions/my-grants/",
+            {"page": 2},
+        )
+
+        assert first_page.status_code == 200
+        assert first_page.data["count"] == 21
+        assert len(first_page.data["results"]) == 20
+        assert second_page.status_code == 200
+        assert len(second_page.data["results"]) == 1
 
 
 class TestCashbackAdminAdjustment:

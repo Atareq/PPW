@@ -326,6 +326,7 @@ class MyPromotionGrantViewSet(
     """Lists the calling user's active, non-expired promotion grants."""
 
     permission_classes = [HasAppAccess]
+    # Temporary customer promotions scope until dedicated promotion grants permission exists.
     permission_resource = "CASHBACK"
     serializer_class = UserPromotionGrantSerializer
     queryset = UserPromotionGrant.objects.all()

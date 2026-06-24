@@ -469,6 +469,13 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "Calculate season seller insights and winner rewards.",
     ),
     _permission(
+        "seasons.finalize",
+        "seasons",
+        "Seasons",
+        "Finalize seasons",
+        "Finalize a calculated reward season without recalculating rewards.",
+    ),
+    _permission(
         "seasons.insights.list",
         "seasons.insights",
         "Season Insights",

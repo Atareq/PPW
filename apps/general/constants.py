@@ -31,6 +31,7 @@ SELLER_PERMISSIONS = {
     ],
     "ORDER_ITEM": [
         "list",
+        "retrieve",
         "approve",
         "reject",
     ],

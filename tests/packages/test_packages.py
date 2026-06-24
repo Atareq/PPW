@@ -330,6 +330,37 @@ class TestManagerPackageEndpoints:
         ids = {item["id"] for item in response_results(response)}
         assert seller_package.pk in ids
 
+    def test_manager_can_filter_seller_packages_by_status(self):
+        manager_user = UserAccountFactory(with_profile=ProfileType.MANAGER)
+        active_package = ActiveAssetSellerPackageFactory()
+        cancelled_package = AssetSellerPackageFactory(
+            status=SellerPackageStatus.CANCELLED,
+            invalidated_at=timezone.now(),
+        )
+        AssetSellerPackageFactory(status=SellerPackageStatus.PENDING)
+        client = authenticated_client(manager_user)
+
+        active_response = client.get(
+            "/api/seller-packages/",
+            {"status": SellerPackageStatus.ACTIVE},
+        )
+        cancelled_response = client.get(
+            "/api/seller-packages/",
+            {"status": SellerPackageStatus.CANCELLED},
+        )
+        unfiltered_response = client.get("/api/seller-packages/")
+
+        assert active_response.status_code == 200
+        assert [item["id"] for item in response_results(active_response)] == [
+            active_package.pk
+        ]
+        assert cancelled_response.status_code == 200
+        assert [item["id"] for item in response_results(cancelled_response)] == [
+            cancelled_package.pk
+        ]
+        assert unfiltered_response.status_code == 200
+        assert unfiltered_response.data["count"] == 3
+
     def test_manager_can_activate_pending_seller_package(self):
         manager_user = UserAccountFactory(with_profile=ProfileType.MANAGER)
         seller_package = AssetSellerPackageFactory()
