@@ -12,6 +12,7 @@ from apps.promotions.models import (
     CashbackTransaction,
     DiscountOffer,
     OfferTriggerType,
+    UserPromotionGrant,
 )
 from apps.promotions.serializers import (
     CashbackAdjustmentSerializer,
@@ -19,8 +20,9 @@ from apps.promotions.serializers import (
     CashbackOfferSerializer,
     CashbackTransactionSerializer,
     DiscountOfferSerializer,
+    UserPromotionGrantSerializer,
 )
-from apps.promotions.services import CashbackOfferService, DiscountOfferService
+from apps.promotions.services import CashbackOfferService, DiscountOfferService, UserPromotionGrantService
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 
@@ -314,4 +316,22 @@ class CashbackAdjustmentViewSet(
         return Response(
             CashbackTransactionSerializer(transaction).data,
             status=status.HTTP_201_CREATED,
+        )
+
+
+class MyPromotionGrantViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Lists the calling user's active, non-expired promotion grants."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "CASHBACK"
+    serializer_class = UserPromotionGrantSerializer
+    queryset = UserPromotionGrant.objects.all()
+
+    def get_queryset(self):
+        return UserPromotionGrantService.get_active_grants_for_user(
+            user=self.request.user,
+            profile=self.request.user.active_profile,
         )

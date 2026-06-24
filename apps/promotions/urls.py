@@ -11,6 +11,7 @@ from apps.promotions.views import (
     CurrentDiscountOfferViewSet,
     DiscountOfferActivationViewSet,
     MyCashbackTransactionViewSet,
+    MyPromotionGrantViewSet,
 )
 
 LIST_ACTION = {"get": "list"}
@@ -33,6 +34,11 @@ urlpatterns = [
         "cashback/my/",
         MyCashbackTransactionViewSet.as_view(LIST_ACTION),
         name="my-cashback-transaction-list",
+    ),
+    path(
+        "my-grants/",
+        MyPromotionGrantViewSet.as_view(LIST_ACTION),
+        name="my-promotion-grant-list",
     ),
     path(
         "cashback/balance/",

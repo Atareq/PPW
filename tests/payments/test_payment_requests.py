@@ -748,6 +748,37 @@ class TestPaymentRequestApi:
         assert response.status_code == 200
         assert response.data["count"] == 2
 
+    def test_manager_can_retrieve_payment_request_detail(self):
+        item, buyer, _, _ = create_approved_order_item()
+        request = PaymentRequestService.create_for_order_item(
+            item.pk,
+            buyer.active_profile,
+        )
+        manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+
+        response = authenticated_client(manager).get(
+            f"/api/payments/requests/{request.pk}/"
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == request.pk
+        assert response.data["order_item_id"] == item.pk
+        assert response.data["auction_item_id"] is None
+
+    def test_unrelated_customer_cannot_retrieve_payment_request_detail(self):
+        item, buyer, _, _ = create_approved_order_item()
+        request = PaymentRequestService.create_for_order_item(
+            item.pk,
+            buyer.active_profile,
+        )
+        other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+        response = authenticated_client(other_customer).get(
+            f"/api/payments/requests/{request.pk}/"
+        )
+
+        assert response.status_code == 404
+
     def test_unauthenticated_access_is_denied(self):
         response = APIClient().get("/api/payments/requests/")
 

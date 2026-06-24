@@ -35,6 +35,10 @@ def active_profile_or_denied(request, expected_type):
         tags=["Payments"],
         responses={200: PaymentRequestListSerializer(many=True)},
     ),
+    retrieve=extend_schema(
+        tags=["Payments"],
+        responses={200: PaymentRequestDetailSerializer},
+    ),
     partial_update=extend_schema(
         tags=["Payments"],
         request=UpdatePaymentRequestSerializer,
@@ -43,10 +47,11 @@ def active_profile_or_denied(request, expected_type):
 )
 class PaymentRequestViewSet(
     mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Role-scoped payment request list plus buyer note resubmission."""
+    """Role-scoped payment request reads plus buyer note resubmission."""
 
     permission_classes = [IsAuthenticated, HasAppAccess]
     permission_resource = "PAYMENT_REQUEST"
@@ -60,6 +65,8 @@ class PaymentRequestViewSet(
     def get_serializer_class(self):
         if self.action == "partial_update":
             return UpdatePaymentRequestSerializer
+        if self.action == "retrieve":
+            return PaymentRequestDetailSerializer
         return PaymentRequestListSerializer
 
     def get_queryset(self):
@@ -87,6 +94,7 @@ class PaymentRequestViewSet(
             kwargs["pk"],
             profile,
             buyer_note=serializer.validated_data.get("buyer_note"),
+            payment_proof=serializer.validated_data.get("payment_proof"),
         )
         return Response(
             PaymentRequestDetailSerializer(payment_request).data,
@@ -124,12 +132,14 @@ class PaymentRequestCreateViewSet(viewsets.GenericViewSet):
                 serializer.validated_data["auction_item_id"],
                 profile,
                 buyer_note=serializer.validated_data.get("buyer_note", ""),
+                payment_proof=serializer.validated_data.get("payment_proof"),
             )
         else:
             payment_request = PaymentRequestService.create_for_order_item(
                 serializer.validated_data["order_item_id"],
                 profile,
                 buyer_note=serializer.validated_data.get("buyer_note", ""),
+                payment_proof=serializer.validated_data.get("payment_proof"),
             )
 
         return Response(
