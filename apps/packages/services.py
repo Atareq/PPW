@@ -28,7 +28,7 @@ class PackageService:
     """Consume seller package points for paid seller-side platform actions."""
 
     @staticmethod
-    def validate_can_consume(seller_profile, usage_type):
+    def validate_can_consume(seller_profile, usage_type, seller_package_id):
         """Preflight package availability without writing a usage log."""
 
         seller = SellerPackageValidator.get_seller_profile(seller_profile)
@@ -36,11 +36,10 @@ class PackageService:
 
         expired_error = None
         with transaction.atomic():
-            seller_package = PackageService._get_locked_active_package(seller)
-            if seller_package is None:
-                raise ValidationError(
-                    {"package": ("No active package available for this action.")}
-                )
+            seller_package = PackageService._get_locked_selected_package(
+                seller,
+                seller_package_id,
+            )
 
             now = timezone.now()
             if seller_package.expires_at and seller_package.expires_at <= now:
@@ -62,7 +61,12 @@ class PackageService:
         raise expired_error
 
     @staticmethod
-    def consume_points(seller_profile, usage_type, related_object=None):
+    def consume_points(
+        seller_profile,
+        usage_type,
+        seller_package_id,
+        related_object=None,
+    ):
         """Atomically spend package points and record the usage log."""
 
         seller = SellerPackageValidator.get_seller_profile(seller_profile)
@@ -70,11 +74,10 @@ class PackageService:
 
         expired_error = None
         with transaction.atomic():
-            seller_package = PackageService._get_locked_active_package(seller)
-            if seller_package is None:
-                raise ValidationError(
-                    {"package": ("No active package available for this action.")}
-                )
+            seller_package = PackageService._get_locked_selected_package(
+                seller,
+                seller_package_id,
+            )
 
             now = timezone.now()
             if seller_package.expires_at and seller_package.expires_at <= now:
@@ -101,17 +104,35 @@ class PackageService:
             raise ValidationError({"usage_type": "Unsupported package usage type."})
 
     @staticmethod
-    def _get_locked_active_package(seller):
-        return (
-            AssetSellerPackage.objects.select_for_update()
-            .select_related("owner", "package")
-            .filter(
-                owner=seller,
-                status=SellerPackageStatus.ACTIVE,
-                activated=True,
+    def _get_locked_selected_package(seller, seller_package_id):
+        if not seller_package_id:
+            raise ValidationError({"seller_package_id": "This field is required."})
+
+        try:
+            seller_package = (
+                SellerPackage.objects.select_for_update()
+                .select_related("owner", "package")
+                .get(pk=seller_package_id)
             )
-            .first()
-        )
+        except SellerPackage.DoesNotExist as exc:
+            raise ValidationError(
+                {"seller_package_id": "Seller package was not found."}
+            ) from exc
+
+        if seller_package.owner_id != seller.pk:
+            raise ValidationError(
+                {"seller_package_id": "Seller package does not belong to this seller."}
+            )
+
+        if (
+            seller_package.status != SellerPackageStatus.ACTIVE
+            or not seller_package.activated
+        ):
+            raise ValidationError(
+                {"seller_package_id": "Seller package is not active."}
+            )
+
+        return seller_package
 
     @staticmethod
     def _consume_locked_package(
@@ -271,7 +292,7 @@ class SellerPackageService:
     @staticmethod
     @transaction.atomic
     def activate_package(seller_package):
-        """Activate one seller package and invalidate any previous active package."""
+        """Activate one seller package without invalidating other active packages."""
 
         locked_package = (
             SellerPackage.objects.select_for_update()
@@ -293,21 +314,6 @@ class SellerPackageService:
             )
 
         now = timezone.now()
-        (
-            SellerPackage.objects.select_for_update()
-            .filter(
-                owner=locked_package.owner,
-                status=SellerPackageStatus.ACTIVE,
-                activated=True,
-            )
-            .exclude(pk=locked_package.pk)
-            .update(
-                activated=False,
-                invalidated_at=now,
-                modified=now,
-            )
-        )
-
         locked_package.status = SellerPackageStatus.ACTIVE
         locked_package.activated = True
         locked_package.activated_at = now

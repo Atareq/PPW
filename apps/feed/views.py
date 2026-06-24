@@ -4,7 +4,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.feed.models import SellerCustomerBlock, SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow, SellerPackageFollow
 from apps.feed.serializers import (
     AuctionFeedResultSerializer,
     BlockUnblockResponseSerializer,
@@ -15,11 +15,18 @@ from apps.feed.serializers import (
     SellerDiscoverySerializer,
     SellerFollowSerializer,
     SellerFollowSellerSerializer,
+    SellerPackageFollowSerializer,
+    SellerPackageUnfollowResponseSerializer,
     SellerSuggestionQuerySerializer,
     SellerSuggestionSerializer,
     SellerUnfollowResponseSerializer,
 )
-from apps.feed.services import BlockService, FeedService, SellerFollowService
+from apps.feed.services import (
+    BlockService,
+    FeedService,
+    SellerFollowService,
+    SellerPackageFollowService,
+)
 from apps.general.authorizations import HasAppAccess
 from apps.general.permissions import IsNotManagerProfile
 from apps.users.constants import ProfileType
@@ -181,6 +188,82 @@ class SellerFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         sellers = [follow.seller for follow in follows]
         return Response(
             SellerFollowSellerSerializer(sellers, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    create=extend_schema(
+        tags=["Feed"],
+        request=None,
+        responses={200: SellerPackageFollowSerializer},
+    ),
+)
+class SellerPackageFollowCreateViewSet(viewsets.GenericViewSet):
+    """Create or reactivate a customer follow for one seller package."""
+
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
+    queryset = SellerPackageFollow.objects.all()
+    serializer_class = SellerPackageFollowSerializer
+
+    def create(self, request, *args, **kwargs):
+        follow = SellerPackageFollowService.follow(
+            active_profile(request),
+            kwargs["seller_package_id"],
+        )
+        return Response(
+            SellerPackageFollowSerializer(follow).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    create=extend_schema(
+        tags=["Feed"],
+        request=None,
+        responses={200: SellerPackageUnfollowResponseSerializer},
+    ),
+)
+class SellerPackageUnfollowCreateViewSet(viewsets.GenericViewSet):
+    """Deactivate a customer follow for one seller package without deleting it."""
+
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
+    queryset = SellerPackageFollow.objects.all()
+    serializer_class = SellerPackageUnfollowResponseSerializer
+
+    def create(self, request, *args, **kwargs):
+        seller_package = SellerPackageFollowService.unfollow(
+            active_profile(request),
+            kwargs["seller_package_id"],
+        )
+        return Response(
+            {
+                "seller_package_id": seller_package.pk,
+                "is_active": False,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Feed"],
+        responses={200: SellerPackageFollowSerializer(many=True)},
+    ),
+)
+class SellerPackageFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """List seller packages followed by the active customer profile."""
+
+    permission_classes = [IsAuthenticated, IsNotManagerProfile]
+    queryset = SellerPackageFollow.objects.all()
+    serializer_class = SellerPackageFollowSerializer
+
+    def list(self, request, *args, **kwargs):
+        follows = SellerPackageFollowService.following_queryset(
+            active_profile(request)
+        )
+        return Response(
+            SellerPackageFollowSerializer(follows, many=True).data,
             status=status.HTTP_200_OK,
         )
 

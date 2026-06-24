@@ -113,6 +113,7 @@ class ProductAssetCreationService:
         owner,
         validated_data,
         media_data=None,
+        seller_package_id=None,
     ):
         if model_class is Supply:
             return ProductAssetCreationService.create_platform_supply(
@@ -129,17 +130,20 @@ class ProductAssetCreationService:
         PackageService.validate_can_consume(
             owner,
             PackageUsageType.PRODUCT_CREATED,
+            seller_package_id,
         )
         with transaction.atomic():
             product = model_class.objects.create(
                 owner=owner,
                 sale_channel=AssetSaleChannel.SELLER_MARKET,
+                seller_package_id=seller_package_id,
                 **validated_data,
             )
             AssetMediaWriteService.create_media(product, media_data)
             PackageService.consume_points(
                 owner,
                 PackageUsageType.PRODUCT_CREATED,
+                seller_package_id,
                 related_object=product,
             )
             ProductAssetCreationService._handle_market_item_reward(

@@ -10,7 +10,8 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import Auction, AuctionStatus
-from apps.feed.models import SellerCustomerBlock, SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow, SellerPackageFollow
+from apps.packages.models import SellerPackage, SellerPackageStatus
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, Profile, SellerProfile
 from apps.orders.models import OrderItemStatus
@@ -69,6 +70,7 @@ class BlockService:
             )
 
         BlockService._remove_follow(customer, seller)
+        BlockService._remove_package_follows(customer, seller)
         return block
 
     @staticmethod
@@ -145,6 +147,14 @@ class BlockService:
         SellerFollow.objects.filter(
             follower_id=customer.pk,
             seller_id=seller.pk,
+            is_active=True,
+        ).update(is_active=False, modified=timezone.now())
+
+    @staticmethod
+    def _remove_package_follows(customer, seller):
+        SellerPackageFollow.objects.filter(
+            follower_id=customer.pk,
+            seller_package__owner_id=seller.pk,
             is_active=True,
         ).update(is_active=False, modified=timezone.now())
 
@@ -365,6 +375,127 @@ class SellerFollowService:
         )
 
 
+class SellerPackageFollowService:
+    @staticmethod
+    def follow(active_profile, seller_package_id):
+        customer = SellerFollowService._require_customer(active_profile)
+        seller_package = SellerPackageFollowService._get_package(seller_package_id)
+        SellerPackageFollowService._validate_followable(customer, seller_package)
+
+        try:
+            with transaction.atomic():
+                follow, created = SellerPackageFollow.objects.get_or_create(
+                    follower_id=customer.pk,
+                    seller_package_id=seller_package.pk,
+                    defaults={"is_active": True},
+                )
+                if not created and not follow.is_active:
+                    follow.is_active = True
+                    follow.save(update_fields=["is_active", "modified"])
+                return follow
+        except IntegrityError:
+            follow = SellerPackageFollow.objects.get(
+                follower_id=customer.pk,
+                seller_package_id=seller_package.pk,
+            )
+            if not follow.is_active:
+                follow.is_active = True
+                follow.save(update_fields=["is_active", "modified"])
+            return follow
+
+    @staticmethod
+    def unfollow(active_profile, seller_package_id):
+        customer = SellerFollowService._require_customer(active_profile)
+        seller_package = SellerPackage.objects.filter(pk=seller_package_id).first()
+        if seller_package is None:
+            raise NotFound("Seller package was not found.")
+
+        SellerPackageFollow.objects.filter(
+            follower_id=customer.pk,
+            seller_package_id=seller_package.pk,
+            is_active=True,
+        ).update(is_active=False, modified=timezone.now())
+        return seller_package
+
+    @staticmethod
+    def following_queryset(active_profile):
+        customer = SellerFollowService._require_customer(active_profile)
+        blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
+        queryset = (
+            SellerPackageFollow.objects.filter(
+                follower_id=customer.pk,
+                is_active=True,
+                seller_package__status=SellerPackageStatus.ACTIVE,
+                seller_package__activated=True,
+                seller_package__is_public=True,
+                seller_package__owner__is_active=True,
+                seller_package__owner__activated=True,
+                seller_package__owner__is_valid=True,
+                seller_package__owner__deleted__isnull=True,
+            )
+            .filter(
+                Q(seller_package__expires_at__isnull=True)
+                | Q(seller_package__expires_at__gt=timezone.now())
+            )
+            .select_related("seller_package", "seller_package__owner")
+            .order_by("-created", "-id")
+        )
+        if blocked_seller_ids:
+            queryset = queryset.exclude(seller_package__owner_id__in=blocked_seller_ids)
+        return queryset
+
+    @staticmethod
+    def followed_package_ids(customer_profile):
+        return list(
+            SellerPackageFollowService.following_queryset(customer_profile).values_list(
+                "seller_package_id",
+                flat=True,
+            )
+        )
+
+    @staticmethod
+    def _get_package(seller_package_id):
+        try:
+            return SellerPackage.objects.select_related("owner").get(pk=seller_package_id)
+        except SellerPackage.DoesNotExist as exc:
+            raise NotFound("Seller package was not found.") from exc
+
+    @staticmethod
+    def _validate_followable(customer, seller_package):
+        if customer.user_id == seller_package.owner.user_id:
+            raise ValidationError(
+                {
+                    "seller_package_id": (
+                        "Customers cannot follow their own seller package."
+                    )
+                }
+            )
+        if BlockService.is_blocked_between(customer, seller_package.owner):
+            raise ValidationError(
+                {
+                    "seller_package_id": (
+                        "Cannot follow this seller package while a block is active."
+                    )
+                }
+            )
+        if (
+            seller_package.status != SellerPackageStatus.ACTIVE
+            or not seller_package.activated
+            or not seller_package.is_public
+            or (
+                seller_package.expires_at is not None
+                and seller_package.expires_at <= timezone.now()
+            )
+            or not seller_package.owner.is_active
+            or not seller_package.owner.activated
+            or not seller_package.owner.is_valid
+            or getattr(seller_package.owner, "deleted", None) is not None
+        ):
+            raise ValidationError(
+                {"seller_package_id": "Seller package is not followable."}
+            )
+
+
 class FeedCursor:
     @staticmethod
     def parse(raw_cursor):
@@ -497,6 +628,7 @@ class FeedService:
     def get_auction_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        followed_package_ids = SellerPackageFollowService.followed_package_ids(customer)
         blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
         cursor_state = FeedCursor.parse(cursor)
 
@@ -523,6 +655,7 @@ class FeedService:
         return FeedService._build_feed(
             base_queryset=base_queryset,
             followed_seller_ids=followed_seller_ids,
+            followed_package_ids=followed_package_ids,
             limit=limit,
             cursor_state=cursor_state,
         )
@@ -531,6 +664,7 @@ class FeedService:
     def get_market_feed(customer_profile, limit, cursor=None):
         customer = SellerFollowService._require_customer(customer_profile)
         followed_seller_ids = SellerFollowService.followed_seller_ids(customer)
+        followed_package_ids = SellerPackageFollowService.followed_package_ids(customer)
         blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(customer)
         cursor_state = FeedCursor.parse(cursor)
 
@@ -556,6 +690,7 @@ class FeedService:
         return FeedService._build_feed(
             base_queryset=base_queryset,
             followed_seller_ids=followed_seller_ids,
+            followed_package_ids=followed_package_ids,
             limit=limit,
             cursor_state=cursor_state,
         )
@@ -565,6 +700,7 @@ class FeedService:
         *,
         base_queryset,
         followed_seller_ids,
+        followed_package_ids,
         limit,
         cursor_state,
     ):
@@ -574,20 +710,34 @@ class FeedService:
             "following": cursor_state.get("following"),
             "discovery": cursor_state.get("discovery"),
             "following_exhausted": cursor_state.get("following_exhausted")
-            or not followed_seller_ids,
+            or not (followed_seller_ids or followed_package_ids),
         }
         following_has_more = False
         discovery_has_more = False
 
-        if followed_seller_ids and not next_state["following_exhausted"]:
-            following_queryset = base_queryset.filter(owner_id__in=followed_seller_ids)
+        if (followed_seller_ids or followed_package_ids) and not next_state["following_exhausted"]:
+            following_filter = Q()
+            if followed_seller_ids:
+                following_filter |= Q(owner_id__in=followed_seller_ids)
+            if followed_package_ids:
+                following_filter |= Q(seller_package_id__in=followed_package_ids)
+            following_queryset = base_queryset.filter(following_filter)
             following_items, following_has_more = FeedService._page_queryset(
                 following_queryset,
                 limit,
                 cursor_state.get("following"),
             )
             for item in following_items:
-                results.append({"source": "following", "item": item})
+                results.append(
+                    {
+                        "source": FeedService._following_source(
+                            item,
+                            followed_seller_ids,
+                            followed_package_ids,
+                        ),
+                        "item": item,
+                    }
+                )
                 returned_ids.add(item.pk)
             if following_items:
                 next_state["following"] = FeedCursor.from_object(following_items[-1])
@@ -600,6 +750,10 @@ class FeedService:
             if followed_seller_ids:
                 discovery_queryset = discovery_queryset.exclude(
                     owner_id__in=followed_seller_ids
+                )
+            if followed_package_ids:
+                discovery_queryset = discovery_queryset.exclude(
+                    seller_package_id__in=followed_package_ids
                 )
             if returned_ids:
                 discovery_queryset = discovery_queryset.exclude(pk__in=returned_ids)
@@ -620,6 +774,10 @@ class FeedService:
                 discovery_queryset = discovery_queryset.exclude(
                     owner_id__in=followed_seller_ids
                 )
+            if followed_package_ids:
+                discovery_queryset = discovery_queryset.exclude(
+                    seller_package_id__in=followed_package_ids
+                )
             _, discovery_has_more = FeedService._page_queryset(
                 discovery_queryset,
                 1,
@@ -633,7 +791,9 @@ class FeedService:
             "has_more": has_more,
             "meta": {
                 "following_count": sum(
-                    1 for item in results if item["source"] == "following"
+                    1
+                    for item in results
+                    if item["source"] in {"following", "package_following"}
                 ),
                 "discovery_count": sum(
                     1 for item in results if item["source"] == "discovery"
@@ -656,3 +816,11 @@ class FeedService:
 
         items = list(queryset[: limit + 1])
         return items[:limit], len(items) > limit
+
+    @staticmethod
+    def _following_source(item, followed_seller_ids, followed_package_ids):
+        if item.owner_id in followed_seller_ids:
+            return "following"
+        if item.seller_package_id in followed_package_ids:
+            return "package_following"
+        return "following"

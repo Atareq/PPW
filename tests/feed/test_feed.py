@@ -10,11 +10,21 @@ from rest_framework.test import APIClient
 from apps.assets.models import AssetStatus
 from apps.auctions.models import Auction, AuctionStatus
 from apps.authentication.services import build_token_for_user
-from apps.feed.models import SellerCustomerBlock, SellerFollow
-from apps.feed.services import BlockService, SellerFollowService
+from apps.feed.models import (
+    SellerCustomerBlock,
+    SellerFollow,
+    SellerPackageFollow,
+)
+from apps.feed.services import (
+    BlockService,
+    SellerFollowService,
+    SellerPackageFollowService,
+)
+from apps.packages.models import SellerPackageStatus
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionFactory,
+    ActiveAssetSellerPackageFactory,
     SellerProfileFactory,
     SupplyFactory,
     UserAccountFactory,
@@ -36,7 +46,7 @@ def set_created(instance, created):
     return instance
 
 
-def create_active_auction(owner, title, created):
+def create_active_auction(owner, title, created, **overrides):
     auction = AuctionFactory(
         owner=owner,
         title=title,
@@ -44,6 +54,7 @@ def create_active_auction(owner, title, created):
         is_visible=True,
         start_time=timezone.now() - timedelta(hours=1),
         end_time=timezone.now() + timedelta(days=1),
+        **overrides,
     )
     return set_created(auction, created)
 
@@ -446,6 +457,99 @@ class TestSellerFollow:
         assert [item["id"] for item in response.data] == [seller.active_profile.pk]
 
 
+class TestSellerPackageFollow:
+    def test_customer_can_follow_unfollow_and_list_public_active_package(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=seller.active_profile,
+            display_name="Sprint room",
+        )
+        client = authenticated_client(customer)
+
+        follow_response = client.post(
+            f"/api/feed/seller-packages/{seller_package.pk}/follow/"
+        )
+        list_response = client.get("/api/feed/seller-packages/following/")
+        unfollow_response = client.post(
+            f"/api/feed/seller-packages/{seller_package.pk}/unfollow/"
+        )
+        follow = SellerPackageFollow.objects.get(
+            follower_id=customer.active_profile.pk,
+            seller_package_id=seller_package.pk,
+        )
+
+        assert follow_response.status_code == status.HTTP_200_OK
+        assert follow_response.data["is_active"] is True
+        assert follow_response.data["seller_package"]["id"] == seller_package.pk
+        assert list_response.status_code == status.HTTP_200_OK
+        assert [item["seller_package"]["id"] for item in list_response.data] == [
+            seller_package.pk
+        ]
+        assert unfollow_response.status_code == status.HTTP_200_OK
+        assert unfollow_response.data == {
+            "seller_package_id": seller_package.pk,
+            "is_active": False,
+        }
+        follow.refresh_from_db()
+        assert follow.is_active is False
+
+    def test_customer_cannot_follow_own_seller_package(self):
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller_profile = SellerProfileFactory(user=user, is_active=False)
+        seller_package = ActiveAssetSellerPackageFactory(owner=seller_profile)
+        client = authenticated_client(user)
+
+        response = client.post(
+            f"/api/feed/seller-packages/{seller_package.pk}/follow/"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert not SellerPackageFollow.objects.exists()
+
+    @pytest.mark.parametrize(
+        "package_overrides",
+        [
+            {"is_public": False},
+            {"status": SellerPackageStatus.PENDING, "activated": False},
+            {"expires_at": timezone.now() - timedelta(days=1)},
+        ],
+    )
+    def test_customer_cannot_follow_unfollowable_package(
+        self,
+        package_overrides,
+    ):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=seller.active_profile,
+            **package_overrides,
+        )
+        client = authenticated_client(customer)
+
+        response = client.post(
+            f"/api/feed/seller-packages/{seller_package.pk}/follow/"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert not SellerPackageFollow.objects.exists()
+
+    def test_customer_cannot_follow_blocked_seller_package(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(owner=seller.active_profile)
+        BlockService.block_customer_seller(
+            customer.active_profile,
+            seller.active_profile,
+        )
+
+        with pytest.raises(ValidationError):
+            SellerPackageFollowService.follow(
+                customer.active_profile,
+                seller_package.pk,
+            )
+
+
 class TestPeopleYouMayKnow:
     def test_customer_gets_public_safe_seller_suggestions(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -635,6 +739,66 @@ class TestAuctionFeed:
             "following_exhausted": True,
         }
 
+    def test_followed_package_auctions_appear_in_following_feed(self):
+        now = timezone.now()
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        package_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        discovery_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=package_seller.active_profile
+        )
+        SellerPackageFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_package_id=seller_package.pk,
+        )
+        followed = create_active_auction(
+            package_seller.active_profile,
+            "Package followed auction",
+            now,
+            seller_package=seller_package,
+        )
+        discovery = create_active_auction(
+            discovery_seller.active_profile,
+            "Discovery auction",
+            now + timedelta(minutes=5),
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/auctions/", {"limit": 2})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert result_ids(response) == [followed.pk, discovery.pk]
+        assert result_sources(response) == ["package_following", "discovery"]
+
+    def test_auction_feed_deduplicates_seller_and_package_follow(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(owner=seller.active_profile)
+        SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=seller.active_profile.pk,
+        )
+        SellerPackageFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_package_id=seller_package.pk,
+        )
+        auction = create_active_auction(
+            seller.active_profile,
+            "Followed twice auction",
+            timezone.now(),
+            seller_package=seller_package,
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/auctions/", {"limit": 10})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert result_ids(response).count(auction.pk) == 1
+        result = next(
+            item for item in response.data["results"] if item["item"]["id"] == auction.pk
+        )
+        assert result["source"] == "following"
+
     def test_no_followed_auctions_returns_discovery(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
         seller = UserAccountFactory(with_profile=ProfileType.SELLER)
@@ -805,6 +969,66 @@ class TestMarketFeed:
         assert response.status_code == status.HTTP_200_OK
         assert result_ids(response) == [followed.pk, discovery.pk]
         assert result_sources(response) == ["following", "discovery"]
+
+    def test_followed_package_market_items_appear_in_following_feed(self):
+        now = timezone.now()
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        package_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        discovery_seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(
+            owner=package_seller.active_profile
+        )
+        SellerPackageFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_package_id=seller_package.pk,
+        )
+        followed = create_market_item(
+            package_seller.active_profile,
+            "Package followed market item",
+            now,
+            seller_package=seller_package,
+        )
+        discovery = create_market_item(
+            discovery_seller.active_profile,
+            "Discovery market item",
+            now + timedelta(minutes=5),
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/market/", {"limit": 2})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert result_ids(response) == [followed.pk, discovery.pk]
+        assert result_sources(response) == ["package_following", "discovery"]
+
+    def test_market_feed_deduplicates_seller_and_package_follow(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller_package = ActiveAssetSellerPackageFactory(owner=seller.active_profile)
+        SellerFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_id=seller.active_profile.pk,
+        )
+        SellerPackageFollow.objects.create(
+            follower_id=customer.active_profile.pk,
+            seller_package_id=seller_package.pk,
+        )
+        item = create_market_item(
+            seller.active_profile,
+            "Followed twice market item",
+            timezone.now(),
+            seller_package=seller_package,
+        )
+        client = authenticated_client(customer)
+
+        response = client.get("/api/feed/market/", {"limit": 10})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert result_ids(response).count(item.pk) == 1
+        result = next(
+            entry for entry in response.data["results"] if entry["item"]["id"] == item.pk
+        )
+        assert result["source"] == "following"
 
     def test_no_followed_market_items_returns_discovery(self):
         customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)

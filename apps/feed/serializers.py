@@ -3,7 +3,7 @@ from rest_framework import serializers
 from apps.assets.models import Asset
 from apps.auctions.serializers import AuctionListSerializer
 from apps.general.serializers import AssetMediaSerializer
-from apps.feed.models import SellerCustomerBlock, SellerFollow
+from apps.feed.models import SellerCustomerBlock, SellerFollow, SellerPackageFollow
 from apps.loyalty.services import SellerLevelService
 from apps.users.constants import ProfileType
 
@@ -192,6 +192,42 @@ class SellerFollowSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class SellerPackageSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    owner_id = serializers.IntegerField(read_only=True)
+    owner_nickname = serializers.CharField(
+        source="owner.nickname",
+        read_only=True,
+        allow_blank=True,
+    )
+    display_name = serializers.CharField(read_only=True, allow_blank=True)
+    description = serializers.CharField(read_only=True, allow_blank=True)
+    remaining_points = serializers.IntegerField(read_only=True)
+    expires_at = serializers.DateTimeField(read_only=True)
+    is_public = serializers.BooleanField(read_only=True)
+    status = serializers.CharField(read_only=True)
+
+
+class SellerPackageFollowSerializer(serializers.ModelSerializer):
+    seller_package = SellerPackageSummarySerializer(read_only=True)
+
+    class Meta:
+        model = SellerPackageFollow
+        fields = [
+            "id",
+            "seller_package",
+            "is_active",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+
+class SellerPackageUnfollowResponseSerializer(serializers.Serializer):
+    seller_package_id = serializers.IntegerField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+
+
 class SellerUnfollowResponseSerializer(serializers.Serializer):
     seller_id = serializers.IntegerField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
@@ -228,6 +264,7 @@ class AuctionFeedResultSerializer(serializers.Serializer):
     source = serializers.ChoiceField(
         choices=[
             ("following", "following"),
+            ("package_following", "package_following"),
             ("discovery", "discovery"),
         ],
         read_only=True,
@@ -245,6 +282,7 @@ class MarketFeedResultSerializer(serializers.Serializer):
     source = serializers.ChoiceField(
         choices=[
             ("following", "following"),
+            ("package_following", "package_following"),
             ("discovery", "discovery"),
         ],
         read_only=True,

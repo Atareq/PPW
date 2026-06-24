@@ -39,7 +39,7 @@ class TestAuctionCreation:
         """Test creating a SINGLE auction with one item."""
         from tests.factories import BirdFactory
 
-        ActiveAssetSellerPackageFactory(
+        seller_package = ActiveAssetSellerPackageFactory(
             owner=seller_user.active_profile,
             package=PackageFactory(points=100, auction_cost=10),
             remaining_points=100,
@@ -47,6 +47,7 @@ class TestAuctionCreation:
         bird = BirdFactory(owner=seller_user.active_profile)
 
         data = {
+            "seller_package_id": seller_package.pk,
             "title": "Beautiful Pigeon",
             "description": "High quality bird",
             "auction_type": "single",
@@ -74,13 +75,14 @@ class TestAuctionCreation:
         birds = [
             BirdFactory(owner=seller_user.active_profile) for _ in range(3)
         ]
-        ActiveAssetSellerPackageFactory(
+        seller_package = ActiveAssetSellerPackageFactory(
             owner=seller_user.active_profile,
             package=PackageFactory(points=100, auction_cost=10),
             remaining_points=100,
         )
 
         data = {
+            "seller_package_id": seller_package.pk,
             "title": "Multiple Birds",
             "description": "Auction with multiple items",
             "auction_type": "multi",

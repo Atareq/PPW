@@ -8,6 +8,9 @@ from apps.feed.views import (
     SellerDiscoveryViewSet,
     SellerFollowCreateViewSet,
     SellerFollowingViewSet,
+    SellerPackageFollowCreateViewSet,
+    SellerPackageFollowingViewSet,
+    SellerPackageUnfollowCreateViewSet,
     SellerUnfollowCreateViewSet,
 )
 
@@ -48,6 +51,21 @@ urlpatterns = [
         "sellers/following/",
         SellerFollowingViewSet.as_view(LIST_ACTION),
         name="seller-following",
+    ),
+    path(
+        "seller-packages/<int:seller_package_id>/follow/",
+        SellerPackageFollowCreateViewSet.as_view(CREATE_ACTION),
+        name="seller-package-follow",
+    ),
+    path(
+        "seller-packages/<int:seller_package_id>/unfollow/",
+        SellerPackageUnfollowCreateViewSet.as_view(CREATE_ACTION),
+        name="seller-package-unfollow",
+    ),
+    path(
+        "seller-packages/following/",
+        SellerPackageFollowingViewSet.as_view(LIST_ACTION),
+        name="seller-package-following",
     ),
     path(
         "people-you-may-know/",

@@ -21,7 +21,11 @@ from apps.auctions.services import (
 )
 from apps.auctions.tasks import close_expired_auctions
 from apps.authentication.services import build_token_for_user
-from apps.packages.models import PackageUsageLog, PackageUsageType
+from apps.packages.models import (
+    PackageUsageLog,
+    PackageUsageType,
+    SellerPackageStatus,
+)
 from apps.users.constants import ProfileType
 from tests.factories import (
     ActiveAssetSellerPackageFactory,
@@ -500,7 +504,12 @@ class TestAuctionPackageConsumption:
         return payload
 
     @staticmethod
-    def _active_package(seller, remaining_points=50, auction_cost=10):
+    def _active_package(
+        seller,
+        remaining_points=50,
+        auction_cost=10,
+        **overrides,
+    ):
         return ActiveAssetSellerPackageFactory(
             owner=seller.active_profile,
             package=PackageFactory(
@@ -509,6 +518,7 @@ class TestAuctionPackageConsumption:
                 product_cost=5,
             ),
             remaining_points=remaining_points,
+            **overrides,
         )
 
     def test_seller_auction_creation_consumes_points_and_links_package(
@@ -525,7 +535,7 @@ class TestAuctionPackageConsumption:
 
         response = authenticated_seller_client.post(
             "/api/auctions/",
-            self._payload(bird),
+            self._payload(bird, seller_package_id=seller_package.pk),
             format="json",
         )
 
@@ -554,7 +564,7 @@ class TestAuctionPackageConsumption:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "No active package" in str(response.data)
+        assert "seller_package_id" in str(response.data)
         assert not Auction.objects.filter(
             title="Package-backed auction"
         ).exists()
@@ -574,7 +584,7 @@ class TestAuctionPackageConsumption:
 
         response = authenticated_seller_client.post(
             "/api/auctions/",
-            self._payload(bird),
+            self._payload(bird, seller_package_id=seller_package.pk),
             format="json",
         )
 
@@ -582,6 +592,67 @@ class TestAuctionPackageConsumption:
         assert "Insufficient package points" in str(response.data)
         seller_package.refresh_from_db()
         assert seller_package.remaining_points == 3
+        assert PackageUsageLog.objects.count() == 0
+        assert not Auction.objects.filter(
+            title="Package-backed auction"
+        ).exists()
+
+    def test_seller_auction_creation_rejects_another_sellers_package(
+        self,
+        authenticated_seller_client,
+        seller_user,
+        seller_user_2,
+    ):
+        seller_package = self._active_package(seller_user)
+        other_package = self._active_package(seller_user_2)
+        bird = BirdFactory(owner=seller_user.active_profile)
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(bird, seller_package_id=other_package.pk),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "does not belong" in str(response.data)
+        seller_package.refresh_from_db()
+        other_package.refresh_from_db()
+        assert seller_package.remaining_points == 50
+        assert other_package.remaining_points == 50
+        assert PackageUsageLog.objects.count() == 0
+        assert not Auction.objects.filter(
+            title="Package-backed auction"
+        ).exists()
+
+    @pytest.mark.parametrize(
+        "package_overrides,expected_error",
+        [
+            (
+                {"status": SellerPackageStatus.PENDING, "activated": False},
+                "Seller package is not active",
+            ),
+            ({"expires_at": timezone.now() - timedelta(days=1)}, "expired"),
+        ],
+    )
+    def test_seller_auction_creation_rejects_unusable_selected_package(
+        self,
+        package_overrides,
+        expected_error,
+        authenticated_seller_client,
+        seller_user,
+    ):
+        seller_package = self._active_package(seller_user, **package_overrides)
+        bird = BirdFactory(owner=seller_user.active_profile)
+
+        response = authenticated_seller_client.post(
+            "/api/auctions/",
+            self._payload(bird, seller_package_id=seller_package.pk),
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert expected_error in str(response.data)
+        seller_package.refresh_from_db()
         assert PackageUsageLog.objects.count() == 0
         assert not Auction.objects.filter(
             title="Package-backed auction"
@@ -597,6 +668,7 @@ class TestAuctionPackageConsumption:
         second_bird = BirdFactory(owner=seller_user.active_profile)
         payload = self._payload(
             first_bird,
+            seller_package_id=seller_package.pk,
             items=[
                 {"bird_id": first_bird.pk, "starting_price": "100.00"},
                 {"bird_id": second_bird.pk, "starting_price": "100.00"},
@@ -625,7 +697,7 @@ class TestAuctionPackageConsumption:
 
         response = authenticated_seller_client.post(
             "/api/auctions/",
-            self._payload(other_seller_bird),
+            self._payload(other_seller_bird, seller_package_id=seller_package.pk),
             format="json",
         )
 
@@ -648,7 +720,7 @@ class TestAuctionPackageConsumption:
         bird = BirdFactory(owner=seller_user.active_profile)
         create_response = authenticated_seller_client.post(
             "/api/auctions/",
-            self._payload(bird),
+            self._payload(bird, seller_package_id=seller_package.pk),
             format="json",
         )
         auction_id = create_response.data["id"]

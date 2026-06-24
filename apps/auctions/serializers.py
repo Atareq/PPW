@@ -197,6 +197,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "auction_type_display",
             "seller_nickname",
             "owner",
+            "seller_package",
             "start_time",
             "end_time",
             "auto_extend_enabled",
@@ -227,6 +228,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "items",
             "events",
             "owner",
+            "seller_package",
             "created",
             "modified",
             "status ",
@@ -287,6 +289,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "auction_type_display",
             "status_display",
             "seller_nickname",
+            "seller_package",
             "start_time",
             "end_time",
             "item_count",
@@ -306,6 +309,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "is_visible",
+            "seller_package",
             "created",
             "is_active",
             "is_ended",
@@ -439,10 +443,12 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
     """
 
     items = AuctionItemInputSerializer(many=True, allow_empty=False)
+    seller_package_id = serializers.IntegerField(write_only=True)
 
     class Meta:
         model = Auction
         fields = [
+            "seller_package_id",
             "title",
             "description",
             "auction_type",

@@ -30,7 +30,7 @@ The platform currently supports and will continue to expand around:
 - simple complaint/dispute records tied to approved or rejected payment requests
 - customer-to-seller direct chat through a REST-only MVP
 - internal in-app notification records and polling APIs
-- customer follow relationships for sellers and deterministic home feed MVPs
+- customer follow relationships for sellers and public seller packages with deterministic home feed MVPs
 - customer-to-seller block relationships that prevent new follow, feed, chat, and payment-request interactions
 - seller home-page insights summaries from current marketplace data
 - internal pedigree certificate OCR extraction MVP with a null local OCR adapter
@@ -400,7 +400,8 @@ Current product asset API behavior:
 - `thumbnail_url` is no longer accepted in product asset API payloads
 - create sets `owner` from `request.user.active_profile` for seller-created accessory, feed, and supplement assets
 - seller product creation goes through `ProductAssetCreationService.create_product()`
-- seller-created `Accessory`, `Feed`, and `Supplement` assets consume `Package.product_cost` from the seller's active `AssetSellerPackage`, even when `is_market_listed=False`
+- seller-created `Accessory`, `Feed`, and `Supplement` assets must include `seller_package_id` and consume `Package.product_cost` from that selected active seller package, even when `is_market_listed=False`
+- seller-created product assets store the selected package on nullable `Asset.seller_package` for historical traceability
 - supply creation goes through the platform supply branch, sets the hidden platform seller profile as owner, sets `sale_channel=platform`, and does not consume seller package points
 - managers manage supplies through `platform_products.list`, `platform_products.retrieve`, `platform_products.create`, `platform_products.update`, and `platform_products.delete`; generic `assets.create` must not create platform supplies
 - manager-created accessory, feed, and supplement assets are not part of the current manager API contract
@@ -777,18 +778,21 @@ Current notifications behavior:
 Current responsibilities:
 
 - customer-to-seller follow relationships
+- customer-to-public-seller-package follow relationships
 - customer-to-seller active block relationships
 - idempotent seller follow and unfollow endpoints
+- idempotent seller package follow and unfollow endpoints
 - customer/seller block, unblock, and active block list endpoints
 - active customer following-list endpoint
+- active customer seller-package following-list endpoint
 - random active seller suggestions for customers
 - cursor-based customer auction feed
 - cursor-based customer market feed
-- deterministic discovery fallback after followed-seller content
+- deterministic discovery fallback after followed seller/package content
 
 Important note:
 
-This app is named `feed`, not `social`. It is not a recommendation engine, notification system, realtime feed, seen-item tracker, ads/sponsored-content system, seller-room feed, frontend module, or public unauthenticated discovery feed.
+This app is named `feed`, not `social`. It is not a recommendation engine, notification system, realtime feed, seen-item tracker, ads/sponsored-content system, separate seller-room model, frontend module, or public unauthenticated discovery feed.
 
 Current feed API:
 
@@ -800,6 +804,12 @@ Current feed API:
   - `POST`: authenticated active customer deactivates a follow if present
 - `/api/feed/sellers/following/`
   - `GET`: authenticated active customer lists active followed sellers; seller summaries include `avatar_url` with an empty-string default
+- `/api/feed/seller-packages/<seller_package_id>/follow/`
+  - `POST`: authenticated active customer creates or reactivates a follow for a public active seller package
+- `/api/feed/seller-packages/<seller_package_id>/unfollow/`
+  - `POST`: authenticated active customer deactivates a seller package follow if present
+- `/api/feed/seller-packages/following/`
+  - `GET`: authenticated active customer lists active followed public seller packages
 - `/api/feed/blocks/customer-seller/`
   - `GET`: authenticated active customer or seller lists active blocks involving the active profile
   - `POST`: authenticated active customer or seller blocks the opposite profile by `profile_id`
@@ -808,9 +818,9 @@ Current feed API:
 - `/api/feed/people-you-may-know/`
   - `GET`: authenticated active customer gets public-safe active seller suggestions; seller suggestions include `avatar_url` with an empty-string default
 - `/api/feed/auctions/`
-  - `GET`: authenticated active customer gets followed-seller active auctions first, then discovery auctions
+  - `GET`: authenticated active customer gets followed-seller and followed-package active auctions first, then discovery auctions
 - `/api/feed/market/`
-  - `GET`: authenticated active customer gets followed-seller market-listed products first, then discovery products
+  - `GET`: authenticated active customer gets followed-seller and followed-package market-listed products first, then discovery products
 
 Current feed behavior:
 
@@ -823,6 +833,13 @@ Current feed behavior:
 - repeated follow returns the existing active row or reactivates an inactive row
 - repeated unfollow is safe and leaves the row inactive
 - following lists exclude inactive, invalid, unactivated, or deleted sellers
+- `SellerPackageFollow.follower` points to `CustomerProfile`
+- `SellerPackageFollow.seller_package` points to `SellerPackage`
+- `SellerPackageFollow.is_active` is toggled for unfollow/refollow; follows are not hard-deleted by the API
+- only one `SellerPackageFollow` row can exist per follower/seller-package pair
+- customers cannot follow seller packages owned by a seller profile on the same user account
+- customers cannot follow inactive, unactivated, private, expired, or seller-owner-inactive packages
+- seller-package following lists exclude inactive, unactivated, private, expired, blocked, or seller-owner-inactive packages
 - seller suggestions require an authenticated active customer profile
 - seller suggestions return only `SellerProfile` rows and exclude followed sellers, same-user seller profiles, inactive, invalid, unactivated, and deleted sellers
 - seller suggestions expose public-safe seller fields only and do not expose user, phone, email, balance, private, or admin fields
@@ -832,7 +849,7 @@ Current feed behavior:
 - `SellerCustomerBlock.blocked_by` points to the customer or seller profile that created the block
 - only one block row can exist for a customer/seller pair; unblock/reblock toggles `is_active`
 - only customer/seller pairs can be blocked; customer/customer, seller/seller, manager/admin, and same-user customer/seller profile blocks are rejected
-- block creation deactivates any active `SellerFollow` between the customer and seller
+- block creation deactivates any active `SellerFollow` and `SellerPackageFollow` between the customer and seller
 - only the profile that created the block can unblock it
 - active blocks prevent following, hide blocked sellers from following and discovery feed results, and hide blocked sellers from seller suggestions
 - active blocks prevent new chat conversations, new chat messages in existing conversations, and new auction/market payment requests between the pair
@@ -841,8 +858,9 @@ Current feed behavior:
 - auction feed content is limited to visible, currently active `AuctionStatus.ACTIVE` auctions from active valid sellers
 - market feed content is limited to available, listed, positive-count supply/accessory/feed/supplement assets from active valid sellers
 - feed ordering is stable by `created` descending, then `id` descending
-- feed responses put `source="following"` results before `source="discovery"` results
-- discovery excludes content from followed sellers and IDs already returned in the same response
+- feed responses put followed results before `source="discovery"` results
+- followed-seller content uses `source="following"` and followed-package-only content uses `source="package_following"`
+- discovery excludes content from followed sellers, followed packages, and IDs already returned in the same response
 - if followed content is exhausted or absent, discovery fills the remaining limit
 - feed `limit` defaults to `20`, is capped at `50`, and must be at least `1`
 - feed cursors are URL-safe base64 JSON with separate `following` and `discovery` positions plus `following_exhausted`
@@ -854,14 +872,17 @@ Current feed service implementation names:
 - `SellerFollowService.follow()` creates, returns, or reactivates a seller follow
 - `SellerFollowService.unfollow()` idempotently marks a seller follow inactive
 - `SellerFollowService.following_queryset()` returns active followed sellers for the active customer
-- `BlockService.block_customer_seller()` creates or reactivates a customer/seller block and deactivates any existing follow
+- `SellerPackageFollowService.follow()` creates, returns, or reactivates a seller package follow
+- `SellerPackageFollowService.unfollow()` idempotently marks a seller package follow inactive
+- `SellerPackageFollowService.following_queryset()` returns active followed seller packages for the active customer
+- `BlockService.block_customer_seller()` creates or reactivates a customer/seller block and deactivates any existing seller or seller-package follow
 - `BlockService.unblock_customer_seller()` deactivates an active block when called by the original blocker
 - `BlockService.is_blocked_between()` checks active block state for customer/seller interaction gates
 - `BlockService.get_blocked_seller_ids_for_customer()` returns seller ids hidden from customer feed and suggestion surfaces
 - `BlockService.get_blocked_customer_ids_for_seller()` returns customer ids blocked with a seller
 - `FeedService.get_people_you_may_know()` returns random active seller suggestions after customer-specific exclusions
-- `FeedService.get_auction_feed()` builds the auction feed with following content first and deterministic discovery fallback
-- `FeedService.get_market_feed()` builds the market feed with following content first and deterministic discovery fallback
+- `FeedService.get_auction_feed()` builds the auction feed with followed seller/package content first and deterministic discovery fallback
+- `FeedService.get_market_feed()` builds the market feed with followed seller/package content first and deterministic discovery fallback
 - `FeedCursor` parses and encodes the two-source cursor state
 
 ### `apps.insights`
@@ -889,7 +910,7 @@ Current insights behavior:
 - the home summary returns `auction_summary`, `market_summary`, `engagement_summary`, `trust_summary`, and `package_summary`
 - missing optional features return safe defaults instead of creating unrelated systems
 - promoted auction and market-item counts currently return `0` because no promoted listing model exists
-- active package quota is derived from the active `AssetSellerPackage.remaining_points` divided by package auction/product costs
+- package quota summary is derived from a currently active `SellerPackage.remaining_points` divided by package auction/product costs
 - recent windows use the last 7 days with timezone-aware `timezone.now()`
 - ending-soon auction count currently uses active seller auctions ending within the next 24 hours
 - low-stock market product count currently uses market-listed available product assets with `count` from `1` through `3`
@@ -1094,14 +1115,14 @@ Current auction behavior:
 - auction type values are `single`, `multi`, `pair`, `breeding`, and `racing`
 - auction statuses are `active`, `ended`, `cancelled`, and `closed`
 - auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
-- `Auction.seller_package` is a nullable FK to `AssetSellerPackage`; existing rows and manager-created rows can be null
+- `Auction.seller_package` is a nullable FK to `SellerPackage`; existing rows and manager-created rows can be null
 - auction creation requires future `start_time`, later `end_time`, and nested item payloads
 - `AuctionCreateSerializer` owns auction creation field-shape checks such as future/later times, auto-extend minutes, deposit payment deadline, buy-now price, and required `paired_bird_id` for pair-style auctions
 - `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, pair gender rules, duplicate bird rejection, and overlapping active-auction bird rejection
 - manager-created auctions bypass seller bird ownership validation because managers are using the administrative auction creation path
 - `AuctionService.create_auction()` writes a `created` event
-- seller auction creation pre-validates package availability, then creates the auction/items and consumes `Package.auction_cost` in the same DB transaction
-- seller-created auctions are linked to the consumed `AssetSellerPackage`
+- seller auction creation requires `seller_package_id`, pre-validates that selected package, then creates the auction/items and consumes `Package.auction_cost` in the same DB transaction
+- seller-created auctions are linked to the consumed `SellerPackage`
 - manager-created auctions bypass seller package consumption and keep `seller_package=NULL`
 - auction update, cancellation, close, bidding, and buy-now do not consume package points
 - auction list/detail serializers expose FE-safe read-only fields including `is_active`, `is_ended`, `buy_now_price`, `buy_now_enabled`, `min_bid_increment`, `current_price`, `thumbnail_url`, and `is_owner`; `chat_enabled` is not exposed because no such model field exists
@@ -1275,19 +1296,21 @@ Current package behavior:
 - `PedigreeSellerPackage` exists as a thin concrete model foundation but has no request or consumption integration yet
 - requested seller packages start as `pending`, `activated=False`, with `remaining_points` copied from the referenced package
 - manager activation sets the new package to `active`, `activated=True`, `activated_at`, and `expires_at`
-- when manager activation replaces an existing active seller package for the same seller, the old package is deactivated by setting `activated=False` and `invalidated_at`
-- a seller can have many historical packages but only one active activated seller package, enforced by a partial unique constraint
+- manager activation does not deactivate or invalidate other active seller packages owned by the same seller
+- a seller can have multiple active, activated, non-expired seller packages
+- seller packages expose room-like public fields: `display_name`, `description`, and `is_public`
 - manager cancellation is allowed only for pending seller packages and sets `cancelled`, `activated=False`, and `invalidated_at`
-- there is no standalone deactivate endpoint; deactivation currently happens only as part of activating a replacement package
+- there is no standalone deactivate endpoint; deactivation currently happens through cancellation, exhaustion, or expiry invalidation
 - `SellerPackageService.get_active_package()` validates `expires_at`; expired active packages are marked `exhausted`, `activated=False`, and invalidated before returning a not-found response
 - `PackageService.consume_points()` supports `auction_created` and `product_created` only; `pedigree_created` is rejected as unsupported for now
-- consumption uses `transaction.atomic()` and `select_for_update()` on the active `AssetSellerPackage`
-- only an active, activated, unexpired `AssetSellerPackage` can be consumed
+- consumption uses `transaction.atomic()` and `select_for_update()` on the selected `SellerPackage`
+- auction and seller product creation must provide `seller_package_id`; the backend does not auto-select the first active package
+- only a selected seller-owned, active, activated, unexpired `SellerPackage` can be consumed
 - package costs come from `Package.auction_cost` and `Package.product_cost`
 - successful consumption decrements `SellerPackage.remaining_points` and writes one `PackageUsageLog`
 - a package becomes `exhausted`, `activated=False`, and gets `invalidated_at` when remaining points reach `0` or are below both auction and product creation costs
 - expired active packages are marked exhausted/invalidated before the validation error is returned
-- missing active packages, insufficient points, and unsupported usage types do not write usage logs and do not decrement points
+- missing selected packages, insufficient points, and unsupported usage types do not write usage logs and do not decrement points
 - package consumption is internal only; there is no public consume, recharge, manual exhaust, or deactivate endpoint
 - `PackageUsageLog` stores successful consumption traces using a seller package FK, seller FK, usage type, points used, and optional string/id related object reference
 - no `GenericForeignKey` is used for package usage logs
@@ -1587,7 +1610,8 @@ Current design choice:
 - `SellerPackage.owner` is a concrete `SellerProfile`
 - seller requests create `AssetSellerPackage` rows by default
 - `AssetSellerPackage` and `PedigreeSellerPackage` are thin concrete subclasses
-- only one active activated seller package is allowed per seller
+- multiple active activated seller packages are allowed per seller
+- `SellerPackage` carries room-like public metadata through `display_name`, `description`, and `is_public`
 - activation and cancellation happen through service methods, not direct serializer field updates
 - package point consumption is connected to seller-created auctions and seller-created product assets
 - package point consumption is not connected to pedigrees yet
@@ -2046,11 +2070,11 @@ Current product asset visibility:
 - package plans are created and updated by managers
 - sellers can request available package plans
 - package activation is manual and manager-driven
-- a seller can have only one active activated package at a time
-- manager activation of a new package deactivates the seller's previous active package
+- a seller can have multiple active activated packages at a time
+- manager activation of a new package does not deactivate the seller's previous active packages
 - pending package requests can be cancelled by managers
 - active packages cannot be cancelled directly in the current API
-- active `AssetSellerPackage` points are consumed by seller auction creation and seller product asset creation
+- selected active `SellerPackage` points are consumed by seller auction creation and seller product asset creation
 - package points are not consumed by manager-created auctions/products, bird creation, product edits, auction updates, auction cancellation, auction close, bidding, buy-now, or pedigree workflows
 - package consumption creates `PackageUsageLog` records for successful seller auction/product creation only
 
@@ -2389,7 +2413,7 @@ The codebase currently provides:
 - automatic scheduled auction closing through Celery Beat
 - safe in-app notification hooks for chat messages, payment requests, checkout seller-pending items, seller order-item decisions, seller decision timeouts, auction bids, auction wins, buy-now success, complaint status updates, manual manager notifications, and badge awards
 - seller follow relationships for customer profiles
-- cursor-based auction and market home feeds that rank followed-seller content before deterministic discovery fallback
+- cursor-based auction and market home feeds that rank followed seller/package content before deterministic discovery fallback
 - pedigree document upload, null OCR extraction, retrieval, and manual review APIs
 
 Current API documentation coverage:
@@ -2455,8 +2479,8 @@ These risks are important and should be respected during future work.
 ### Package Consumption Risks
 
 - manager-created auctions and products intentionally bypass seller package consumption; preserve this unless product policy changes
-- package consumption is enforced only for `AssetSellerPackage`, not `PedigreeSellerPackage`
-- product assets do not store a seller package FK; product traceability currently depends on `PackageUsageLog`
+- package consumption is enforced through the selected `SellerPackage`; current seller requests still create `AssetSellerPackage` rows by default
+- auction and product asset rows store nullable `seller_package` FKs for historical traceability
 - `PackageService.validate_can_consume()` is a preflight check only; final point decrement must still call `PackageService.consume_points()` inside the object creation transaction
 - SQLite does not enforce `select_for_update()` row locks, so true package consumption concurrency behavior must be verified on PostgreSQL
 

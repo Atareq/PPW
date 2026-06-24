@@ -342,6 +342,7 @@ class AuctionService:
         owner,
         auction: Auction,
         items_data: list,
+        seller_package_id,
     ) -> Auction:
         """
         Create and save auction with items in atomic transaction.
@@ -369,6 +370,7 @@ class AuctionService:
             PackageService.validate_can_consume(
                 owner,
                 PackageUsageType.AUCTION_CREATED,
+                seller_package_id,
             )
 
         with transaction.atomic():
@@ -388,6 +390,7 @@ class AuctionService:
                 seller_package = PackageService.consume_points(
                     owner,
                     PackageUsageType.AUCTION_CREATED,
+                    seller_package_id,
                     related_object=auction,
                 )
                 auction.seller_package = seller_package

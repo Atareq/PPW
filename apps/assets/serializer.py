@@ -141,6 +141,7 @@ class ProductAssetSerializer(
     serializers.ModelSerializer,
 ):
     media = AssetMediaSerializer(many=True, required=False)
+    seller_package_id = serializers.IntegerField(write_only=True, required=False)
     rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
 
@@ -150,6 +151,7 @@ class ProductAssetSerializer(
 
     def create(self, validated_data):
         media_data = validated_data.pop("media", [])
+        seller_package_id = validated_data.pop("seller_package_id", None)
         request = self.context.get("request")
         try:
             owner = request.user.active_profile
@@ -164,6 +166,7 @@ class ProductAssetSerializer(
             owner,
             validated_data,
             media_data=media_data,
+            seller_package_id=seller_package_id,
         )
 
     def get_rating(self, obj):

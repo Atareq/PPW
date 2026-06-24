@@ -3,7 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import IntegrityError, close_old_connections, connection
+from django.db import close_old_connections, connection
 from django.utils import timezone
 import pytest
 from rest_framework.test import APIClient
@@ -118,12 +118,18 @@ class TestSellerPackageModel:
         assert seller_package.expires_at is None
         assert seller_package.invalidated_at is None
 
-    @pytest.mark.django_db(transaction=True)
-    def test_only_one_active_seller_package_is_enforced(self):
+    def test_seller_can_have_multiple_active_seller_packages(self):
         seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
         seller = concrete_seller_profile(seller_user)
         now = timezone.now()
-        AssetSellerPackageFactory(
+        first = AssetSellerPackageFactory(
+            owner=seller,
+            status=SellerPackageStatus.ACTIVE,
+            activated=True,
+            activated_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+        second = AssetSellerPackageFactory(
             owner=seller,
             status=SellerPackageStatus.ACTIVE,
             activated=True,
@@ -131,14 +137,15 @@ class TestSellerPackageModel:
             expires_at=now + timedelta(days=30),
         )
 
-        with pytest.raises(IntegrityError):
-            AssetSellerPackageFactory(
+        assert (
+            SellerPackage.objects.filter(
                 owner=seller,
                 status=SellerPackageStatus.ACTIVE,
                 activated=True,
-                activated_at=now,
-                expires_at=now + timedelta(days=30),
-            )
+            ).count()
+            == 2
+        )
+        assert first.pk != second.pk
 
 
 class TestSellerPackageEndpoints:
@@ -379,7 +386,7 @@ class TestManagerPackageEndpoints:
         assert seller_package.activated_at is not None
         assert seller_package.expires_at is not None
 
-    def test_manager_activation_deactivates_existing_active_package(self):
+    def test_manager_activation_keeps_existing_active_package(self):
         manager_user = UserAccountFactory(with_profile=ProfileType.MANAGER)
         seller = concrete_seller_profile(
             UserAccountFactory(with_profile=ProfileType.SELLER)
@@ -405,8 +412,8 @@ class TestManagerPackageEndpoints:
         active_package.refresh_from_db()
         pending_package.refresh_from_db()
         assert active_package.status == SellerPackageStatus.ACTIVE
-        assert active_package.activated is False
-        assert active_package.invalidated_at is not None
+        assert active_package.activated is True
+        assert active_package.invalidated_at is None
         assert pending_package.status == SellerPackageStatus.ACTIVE
         assert pending_package.activated is True
         assert pending_package.activated_at is not None
@@ -416,7 +423,7 @@ class TestManagerPackageEndpoints:
                 status=SellerPackageStatus.ACTIVE,
                 activated=True,
             ).count()
-            == 1
+            == 2
         )
 
     def test_manager_can_cancel_pending_seller_package(self):
@@ -475,6 +482,7 @@ class TestPackageConsumptionService:
         updated = PackageService.consume_points(
             seller_user.active_profile,
             PackageUsageType.AUCTION_CREATED,
+            seller_package.pk,
             related_object=seller_package,
         )
 
@@ -494,7 +502,7 @@ class TestPackageConsumptionService:
             auction_cost=15,
             product_cost=8,
         )
-        ActiveAssetSellerPackageFactory(
+        seller_package = ActiveAssetSellerPackageFactory(
             owner=concrete_seller_profile(seller_user),
             package=package,
             remaining_points=100,
@@ -504,6 +512,7 @@ class TestPackageConsumptionService:
         updated = PackageService.consume_points(
             seller_user.active_profile,
             PackageUsageType.PRODUCT_CREATED,
+            seller_package.pk,
             related_object=product,
         )
 
@@ -517,7 +526,7 @@ class TestPackageConsumptionService:
     def test_package_becomes_exhausted_when_points_reach_zero(self):
         seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
         package = PackageFactory(points=10, auction_cost=10, product_cost=10)
-        ActiveAssetSellerPackageFactory(
+        seller_package = ActiveAssetSellerPackageFactory(
             owner=concrete_seller_profile(seller_user),
             package=package,
             remaining_points=10,
@@ -526,6 +535,7 @@ class TestPackageConsumptionService:
         updated = PackageService.consume_points(
             seller_user.active_profile,
             PackageUsageType.AUCTION_CREATED,
+            seller_package.pk,
         )
 
         assert updated.remaining_points == 0
@@ -548,6 +558,7 @@ class TestPackageConsumptionService:
         updated = PackageService.consume_points(
             seller_user.active_profile,
             PackageUsageType.PRODUCT_CREATED,
+            seller_package.pk,
         )
 
         assert updated.remaining_points == 5
@@ -558,16 +569,17 @@ class TestPackageConsumptionService:
 
     def test_exhausted_package_cannot_be_consumed(self):
         seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
-        ActiveAssetSellerPackageFactory(
+        seller_package = ActiveAssetSellerPackageFactory(
             owner=concrete_seller_profile(seller_user),
             status=SellerPackageStatus.EXHAUSTED,
             activated=False,
         )
 
-        with pytest.raises(Exception, match="No active package"):
+        with pytest.raises(Exception, match="Seller package is not active"):
             PackageService.consume_points(
                 seller_user.active_profile,
                 PackageUsageType.AUCTION_CREATED,
+                seller_package.pk,
             )
 
         assert PackageUsageLog.objects.count() == 0
@@ -575,10 +587,11 @@ class TestPackageConsumptionService:
     def test_no_active_package_blocks_consumption(self):
         seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
 
-        with pytest.raises(Exception, match="No active package"):
+        with pytest.raises(Exception, match="seller_package_id"):
             PackageService.consume_points(
                 seller_user.active_profile,
                 PackageUsageType.PRODUCT_CREATED,
+                None,
             )
 
         assert PackageUsageLog.objects.count() == 0
@@ -594,6 +607,7 @@ class TestPackageConsumptionService:
             PackageService.consume_points(
                 seller_user.active_profile,
                 PackageUsageType.PRODUCT_CREATED,
+                seller_package.pk,
             )
 
         seller_package.refresh_from_db()
@@ -615,6 +629,7 @@ class TestPackageConsumptionService:
             PackageService.consume_points(
                 seller_user.active_profile,
                 PackageUsageType.AUCTION_CREATED,
+                seller_package.pk,
             )
 
         seller_package.refresh_from_db()
@@ -632,6 +647,7 @@ class TestPackageConsumptionService:
             PackageService.consume_points(
                 seller_user.active_profile,
                 PackageUsageType.PEDIGREE_CREATED,
+                seller_package.pk,
             )
 
         seller_package.refresh_from_db()
@@ -650,11 +666,13 @@ class TestPackageConsumptionService:
         PackageService.consume_points(
             seller_user.active_profile,
             PackageUsageType.PRODUCT_CREATED,
+            seller_package.pk,
         )
-        with pytest.raises(Exception, match="No active package"):
+        with pytest.raises(Exception, match="Seller package is not active"):
             PackageService.consume_points(
                 seller_user.active_profile,
                 PackageUsageType.PRODUCT_CREATED,
+                seller_package.pk,
             )
 
         seller_package.refresh_from_db()
@@ -682,6 +700,7 @@ class TestPackageConsumptionService:
                 return PackageService.consume_points(
                     SellerProfile.objects.get(pk=seller.pk),
                     PackageUsageType.AUCTION_CREATED,
+                    seller_package.pk,
                 ).pk
             except Exception as exc:
                 return str(exc)

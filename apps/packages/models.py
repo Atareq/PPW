@@ -106,6 +106,9 @@ class SellerPackage(OwnerBaseModel):
         related_name="seller_packages",
     )
     remaining_points = models.PositiveIntegerField(validators=[MinValueValidator(0)])
+    display_name = models.CharField(max_length=150, blank=True)
+    description = models.TextField(blank=True)
+    is_public = models.BooleanField(default=True)
     activated = models.BooleanField(default=False)
     activated_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -123,15 +126,6 @@ class SellerPackage(OwnerBaseModel):
             models.Index(fields=["expires_at"]),
         ]
         constraints = [
-            models.UniqueConstraint(
-                fields=["owner"],
-                condition=Q(
-                    status=SellerPackageStatus.ACTIVE,
-                    activated=True,
-                    deleted__isnull=True,
-                ),
-                name="packages_one_active_seller_package",
-            ),
             models.CheckConstraint(
                 check=Q(remaining_points__gte=0),
                 name="packages_sellerpackage_remaining_gte_0",

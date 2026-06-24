@@ -55,6 +55,53 @@ class SellerFollow(BaseModel):
         return f"SellerFollow #{self.pk}"
 
 
+class SellerPackageFollow(BaseModel):
+    follower = models.ForeignKey(
+        "users.CustomerProfile",
+        on_delete=models.CASCADE,
+        related_name="seller_package_follows",
+    )
+    seller_package = models.ForeignKey(
+        "packages.SellerPackage",
+        on_delete=models.CASCADE,
+        related_name="customer_follows",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "seller_package"],
+                name="feed_unique_follower_seller_package",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["follower", "is_active"],
+                name="feed_pkg_fol_follower_active",
+            ),
+            models.Index(
+                fields=["seller_package", "is_active"],
+                name="feed_pkg_fol_package_active",
+            ),
+        ]
+        ordering = ["-created"]
+
+    def clean(self):
+        if self.follower_id and self.seller_package_id:
+            if self.follower.user_id == self.seller_package.owner.user_id:
+                raise ValidationError(
+                    {
+                        "seller_package": (
+                            "Customers cannot follow their own seller package."
+                        )
+                    }
+                )
+
+    def __str__(self):
+        return f"SellerPackageFollow #{self.pk}"
+
+
 class SellerCustomerBlock(BaseModel):
     customer = models.ForeignKey(
         "users.CustomerProfile",

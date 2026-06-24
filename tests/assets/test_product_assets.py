@@ -18,7 +18,11 @@ from apps.assets.models import (
 from apps.assets.services import ProductAssetCreationService
 from apps.authentication.services import build_token_for_user
 from apps.general.models import AssetMedia, Media, MediaType
-from apps.packages.models import PackageUsageLog, PackageUsageType
+from apps.packages.models import (
+    PackageUsageLog,
+    PackageUsageType,
+    SellerPackageStatus,
+)
 from apps.ratings.models import AssetRating
 from apps.users.constants import ProfileType
 from tests.factories import (
@@ -131,7 +135,7 @@ def create_platform_supply(**overrides):
     return Supply.objects.create(**data)
 
 
-def create_active_package(owner, remaining_points=50, product_cost=7):
+def create_active_package(owner, remaining_points=50, product_cost=7, **overrides):
     return ActiveAssetSellerPackageFactory(
         owner=owner,
         package=PackageFactory(
@@ -140,6 +144,7 @@ def create_active_package(owner, remaining_points=50, product_cost=7):
             product_cost=product_cost,
         ),
         remaining_points=remaining_points,
+        **overrides,
     )
 
 
@@ -354,6 +359,7 @@ def test_product_media_create_replace_preserve_and_clear(
     create_response = authenticated_seller_client.post(
         product_url("accessories"),
         product_payload(
+            seller_package_id=seller_package.pk,
             media=[
                 media_payload(
                     "https://example.com/product-primary.jpg",
@@ -526,6 +532,7 @@ def test_seller_can_create_product_type_with_owner_and_category(
     response = authenticated_seller_client.post(
         product_url(route),
         product_payload(
+            seller_package_id=seller_package.pk,
             owner=99999,
             category=AssetCategory.BIRD,
         ),
@@ -539,6 +546,8 @@ def test_seller_can_create_product_type_with_owner_and_category(
     assert product.category == category
     assert response.data["owner"] == seller_user.active_profile.id
     assert response.data["category"] == category
+    assert response.data["seller_package"] == seller_package.pk
+    assert product.seller_package_id == seller_package.pk
     seller_package.refresh_from_db()
     assert seller_package.remaining_points == 43
     log = PackageUsageLog.objects.get()
@@ -559,7 +568,7 @@ def test_seller_product_creation_fails_without_active_package(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "No active package" in str(response.data)
+    assert "seller_package_id" in str(response.data)
     assert not Accessory.objects.filter(title="No package product").exists()
     assert PackageUsageLog.objects.count() == 0
 
@@ -577,7 +586,10 @@ def test_seller_product_creation_fails_with_insufficient_points(
 
     response = authenticated_seller_client.post(
         product_url("accessories"),
-        product_payload(title="Insufficient product"),
+        product_payload(
+            title="Insufficient product",
+            seller_package_id=seller_package.pk,
+        ),
         format="json",
     )
 
@@ -590,6 +602,72 @@ def test_seller_product_creation_fails_with_insufficient_points(
 
 
 @pytest.mark.django_db
+def test_seller_product_creation_rejects_another_sellers_package(
+    authenticated_seller_client,
+    seller_user,
+    seller_user_2,
+):
+    seller_package = create_active_package(seller_user.active_profile)
+    other_package = create_active_package(seller_user_2.active_profile)
+
+    response = authenticated_seller_client.post(
+        product_url("accessories"),
+        product_payload(
+            title="Wrong package product",
+            seller_package_id=other_package.pk,
+        ),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "does not belong" in str(response.data)
+    seller_package.refresh_from_db()
+    other_package.refresh_from_db()
+    assert seller_package.remaining_points == 50
+    assert other_package.remaining_points == 50
+    assert not Accessory.objects.filter(title="Wrong package product").exists()
+    assert PackageUsageLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "package_overrides,expected_error",
+    [
+        (
+            {"status": SellerPackageStatus.PENDING, "activated": False},
+            "Seller package is not active",
+        ),
+        ({"expires_at": timezone.now() - timedelta(days=1)}, "expired"),
+    ],
+)
+def test_seller_product_creation_rejects_unusable_selected_package(
+    package_overrides,
+    expected_error,
+    authenticated_seller_client,
+    seller_user,
+):
+    seller_package = create_active_package(
+        seller_user.active_profile,
+        **package_overrides,
+    )
+
+    response = authenticated_seller_client.post(
+        product_url("accessories"),
+        product_payload(
+            title="Unusable package product",
+            seller_package_id=seller_package.pk,
+        ),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert expected_error in str(response.data)
+    seller_package.refresh_from_db()
+    assert not Accessory.objects.filter(title="Unusable package product").exists()
+    assert PackageUsageLog.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_failed_product_validation_does_not_consume_points(
     authenticated_seller_client,
     seller_user,
@@ -598,7 +676,7 @@ def test_failed_product_validation_does_not_consume_points(
 
     response = authenticated_seller_client.post(
         product_url("accessories"),
-        product_payload(title=""),
+        product_payload(title="", seller_package_id=seller_package.pk),
         format="json",
     )
 

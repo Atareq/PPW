@@ -60,6 +60,13 @@ class Asset(OwnerBaseModel):
         blank=True,
         related_name="managed_assets",
     )
+    seller_package = models.ForeignKey(
+        "packages.SellerPackage",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="created_assets",
+    )
     avg_rating = models.DecimalField(
         max_digits=3,
         decimal_places=2,
@@ -73,6 +80,7 @@ class Asset(OwnerBaseModel):
             models.Index(fields=["category"]),
             models.Index(fields=["owner", "status"]),
             models.Index(fields=["sale_channel", "category"]),
+            models.Index(fields=["seller_package"]),
         ]
 
     def __str__(self):

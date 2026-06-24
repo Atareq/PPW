@@ -118,7 +118,7 @@ class Auction(OwnerBaseModel):
     # Metadata
     tags = models.CharField(max_length=500, blank=True)
     seller_package = models.ForeignKey(
-        "packages.AssetSellerPackage",
+        "packages.SellerPackage",
         on_delete=models.PROTECT,
         null=True,
         blank=True,

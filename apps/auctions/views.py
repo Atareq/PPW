@@ -195,6 +195,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=self.request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
+        seller_package_id = validated_data.pop("seller_package_id")
 
         auction = Auction(
             owner=self.request.user.active_profile,
@@ -222,6 +223,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
             owner=self.request.user.active_profile,
             auction=auction,
             items_data=items_data,
+            seller_package_id=seller_package_id,
         )
         if not auction:
             raise ValidationError("Failed to create auction")
