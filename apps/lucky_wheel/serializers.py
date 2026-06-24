@@ -105,6 +105,27 @@ class LuckyWheelSpinResponseSerializer(serializers.Serializer):
     )
 
 
+class AdminLuckyWheelSpinSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = LuckyWheelSpin
+        fields = [
+            "id",
+            "user_id",
+            "profile_id",
+            "username",
+            "grant",
+            "prize",
+            "status",
+            "prize_snapshot",
+            "awarded_at",
+            "metadata",
+            "created",
+        ]
+        read_only_fields = fields
+
+
 def grant_for_spin(spin):
     return (
         UserPromotionGrant.objects.select_related(

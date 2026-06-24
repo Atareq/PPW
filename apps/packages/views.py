@@ -156,6 +156,8 @@ class ManagerSellerPackageViewSet(
     }
     queryset = SellerPackage.objects.all()
     serializer_class = SellerPackageSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["status"]
 
     def get_required_manager_permission(self):
         if self.action in {"list", "retrieve"}:

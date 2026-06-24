@@ -3,7 +3,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
-from apps.seasons.models import Season
+from apps.seasons.models import Season, SeasonStatus
 from apps.seasons.serializers import (
     SeasonSellerInsightSerializer,
     SeasonSerializer,
@@ -55,6 +55,27 @@ class SeasonCalculateWinnersViewSet(viewsets.GenericViewSet):
             SeasonSellerInsightSerializer(insights, many=True).data,
             status=status.HTTP_200_OK,
         )
+
+
+class SeasonFinalizeViewSet(viewsets.GenericViewSet):
+    permission_classes = [HasAppAccess]
+    permission_resource = "SEASONS_ADMIN"
+    manager_permission_map = {"create": "seasons.finalize"}
+    serializer_class = SeasonSerializer
+    queryset = Season.objects.all()
+
+    @extend_schema(tags=["Seasons"], request=None, responses={200: SeasonSerializer})
+    def create(self, request, *args, **kwargs):
+        season = self.get_object()
+        if season.status != SeasonStatus.CALCULATED:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {"detail": "Only calculated seasons can be finalized."}
+            )
+        season.status = SeasonStatus.FINALIZED
+        season.finalized_by = request.user.active_profile
+        season.save(update_fields=["status", "finalized_by", "modified"])
+        return Response(SeasonSerializer(season).data, status=status.HTTP_200_OK)
 
 
 class SeasonSellerInsightViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from apps.general.authorizations import HasAppAccess
 from apps.lucky_wheel.models import LuckyWheelPrize, LuckyWheelSpin
 from apps.lucky_wheel.serializers import (
+    AdminLuckyWheelSpinSerializer,
     LuckyWheelCurrentSerializer,
     LuckyWheelPrizeSerializer,
     LuckyWheelSegmentSerializer,
@@ -168,7 +169,7 @@ class AdminLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet)
     permission_classes = [HasAppAccess]
     permission_resource = "LUCKY_WHEEL_SPIN_ADMIN"
     manager_permission_map = {"list": "lucky_wheel.spins.list"}
-    serializer_class = LuckyWheelSpinSerializer
+    serializer_class = AdminLuckyWheelSpinSerializer
     queryset = LuckyWheelSpin.objects.select_related(
         "user",
         "profile",

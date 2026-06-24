@@ -8,7 +8,7 @@ from apps.payments.views import (
 
 LIST_ACTION = {"get": "list"}
 CREATE_ACTION = {"post": "create"}
-PARTIAL_UPDATE_ACTION = {"patch": "partial_update"}
+RETRIEVE_UPDATE_ACTION = {"get": "retrieve", "patch": "partial_update"}
 
 app_name = "payments"
 
@@ -36,7 +36,7 @@ urlpatterns = [
     ),
     path(
         "requests/<int:pk>/",
-        PaymentRequestViewSet.as_view(PARTIAL_UPDATE_ACTION),
+        PaymentRequestViewSet.as_view(RETRIEVE_UPDATE_ACTION),
         name="payment-request-update",
     ),
     path(

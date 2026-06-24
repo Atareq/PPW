@@ -15,6 +15,7 @@ class CreateAuctionPaymentRequestSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
+    payment_proof = serializers.FileField(required=False, allow_null=True)
 
 
 class CreateMarketPaymentRequestSerializer(serializers.Serializer):
@@ -24,10 +25,12 @@ class CreateMarketPaymentRequestSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
+    payment_proof = serializers.FileField(required=False, allow_null=True)
 
 
 class UpdatePaymentRequestSerializer(serializers.Serializer):
     buyer_note = serializers.CharField(required=False, allow_blank=True)
+    payment_proof = serializers.FileField(required=False, allow_null=True)
 
 
 class RejectPaymentRequestSerializer(serializers.Serializer):
@@ -55,6 +58,7 @@ class PaymentRequestListSerializer(serializers.ModelSerializer):
             "status",
             "buyer_note",
             "seller_note",
+            "payment_proof",
             "created",
             "modified",
         ]

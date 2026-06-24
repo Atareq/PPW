@@ -23,6 +23,11 @@ order_item_list = OrderItemViewSet.as_view(
         "get": "list",
     }
 )
+order_item_detail = OrderItemViewSet.as_view(
+    {
+        "get": "retrieve",
+    }
+)
 order_item_approve = OrderItemViewSet.as_view(
     {
         "post": "approve",
@@ -52,6 +57,7 @@ urlpatterns = [
     path("checkout/", checkout, name="checkout"),
     path("", order_list, name="order-list"),
     path("items/", order_item_list, name="order-item-list"),
+    path("items/<int:pk>/", order_item_detail, name="order-item-detail"),
     path(
         "items/<int:pk>/approve/",
         order_item_approve,
