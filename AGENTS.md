@@ -472,7 +472,9 @@ Current order API:
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
-  - `GET`: paginated seller list of own order items or manager list of all order items; supports `discount_offer=<id>` and `cashback_offer=<id>` filters
+  - `GET`: paginated seller list of own order items or manager list of all order items; supports `status`, `discount_offer=<id>`, and `cashback_offer=<id>` filters
+- `/api/orders/items/<id>/`
+  - `GET`: seller retrieves their own seller-side order item; manager retrieves any order item with `order_items.retrieve`
 - `/api/orders/items/<id>/approve/`
   - `POST`: seller approves their own pending order item
 - `/api/orders/items/<id>/reject/`
@@ -971,6 +973,8 @@ Current promotions API:
   - `GET`: customer-visible active cashback offers
 - `/api/promotions/cashback/my/`
   - `GET`: customer lists their own cashback transactions
+- `/api/promotions/my-grants/`
+  - `GET`: authenticated user lists their own active, non-expired user promotion grants
 - `/api/promotions/cashback/balance/`
   - `GET`: customer retrieves their current cashback balance
   - `GET ?customer=<id>`: manager with `cashback.balance.retrieve` retrieves one customer's cashback balance; manager without `customer` and non-manager use of `customer` return 403
@@ -1000,6 +1004,7 @@ Current promotions behavior:
 - normal automatic checkout discount and cashback selection considers only active `global` offers
 - non-global offers must be tied to a user through `UserPromotionGrant` before they are treated as a user-owned prize/grant
 - `UserPromotionGrant` records belong to a `UserAccount`, optionally keep the causing `Profile`, point to exactly one `DiscountOffer` or `CashbackOffer`, and use a unique idempotency key
+- user promotion grants exposed through `/api/promotions/my-grants/` are scoped to the current user/profile and exclude expired, redeemed, and cancelled grants
 - offer target types are `all`, `category`, and `asset`
 - offer values must be greater than zero
 - percentage offer values cannot exceed `100`
@@ -1257,7 +1262,7 @@ Current package API:
   - `GET ?active=true`: seller retrieves current active package summary
   - `POST`: seller requests a package by `package_id`
 - `/api/seller-packages/`
-  - `GET`: manager lists seller package requests/history
+  - `GET`: manager lists seller package requests/history; supports real `status` values such as `pending`, `active`, `exhausted`, and `cancelled`
 - `/api/seller-packages/<id>/`
   - `PATCH`: manager status transition endpoint; accepts `active` or `cancelled`
 
@@ -1412,7 +1417,7 @@ Current Lucky Wheel API:
 - `/api/lucky-wheel/admin/prizes/<id>/`
   - `PATCH`: manager prize update with `lucky_wheel.prizes.update`
 - `/api/lucky-wheel/admin/spins/`
-  - `GET`: manager spin listing with `lucky_wheel.spins.list`
+  - `GET`: manager spin listing with `lucky_wheel.spins.list`; includes `user_id`, `profile_id`, and `username`
 
 Current Lucky Wheel behavior:
 
@@ -1463,6 +1468,8 @@ Current seasons API:
   - `PATCH`: manager update with `seasons.update`
 - `/api/seasons/<id>/calculate-winners/`
   - `POST`: manager calculates seller insights and awards top sellers with `seasons.calculate`
+- `/api/seasons/<id>/finalize/`
+  - `POST`: manager finalizes a calculated season with `seasons.finalize`
 - `/api/seasons/<id>/seller-insights/`
   - `GET`: manager reads snapshot insights with `seasons.insights.list`
 
@@ -1473,6 +1480,7 @@ Current seasons behavior:
 - ranking sorts by completed order count descending, average rating descending, total sales amount descending, then seller id ascending
 - top 3 rewards are 100000, 50000, and 25000 PP with source `season_winner`
 - repeated calculation recreates the insight snapshot but does not double-award points because winner rewards use deterministic idempotency keys
+- finalization only changes a `calculated` season to `finalized` and records `finalized_by`; it does not recalculate winners or award points
 
 ### `apps.general`
 
@@ -2240,7 +2248,7 @@ Current order permission pattern:
 - sellers do not access `/api/orders/`; seller order work happens through order-item endpoints
 - `OrderItemViewSet` uses `HasAppAccess` with `permission_resource = "ORDER_ITEM"`
 - order-item object checks use `permission_owner_field = "seller_id"`
-- sellers can list, approve, and reject only their own seller-side order items
+- sellers can list, retrieve, approve, and reject only their own seller-side order items
 - managers with `orders.<level>` permissions can access order and order-item endpoints, subject to the same view/service constraints as before
 
 Current ratings/comment permission pattern:
@@ -2295,7 +2303,7 @@ Current reward admin permission pattern:
 - Lucky Wheel prize admin endpoints use `HasAppAccess` with `LUCKY_WHEEL_PRIZE_ADMIN`
 - Lucky Wheel spin admin listing uses `HasAppAccess` with `LUCKY_WHEEL_SPIN_ADMIN`
 - seasons endpoints use `HasAppAccess` with `SEASONS_ADMIN`
-- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, and `seasons.insights.list`
+- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, and `seasons.insights.list`
 - user-triggered Lucky Wheel spin, referral redeem, and cashback-to-points conversion do not require manager permission codes
 
 Current pedigree permission pattern:
