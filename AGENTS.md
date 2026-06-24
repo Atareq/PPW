@@ -1130,15 +1130,27 @@ Current ratings/comment API:
 - `/api/asset-comments/`
   - `GET`: authenticated paginated asset comment list; supports `asset_id`, `owner_id`, and ordering filters
   - `POST`: authenticated active-profile asset comment creation with nested `asset`
+- `/api/asset-comments/<id>/`
+  - `GET`: manager detail retrieval with `comments.retrieve`
+  - `DELETE`: customer owner self-delete or manager moderation delete with `comments.delete`
 - `/api/seller-comments/`
   - `GET`: authenticated paginated seller comment list; supports `seller_id`, `owner_id`, and ordering filters
   - `POST`: authenticated active-profile seller comment creation with nested `seller`
+- `/api/seller-comments/<id>/`
+  - `GET`: manager detail retrieval with `comments.retrieve`
+  - `DELETE`: customer owner self-delete or manager moderation delete with `comments.delete`
 - `/api/asset-ratings/`
   - `GET`: authenticated paginated asset rating list; supports `asset_id`, `stars`, and ordering filters
   - `POST`: authenticated customer-profile asset rating creation with nested `asset` and optional nested `comment`
+- `/api/asset-ratings/<id>/`
+  - `GET`: manager detail retrieval with `ratings.retrieve`
+  - `DELETE`: manager moderation delete with `ratings.delete`
 - `/api/seller-ratings/`
   - `GET`: authenticated paginated seller rating list; supports `seller_id`, `stars`, and ordering filters
   - `POST`: authenticated customer-profile seller rating creation with nested `seller` and optional nested `comment`
+- `/api/seller-ratings/<id>/`
+  - `GET`: manager detail retrieval with `ratings.retrieve`
+  - `DELETE`: manager moderation delete with `ratings.delete`
 
 Current comment behavior:
 
@@ -1151,7 +1163,9 @@ Current comment behavior:
 - the same owner cannot create more than one comment on the same target within 2 minutes
 - standalone comment endpoints always create `is_rating_comment=False`
 - rating-related comments can only be created through nested rating API payloads and use `is_rating_comment=True`
-- comments do not support replies, moderation, reporting, likes, notifications, or analytics
+- customer profiles can soft-delete their own comments; seller profiles cannot self-delete comments
+- managers with `comments.delete` can soft-delete any asset or seller comment
+- comments do not support replies, reporting, likes, notifications, or analytics
 
 Current rating behavior:
 
@@ -1167,7 +1181,10 @@ Current rating behavior:
 - seller and manager active profiles cannot create ratings
 - duplicate active ratings are blocked per customer/asset and per customer/seller
 - rating creation recomputes `Asset.avg_rating`, `Asset.ratings_count`, `SellerProfile.avg_rating`, and `SellerProfile.ratings_count`
-- rating update/delete, moderation, replies, reports, likes, notifications, points, and analytics are not implemented
+- managers with `ratings.delete` can soft-delete asset and seller ratings
+- rating deletion recomputes cached aggregate fields and soft-deletes an inline rating comment when it exists
+- customer and seller profiles cannot self-delete ratings
+- rating update, replies, reports, likes, notifications, and analytics are not implemented
 
 ### `apps.races`
 
@@ -1705,8 +1722,9 @@ Current design choice:
 - any authenticated active profile can create standalone asset or seller comments
 - `is_rating_comment=True` is reserved for comments created through nested rating API payloads
 - standalone comment create payloads use nested targets, for example `{"asset": {"id": 1}, "text": "..."}` or `{"seller": {"id": 2}, "text": "..."}`
+- customer profiles can soft-delete their own comments; managers can moderate-delete comments with `comments.delete`
 - comment throttling is validation-layer only, not a database constraint
-- comments are flat; replies/threading and moderation/reporting are not implemented
+- comments are flat; replies/threading and reporting are not implemented
 
 #### Rating
 
@@ -1722,6 +1740,7 @@ Current design choice:
 - concrete rating models use field validators for one-to-five `stars`; API serializers also validate the range
 - completed `OrderItem` eligibility is required before rating creation
 - rating aggregates are cached on `Asset` and `SellerProfile`
+- manager rating deletion soft-deletes the rating, hides any inline rating comment, and refreshes cached aggregates
 
 #### Race
 
@@ -2231,9 +2250,11 @@ Current ratings/comment permission pattern:
 - `AssetRatingViewSet` uses `HasAppAccess` with `permission_resource = "ASSET_RATING"`
 - `SellerRatingViewSet` uses `HasAppAccess` with `permission_resource = "SELLER_RATING"`
 - customers and sellers can list and create comments through shared permission constants
+- customers can destroy their own comments through shared permission constants and object ownership checks
 - customers can list and create asset/seller ratings through shared permission constants
 - sellers can list asset/seller ratings but cannot create ratings
 - rating creation remains customer-only through service validation after the shared endpoint permission gate
+- manager comment detail/delete uses `comments.retrieve` and `comments.delete`; manager rating detail/delete uses `ratings.retrieve` and `ratings.delete`
 - ratings and comments must not use app-local permission classes
 
 Current race permission pattern:

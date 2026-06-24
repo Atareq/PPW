@@ -1,4 +1,6 @@
-from apps.general.viewsets import CreateListViewSet
+from django.db import transaction
+
+from apps.general.viewsets import CreateListRetrieveDestroyViewSet
 from apps.ratings.filters import (
     AssetCommentFilter,
     AssetRatingFilter,
@@ -21,12 +23,15 @@ from apps.ratings.serializers import (
     SellerRatingCreateSerializer,
     SellerRatingSerializer,
 )
+from apps.ratings.services import update_asset_rating, update_seller_rating
 
 
-class AssetCommentViewSet(CreateListViewSet):
+class AssetCommentViewSet(CreateListRetrieveDestroyViewSet):
     permission_resource = "ASSET_COMMENT"
     manager_permission_map = {
         "list": "comments.list",
+        "retrieve": "comments.retrieve",
+        "destroy": "comments.delete",
     }
     queryset = AssetComment.objects.all()
     filterset_class = AssetCommentFilter
@@ -41,10 +46,12 @@ class AssetCommentViewSet(CreateListViewSet):
         ).order_by("-created")
 
 
-class SellerCommentViewSet(CreateListViewSet):
+class SellerCommentViewSet(CreateListRetrieveDestroyViewSet):
     permission_resource = "SELLER_COMMENT"
     manager_permission_map = {
         "list": "comments.list",
+        "retrieve": "comments.retrieve",
+        "destroy": "comments.delete",
     }
     queryset = SellerComment.objects.all()
     filterset_class = SellerCommentFilter
@@ -60,10 +67,12 @@ class SellerCommentViewSet(CreateListViewSet):
         ).order_by("-created")
 
 
-class AssetRatingViewSet(CreateListViewSet):
+class AssetRatingViewSet(CreateListRetrieveDestroyViewSet):
     permission_resource = "ASSET_RATING"
     manager_permission_map = {
         "list": "ratings.list",
+        "retrieve": "ratings.retrieve",
+        "destroy": "ratings.delete",
     }
     queryset = AssetRating.objects.all()
     filterset_class = AssetRatingFilter
@@ -86,11 +95,22 @@ class AssetRatingViewSet(CreateListViewSet):
             "comment__asset",
         ).order_by("-created")
 
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        asset = instance.asset
+        comment = instance.comment
+        instance.delete()
+        if comment and comment.is_rating_comment:
+            comment.delete()
+        update_asset_rating(asset)
 
-class SellerRatingViewSet(CreateListViewSet):
+
+class SellerRatingViewSet(CreateListRetrieveDestroyViewSet):
     permission_resource = "SELLER_RATING"
     manager_permission_map = {
         "list": "ratings.list",
+        "retrieve": "ratings.retrieve",
+        "destroy": "ratings.delete",
     }
     queryset = SellerRating.objects.all()
     filterset_class = SellerRatingFilter
@@ -114,3 +134,12 @@ class SellerRatingViewSet(CreateListViewSet):
             "comment__seller",
             "comment__seller__user",
         ).order_by("-created")
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        seller = instance.seller
+        comment = instance.comment
+        instance.delete()
+        if comment and comment.is_rating_comment:
+            comment.delete()
+        update_seller_rating(seller)

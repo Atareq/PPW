@@ -15,6 +15,7 @@ from apps.ratings.models import (
     SellerComment,
     SellerRating,
 )
+from apps.ratings.services import update_asset_rating, update_seller_rating
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, SellerProfile
 from tests.factories import (
@@ -38,6 +39,10 @@ def authenticated_client(user):
     refresh = build_token_for_user(user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return client
+
+
+def detail_url(base_url, instance):
+    return f"{base_url}{instance.pk}/"
 
 
 def concrete_customer_profile(user):
@@ -70,6 +75,14 @@ def create_order_item(customer, asset=None, seller=None, status=None):
 def assert_integrity_error(callback):
     with pytest.raises(IntegrityError), transaction.atomic():
         callback()
+
+
+def manager_with_permissions(*permissions):
+    manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+    manager_profile = manager.active_profile
+    manager_profile.permissions = list(permissions)
+    manager_profile.save(update_fields=["permissions"])
+    return manager
 
 
 class TestAssetComments:
@@ -454,6 +467,174 @@ class TestSellerComments:
         assert [item["id"] for item in response.data["results"]] == [
             visible.pk
         ]
+
+
+class TestRatingCommentDetailAndDeleteApi:
+    def test_manager_with_comments_retrieve_can_get_asset_comment_detail(self):
+        owner = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = AssetComment.objects.create(
+            owner=owner.active_profile,
+            asset=SupplyFactory(),
+            text="Detailed asset comment.",
+        )
+        manager = manager_with_permissions("comments.retrieve")
+
+        response = authenticated_client(manager).get(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == comment.pk
+        assert response.data["text"] == "Detailed asset comment."
+
+    def test_manager_with_comments_retrieve_can_get_seller_comment_detail(self):
+        owner = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = SellerComment.objects.create(
+            owner=owner.active_profile,
+            seller=SellerProfileFactory(),
+            text="Detailed seller comment.",
+        )
+        manager = manager_with_permissions("comments.retrieve")
+
+        response = authenticated_client(manager).get(
+            detail_url(SELLER_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == comment.pk
+        assert response.data["text"] == "Detailed seller comment."
+
+    def test_manager_without_comments_retrieve_gets_403(self):
+        owner = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = AssetComment.objects.create(
+            owner=owner.active_profile,
+            asset=SupplyFactory(),
+            text="Blocked detail.",
+        )
+        manager = manager_with_permissions("comments.list")
+
+        response = authenticated_client(manager).get(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 403
+
+    def test_customer_owner_can_delete_own_asset_comment(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = AssetComment.objects.create(
+            owner=customer.active_profile,
+            asset=SupplyFactory(),
+            text="Delete my asset comment.",
+        )
+
+        response = authenticated_client(customer).delete(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 204
+        assert not AssetComment.objects.filter(pk=comment.pk).exists()
+        assert AssetComment.all_objects.filter(pk=comment.pk).exists()
+
+    def test_customer_owner_can_delete_own_seller_comment(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = SellerComment.objects.create(
+            owner=customer.active_profile,
+            seller=SellerProfileFactory(),
+            text="Delete my seller comment.",
+        )
+
+        response = authenticated_client(customer).delete(
+            detail_url(SELLER_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 204
+        assert not SellerComment.objects.filter(pk=comment.pk).exists()
+        assert SellerComment.all_objects.filter(pk=comment.pk).exists()
+
+    def test_other_customer_cannot_delete_someone_else_comment(self):
+        owner = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        other_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = AssetComment.objects.create(
+            owner=owner.active_profile,
+            asset=SupplyFactory(),
+            text="Not yours.",
+        )
+
+        response = authenticated_client(other_customer).delete(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 403
+        assert AssetComment.objects.filter(pk=comment.pk).exists()
+
+    def test_seller_cannot_self_delete_comment(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        comment = AssetComment.objects.create(
+            owner=seller_user.active_profile,
+            asset=SupplyFactory(),
+            text="Seller-owned comment.",
+        )
+
+        response = authenticated_client(seller_user).delete(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 403
+        assert AssetComment.objects.filter(pk=comment.pk).exists()
+
+    def test_manager_with_comments_delete_can_delete_any_comment(self):
+        owner = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = AssetComment.objects.create(
+            owner=owner.active_profile,
+            asset=SupplyFactory(),
+            text="Moderated comment.",
+        )
+        manager = manager_with_permissions("comments.delete")
+
+        response = authenticated_client(manager).delete(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 204
+        assert not AssetComment.objects.filter(pk=comment.pk).exists()
+        assert AssetComment.all_objects.filter(pk=comment.pk).exists()
+
+    def test_manager_without_comments_delete_gets_403(self):
+        owner = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        comment = AssetComment.objects.create(
+            owner=owner.active_profile,
+            asset=SupplyFactory(),
+            text="Cannot moderate.",
+        )
+        manager = manager_with_permissions("comments.retrieve")
+
+        response = authenticated_client(manager).delete(
+            detail_url(ASSET_COMMENTS_URL, comment)
+        )
+
+        assert response.status_code == 403
+        assert AssetComment.objects.filter(pk=comment.pk).exists()
+
+    def test_deleted_comment_disappears_from_list_and_detail(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory()
+        comment = AssetComment.objects.create(
+            owner=customer.active_profile,
+            asset=asset,
+            text="Hidden after delete.",
+        )
+        client = authenticated_client(customer)
+
+        delete_response = client.delete(detail_url(ASSET_COMMENTS_URL, comment))
+        list_response = client.get(ASSET_COMMENTS_URL, {"asset_id": asset.pk})
+        detail_response = authenticated_client(
+            manager_with_permissions("comments.retrieve")
+        ).get(detail_url(ASSET_COMMENTS_URL, comment))
+
+        assert delete_response.status_code == 204
+        assert list_response.status_code == 200
+        assert list_response.data["results"] == []
+        assert detail_response.status_code == 404
 
 
 class TestRatingModelValidation:
@@ -1103,6 +1284,184 @@ class TestSellerRatingApi:
             ).count()
             == 1
         )
+
+
+class TestRatingDetailAndDeleteApi:
+    def test_manager_with_ratings_retrieve_can_get_asset_rating_detail_with_comment(
+        self,
+    ):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory()
+        comment = AssetComment.objects.create(
+            owner=customer.active_profile,
+            asset=asset,
+            text="Nested asset review.",
+            is_rating_comment=True,
+        )
+        rating = AssetRating.objects.create(
+            owner=concrete_customer_profile(customer),
+            asset=asset,
+            stars=5,
+            comment=comment,
+        )
+        manager = manager_with_permissions("ratings.retrieve")
+
+        response = authenticated_client(manager).get(
+            detail_url(ASSET_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == rating.pk
+        assert response.data["comment"]["id"] == comment.pk
+        assert response.data["comment"]["text"] == "Nested asset review."
+
+    def test_manager_with_ratings_retrieve_can_get_seller_rating_detail_with_comment(
+        self,
+    ):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = SellerProfileFactory()
+        comment = SellerComment.objects.create(
+            owner=customer.active_profile,
+            seller=seller,
+            text="Nested seller review.",
+            is_rating_comment=True,
+        )
+        rating = SellerRating.objects.create(
+            owner=concrete_customer_profile(customer),
+            seller=seller,
+            stars=5,
+            comment=comment,
+        )
+        manager = manager_with_permissions("ratings.retrieve")
+
+        response = authenticated_client(manager).get(
+            detail_url(SELLER_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 200
+        assert response.data["id"] == rating.pk
+        assert response.data["comment"]["id"] == comment.pk
+        assert response.data["comment"]["text"] == "Nested seller review."
+
+    def test_manager_without_ratings_retrieve_gets_403(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        rating = AssetRating.objects.create(
+            owner=concrete_customer_profile(customer),
+            asset=SupplyFactory(),
+            stars=5,
+        )
+        manager = manager_with_permissions("ratings.list")
+
+        response = authenticated_client(manager).get(
+            detail_url(ASSET_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 403
+
+    def test_manager_with_ratings_delete_can_delete_asset_rating(self):
+        first_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        second_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        asset = SupplyFactory()
+        comment = AssetComment.objects.create(
+            owner=first_customer.active_profile,
+            asset=asset,
+            text="Rating comment.",
+            is_rating_comment=True,
+        )
+        rating = AssetRating.objects.create(
+            owner=concrete_customer_profile(first_customer),
+            asset=asset,
+            stars=5,
+            comment=comment,
+        )
+        AssetRating.objects.create(
+            owner=concrete_customer_profile(second_customer),
+            asset=asset,
+            stars=3,
+        )
+        update_asset_rating(asset)
+        manager = manager_with_permissions("ratings.delete")
+
+        response = authenticated_client(manager).delete(
+            detail_url(ASSET_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 204
+        assert not AssetRating.objects.filter(pk=rating.pk).exists()
+        assert AssetRating.all_objects.filter(pk=rating.pk).exists()
+        assert not AssetComment.objects.filter(pk=comment.pk).exists()
+        assert AssetComment.all_objects.filter(pk=comment.pk).exists()
+        asset.refresh_from_db()
+        assert asset.ratings_count == 1
+        assert asset.avg_rating == Decimal("3.00")
+
+    def test_manager_with_ratings_delete_can_delete_seller_rating(self):
+        first_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        second_customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        seller = SellerProfileFactory()
+        comment = SellerComment.objects.create(
+            owner=first_customer.active_profile,
+            seller=seller,
+            text="Seller rating comment.",
+            is_rating_comment=True,
+        )
+        rating = SellerRating.objects.create(
+            owner=concrete_customer_profile(first_customer),
+            seller=seller,
+            stars=5,
+            comment=comment,
+        )
+        SellerRating.objects.create(
+            owner=concrete_customer_profile(second_customer),
+            seller=seller,
+            stars=3,
+        )
+        update_seller_rating(seller)
+        manager = manager_with_permissions("ratings.delete")
+
+        response = authenticated_client(manager).delete(
+            detail_url(SELLER_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 204
+        assert not SellerRating.objects.filter(pk=rating.pk).exists()
+        assert SellerRating.all_objects.filter(pk=rating.pk).exists()
+        assert not SellerComment.objects.filter(pk=comment.pk).exists()
+        assert SellerComment.all_objects.filter(pk=comment.pk).exists()
+        seller.refresh_from_db()
+        assert seller.ratings_count == 1
+        assert seller.avg_rating == Decimal("3.00")
+
+    def test_manager_without_ratings_delete_gets_403(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        rating = AssetRating.objects.create(
+            owner=concrete_customer_profile(customer),
+            asset=SupplyFactory(),
+            stars=5,
+        )
+        manager = manager_with_permissions("ratings.retrieve")
+
+        response = authenticated_client(manager).delete(
+            detail_url(ASSET_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 403
+        assert AssetRating.objects.filter(pk=rating.pk).exists()
+
+    def test_customer_cannot_self_delete_asset_rating(self):
+        customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        rating = AssetRating.objects.create(
+            owner=concrete_customer_profile(customer),
+            asset=SupplyFactory(),
+            stars=5,
+        )
+
+        response = authenticated_client(customer).delete(
+            detail_url(ASSET_RATINGS_URL, rating)
+        )
+
+        assert response.status_code == 403
+        assert AssetRating.objects.filter(pk=rating.pk).exists()
 
 
 class TestRatingAggregatesAndLists:

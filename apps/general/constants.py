@@ -146,10 +146,12 @@ CUSTOMER_PERMISSIONS = {
     "ASSET_COMMENT": [
         "list",
         "create",
+        "destroy",
     ],
     "SELLER_COMMENT": [
         "list",
         "create",
+        "destroy",
     ],
     "ASSET_RATING": [
         "list",
