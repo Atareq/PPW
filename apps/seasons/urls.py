@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.seasons.views import (
     SeasonCalculateWinnersViewSet,
+    SeasonFinalizeViewSet,
     SeasonSellerInsightViewSet,
     SeasonViewSet,
 )
@@ -22,6 +23,11 @@ urlpatterns = [
         "<int:pk>/calculate-winners/",
         SeasonCalculateWinnersViewSet.as_view(CREATE_ACTION),
         name="season-calculate-winners",
+    ),
+    path(
+        "<int:pk>/finalize/",
+        SeasonFinalizeViewSet.as_view(CREATE_ACTION),
+        name="season-finalize",
     ),
     path(
         "<int:pk>/seller-insights/",

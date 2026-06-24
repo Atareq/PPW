@@ -193,7 +193,11 @@ class CheckoutViewSet(viewsets.GenericViewSet):
         )
 
 
-class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class OrderItemViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
     """Seller/manager order-item work queue and seller decision commands."""
 
     permission_classes = [HasAppAccess]
@@ -206,7 +210,7 @@ class OrderItemViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = OrderItemSerializer
     queryset = OrderItem.objects.all()
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["discount_offer", "cashback_offer"]
+    filterset_fields = ["status", "discount_offer", "cashback_offer"]
 
     def get_queryset(self):
         queryset = order_item_queryset()
