@@ -24,6 +24,12 @@ class LuckyWheelPrizeType(models.TextChoices):
     NO_PRIZE = "no_prize", "No Prize"
 
 
+class WheelAudience(models.TextChoices):
+    CUSTOMER = "customer", "Customer"
+    SELLER = "seller", "Seller"
+    BOTH = "both", "Both"
+
+
 class LuckyWheelSpinStatus(models.TextChoices):
     AWARDED = "awarded", "Awarded"
     NO_PRIZE = "no_prize", "No Prize"
@@ -133,6 +139,12 @@ class LuckyWheelPrize(BaseModel):
         blank=True,
     )
     badge_type = models.CharField(max_length=50, blank=True)
+    target_profile_type = models.CharField(
+        max_length=10,
+        choices=WheelAudience.choices,
+        default=WheelAudience.BOTH,
+        db_index=True,
+    )
     quantity_total = models.PositiveIntegerField(null=True, blank=True)
     quantity_awarded = models.PositiveIntegerField(default=0)
     metadata = models.JSONField(default=dict, blank=True)

@@ -251,7 +251,6 @@ class AuctionFactory:
         end_time,
         auto_extend_enabled: bool = False,
         auto_extend_minutes: int = 5,
-        auto_extend_threshold: int = 5,
         buy_now_enabled: bool = False,
         deposit_required: bool = False,
         payment_deadline_days=None,
@@ -264,7 +263,7 @@ class AuctionFactory:
         All validation already done by AuctionBusinessValidator.
 
         Returns:
-            Auction: Unsaved instance with status=ACTIVE, is_visible=False
+            Auction: Unsaved instance with status=ACTIVE, is_visible=True
         """
         return Auction(
             owner=owner,
@@ -275,7 +274,6 @@ class AuctionFactory:
             end_time=end_time,
             auto_extend_enabled=auto_extend_enabled,
             auto_extend_minutes=auto_extend_minutes,
-            auto_extend_threshold=auto_extend_threshold,
             buy_now_enabled=buy_now_enabled,
             deposit_required=deposit_required,
             payment_deadline_days=payment_deadline_days,
@@ -446,7 +444,7 @@ class AuctionService:
 
         AuctionService._log_event(
             auction=auction,
-            event_type=AuctionItemStatus.CANCELLED,
+            event_type="cancelled",
             performer=auction.owner,
             item=None,
             bid=None,
@@ -463,7 +461,7 @@ class AuctionService:
 
         Only called if:
         - auto_extend_enabled = True
-        - Bid placed within auto_extend_threshold minutes of end
+        - Bid placed within AUCTION_AUTO_EXTEND_MINUTES minutes of end
         """
 
         # Extend end time
@@ -652,10 +650,13 @@ class BidBusinessValidator:
             )
 
     def _validate_bidder(self) -> None:
-        """Validate bidder is not a Seller"""
+        """Validate bidder is a customer and not the auction owner."""
 
         if self.bidder.type != ProfileType.CUSTOMER:
             raise ValidationError("Only customers can place bids")
+
+        if self.bidder.pk == self.auction.owner_id:
+            raise ValidationError("Auction owner cannot bid on their own auction")
 
     def _validate_bid_amount(self) -> None:
         """Validate bid amount meets all requirements"""
@@ -854,24 +855,33 @@ class SettlementService:
 
     @staticmethod
     def _settle_item(item: AuctionItem) -> None:
-        """Determine winner and mark item status"""
+        """Determine winner and mark item status.
 
-        # Get highest bid
-        winning_bid = item.bids.order_by("-amount").first()
+        Tie-breaking: earliest bid wins when two bids share the same amount.
+        Reserve price: if set and the highest bid is below it, item goes UNSOLD.
+        """
+        # Explicit tie-break: highest amount first, then earliest creation time
+        winning_bid = item.bids.order_by("-amount", "created").first()
 
-        if winning_bid:
-            # Item sold
+        reserve_met = (
+            winning_bid is not None
+            and (
+                item.reserve_price is None
+                or winning_bid.amount >= item.reserve_price
+            )
+        )
+
+        if reserve_met:
             item.status = AuctionItemStatus.SOLD
             item.winner = winning_bid.bidder
             item.winner_bid = winning_bid
         else:
-            # No bids - item unsold
             item.status = AuctionItemStatus.UNSOLD
             item.winner = None
             item.winner_bid = None
 
         item.save()
-        if winning_bid and item.winner_id:
+        if item.status == AuctionItemStatus.SOLD:
             SettlementService._schedule_auction_won_notification(item)
 
     @staticmethod

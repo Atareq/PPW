@@ -20,6 +20,7 @@ class Profile(BaseModel):
     )
 
     type = models.CharField(max_length=20, choices=ProfileType.choices)
+    avatar = models.URLField(max_length=500, null=True, blank=True)
     activated = models.BooleanField(
         default=True,  # For development reasons
         help_text="Only updated to True by admin once the profile created",
@@ -35,7 +36,6 @@ class Profile(BaseModel):
     address = models.TextField(blank=True)
 
     class Meta:
-        unique_together = ("user", "type")
         constraints = [
             UniqueConstraint(
                 fields=["user"],
@@ -122,6 +122,9 @@ class CustomerProfile(Profile):
     )
     country = models.CharField(max_length=2, choices=CountryOptions.choices)
     currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
+    anonymous_bid_perk = models.BooleanField(default=False)
+    golden_bid_until = models.DateTimeField(null=True, blank=True)
+    is_golden_bid = models.BooleanField(default=False)
 
     class Meta:
         constraints = [

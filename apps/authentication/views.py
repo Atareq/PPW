@@ -134,9 +134,29 @@ class SwitchProfileAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        profile_id = request.data.get("profile_id")
         new_profile = request.data.get("new_profile")
 
-        switched, profile_type = switch_user_profile(request.user, new_profile)
+        if profile_id is not None:
+            try:
+                profile_id = int(profile_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"message": "Invalid profile_id."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            switched, profile_type = switch_user_profile(
+                request.user, profile_id=profile_id
+            )
+        elif new_profile is not None:
+            switched, profile_type = switch_user_profile(
+                request.user, new_profile_type=new_profile
+            )
+        else:
+            return Response(
+                {"message": "Either profile_id or new_profile is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if not switched:
             return Response(
@@ -145,10 +165,12 @@ class SwitchProfileAPIView(APIView):
             )
 
         token = build_token_for_user(request.user)
+        active_profile = request.user.active_profile
 
         return Response(
             {
                 "profile": profile_type,
+                "profile_id": active_profile.id,
                 "access": str(token.access_token),
                 "refresh": str(token),
             }

@@ -44,6 +44,7 @@ class OrderViewSet(
 
     permission_classes = [HasAppAccess]
     permission_resource = "ORDER"
+    allow_scoped_read_access = True
     manager_permission_map = {
         "list": "orders.list",
         "retrieve": "orders.retrieve",
@@ -73,6 +74,9 @@ class OrderViewSet(
 
         if active_profile.type == ProfileType.CUSTOMER:
             return queryset.filter(owner_id=active_profile.pk)
+
+        if active_profile.type == ProfileType.SELLER:
+            return queryset.filter(items__seller_id=active_profile.pk).distinct()
 
         return queryset.none()
 

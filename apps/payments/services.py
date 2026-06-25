@@ -7,6 +7,8 @@ from apps.auctions.models import AuctionItem, AuctionItemStatus
 from apps.feed.services import BlockService
 from apps.orders.models import OrderItem, OrderItemStatus
 from apps.orders.services import OrderService
+from apps.transfers.models import TransferType
+from apps.transfers.services import OwnershipTransferService
 from apps.payments.models import (
     AuctionPaymentRequest,
     MarketPaymentRequest,
@@ -137,14 +139,21 @@ class PaymentRequestService:
         if item.order.owner_id != buyer_profile.pk:
             raise ValidationError("Only the order owner can create this request.")
 
-        if item.status != OrderItemStatus.APPROVED:
-            raise ValidationError("Order item must be approved.")
+        if item.status not in (OrderItemStatus.APPROVED, OrderItemStatus.PENDING_SELLER):
+            raise ValidationError("Order item must be approved or pending seller review.")
         PaymentRequestService._validate_not_blocked(buyer_profile, item.seller)
 
         PaymentRequestService._validate_no_active_duplicate(
             buyer_profile,
             item.asset,
         )
+
+        # When proof is submitted at checkout (item still pending_seller), skip the
+        # seller-approval step and advance directly to awaiting_payment_review so the
+        # seller only needs to approve once (the payment proof).
+        if item.status == OrderItemStatus.PENDING_SELLER:
+            item.status = OrderItemStatus.AWAITING_PAYMENT_REVIEW
+            item.save(update_fields=["status", "modified"])
 
         payment_request = MarketPaymentRequest.objects.create(
             buyer=buyer_profile,
@@ -185,6 +194,17 @@ class PaymentRequestService:
 
         if payment_request.status not in PaymentRequestService.NON_FINAL_STATUSES:
             raise ValidationError("Only pending or rejected requests can be updated.")
+
+        # Rejected auction payment requests cannot be resubmitted — the item is
+        # reverted to UNSOLD on rejection and the buyer's claim is gone.
+        if (
+            payment_request.status == PaymentRequestStatus.REJECTED
+            and payment_request.request_type == PaymentRequestType.AUCTION
+        ):
+            raise ValidationError(
+                "Rejected auction payment requests cannot be resubmitted. "
+                "The item has been returned to the seller."
+            )
 
         update_fields = ["modified"]
         if buyer_note is not None:
@@ -268,7 +288,11 @@ class PaymentRequestService:
     @staticmethod
     @transaction.atomic
     def reject(payment_request_id, seller_profile, seller_note=None):
-        """Reject a pending request without mutating stock, ownership, or order state."""
+        """Reject a pending request.
+
+        For auction requests: reverts the item to UNSOLD and clears the winner
+        so the seller can re-list the bird. The buyer permanently loses their claim.
+        """
 
         PaymentRequestValidator.ensure_seller(seller_profile)
         payment_request = PaymentRequestService._get_locked_request(payment_request_id)
@@ -294,6 +318,10 @@ class PaymentRequestService:
                 "modified",
             ]
         )
+
+        if payment_request.request_type == PaymentRequestType.AUCTION:
+            PaymentRequestService._revert_auction_item_on_rejection(payment_request)
+
         PaymentRequestService._log_event(
             payment_request,
             PaymentRequestEventType.REJECTED,
@@ -309,6 +337,27 @@ class PaymentRequestService:
             idempotency_key=f"payment_request_rejected:{payment_request.pk}",
         )
         return PaymentRequestService.get_request(payment_request.pk)
+
+    @staticmethod
+    def _revert_auction_item_on_rejection(payment_request):
+        """Revert a sold auction item to UNSOLD when the seller rejects payment proof."""
+        auction_request = (
+            AuctionPaymentRequest.objects.select_for_update()
+            .select_related("auction_item")
+            .get(pk=payment_request.pk)
+        )
+        auction_item = (
+            AuctionItem.objects.select_for_update()
+            .get(pk=auction_request.auction_item_id)
+        )
+
+        if auction_item.status != AuctionItemStatus.SOLD:
+            return
+
+        auction_item.status = AuctionItemStatus.UNSOLD
+        auction_item.winner = None
+        auction_item.winner_bid = None
+        auction_item.save(update_fields=["status", "winner", "winner_bid", "modified"])
 
     @staticmethod
     def get_request(payment_request_id):
@@ -355,8 +404,8 @@ class PaymentRequestService:
             .get(pk=market_request.order_item_id)
         )
 
-        if order_item.status != OrderItemStatus.APPROVED:
-            raise ValidationError("Order item must still be approved.")
+        if order_item.status not in (OrderItemStatus.APPROVED, OrderItemStatus.AWAITING_PAYMENT_REVIEW):
+            raise ValidationError("Order item must be approved or awaiting payment review.")
 
         if order_item.order.owner_id != payment_request.buyer_id:
             raise ValidationError("Payment request buyer does not match the order.")
@@ -375,6 +424,12 @@ class PaymentRequestService:
                 asset,
                 from_profile_id=payment_request.seller_id,
                 to_profile_id=payment_request.buyer_id,
+            )
+            OwnershipTransferService.record_transfer(
+                asset=asset,
+                from_profile_id=payment_request.seller_id,
+                to_profile_id=payment_request.buyer_id,
+                transfer_type=TransferType.MARKET,
             )
 
         order_item.status = OrderItemStatus.COMPLETED
@@ -427,6 +482,12 @@ class PaymentRequestService:
                 locked_assets[asset_id],
                 from_profile_id=payment_request.seller_id,
                 to_profile_id=payment_request.buyer_id,
+            )
+            OwnershipTransferService.record_transfer(
+                asset=locked_assets[asset_id],
+                from_profile_id=payment_request.seller_id,
+                to_profile_id=payment_request.buyer_id,
+                transfer_type=TransferType.AUCTION,
             )
 
     @staticmethod

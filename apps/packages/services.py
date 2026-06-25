@@ -228,7 +228,7 @@ class SellerPackageService:
 
     @staticmethod
     @transaction.atomic
-    def request_package(profile, package_id):
+    def request_package(profile, package_id, payment_proof):
         """Create one pending package request per seller/package pair."""
 
         seller = SellerPackageValidator.get_seller_profile(profile)
@@ -259,6 +259,7 @@ class SellerPackageService:
             activated_at=None,
             expires_at=None,
             invalidated_at=None,
+            payment_proof=payment_proof,
         )
 
     @staticmethod

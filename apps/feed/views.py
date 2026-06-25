@@ -1,6 +1,7 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from django.db.models import Count, Q
 from rest_framework import mixins, status, viewsets
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -280,6 +281,8 @@ class SellerDiscoveryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     queryset = SellerProfile.objects.all()
     serializer_class = SellerDiscoverySerializer
+    filter_backends = [SearchFilter]
+    search_fields = ["nickname", "user__phone_number"]
 
     def get_queryset(self):
         profile = active_profile(self.request)

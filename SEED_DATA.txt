@@ -1,0 +1,573 @@
+================================================================================
+  PIGEON PLANET (PPW) — FULL SEED DATA REFERENCE
+  Command: python manage.py seed_full
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. ACCOUNTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  SUPERADMIN
+  ----------
+  Phone     : +201000000000
+  Password  : Admin@1234
+  Username  : admin
+  Role      : Manager (all 93 permissions)
+  is_staff  : True
+  is_super  : True
+
+  SELLER / CUSTOMER DUAL-PROFILE USERS
+  --------------------------------------
+  All passwords: Test@1234
+  Each account has TWO profiles:
+    - SellerProfile  (is_active = True  — primary)
+    - CustomerProfile (is_active = False — secondary)
+
+  #  Phone           Username  Country  Currency  Seller Nickname
+  -- --------------- --------- -------- --------- -----------------
+  1  +201000000001   seller1   EG       EGP       EG Pigeons
+  2  +201000000002   seller2   AE       AED       Gulf Wings
+  3  +201000000003   seller3   SA       SAR       Arabian Flyers
+  4  +201000000004   seller4   KW       KWD       Kuwait Loft
+  5  +201000000005   seller5   QA       QAR       Doha Pigeons
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2. PACKAGES (catalog)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Name          Points  Price    Period   Auction Cost  Product Cost
+  ------------- ------- -------- -------- ------------- ------------
+  Starter          50    99.00   30 days       5 pts        5 pts
+  Professional    200   299.00   60 days      10 pts       10 pts
+  Premium         500   599.00   90 days      20 pts       20 pts
+
+  SELLER PACKAGE ASSIGNMENTS (AssetSellerPackage — active)
+  ---------------------------------------------------------
+  seller1  ->  Starter       (activated, expires 23 days from first run)
+  seller2  ->  Professional  (activated, expires 53 days from first run)
+  seller3  ->  Premium       (activated, expires 83 days from first run)
+  seller4  ->  Starter       (activated, expires 23 days from first run)
+  seller5  ->  Professional  (activated, expires 53 days from first run)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3. LUCKY WHEEL PRIZES (catalog)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Label                  Type       Weight  Points
+  ---------------------- ---------- ------- ------
+  50 PP Coins            pp_coins     20      50
+  100 PP Coins           pp_coins     15     100
+  200 PP Coins           pp_coins     10     200
+  500 PP Coins           pp_coins      5     500
+  Better luck next time  no_prize     50       -
+
+  WHEEL GRANTS (per profile)
+  --------------------------
+  Every SellerProfile  -> 5 attempts (source: manager_grant, key: seed_full)
+  Every CustomerProfile -> 5 attempts (source: manager_grant, key: seed_full)
+  Total grants: 10 (5 users x 2 profiles each)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4. POINTS WALLETS & BADGE AWARDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  POINT WALLETS
+  -------------
+  Every user gets a PointWallet seeded with 500 points.
+  Transaction: earn 500 pts, source=onboarding, reason="Welcome bonus"
+
+  CORE BADGES (seeded in _seed_points_and_badges)
+  ------------------------------------------------
+  WELCOME_SELLER  -> each SellerProfile
+  WELCOME_BUYER   -> each CustomerProfile
+
+  EXTRA ACTIVITY BADGES (seeded in _seed_extra_badges)
+  -----------------------------------------------------
+  For every SellerProfile:
+    SELLER_STARTER
+    FIRST_AUCTION_PUBLISHED
+    FIRST_MARKET_ITEM_LISTED
+
+  For every CustomerProfile:
+    FIRST_BIDDER
+    POINTS_STARTER
+
+  Total badge awards: 5 users x (2 core + 3 seller + 2 customer) = 35 badges
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5. BIRDS (17 total — ring numbers globally unique)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  seller1 (EG — EG Pigeons)
+  --------------------------
+  Ring          Name          Gender  Colour   Stamina    Speed    Price
+  ------------- ------------- ------- -------- ---------- -------- ---------
+  EG-2024-001   Sky King      male    White    excellent  90.00    2,500 EGP
+  EG-2024-002   Desert Rose   female  Brown    verygood   78.20    1,800 EGP
+  EG-2024-003   Sand Storm    young   Grey     good       —        900 EGP
+  EG-2024-004   Silver Arrow  male    Silver   excellent  93.00    3,500 EGP
+
+  Achievements:
+    EG-2024-001  National race top 3 2024
+    EG-2024-004  Regional champion 2023 and 2024
+
+  seller2 (AE — Gulf Wings)
+  --------------------------
+  Ring          Name          Gender  Colour     Stamina    Speed    Price
+  ------------- ------------- ------- ---------- ---------- -------- ---------
+  AE-2024-001   Gulf Pride    male    White      excellent  88.00    4,000 AED
+  AE-2024-002   Gulf Queen    female  Cream      verygood   81.50    2,200 AED
+  AE-2024-003   Oasis Flyer   male    Grey-Blue  verygood   79.00    1,600 AED
+
+  Achievements:
+    AE-2024-001  UAE championship winner 2024
+
+  seller3 (SA — Arabian Flyers)
+  ------------------------------
+  Ring          Name          Gender  Colour      Stamina    Speed    Price
+  ------------- ------------- ------- ----------- ---------- -------- ---------
+  SA-2024-001   Arabian Wind  male    White       excellent  92.50    5,000 SAR
+  SA-2024-002   Arabian Moon  female  Brown       excellent  85.00    3,200 SAR
+  SA-2024-003   Young Riyadh  young   Grey        good       —        750 SAR
+  SA-2024-004   Desert Eagle  male    Dark Brown  verygood   80.00    1,400 SAR
+
+  Achievements:
+    SA-2024-001  KSA open champion 2023
+    SA-2024-002  KSA breed champion 2023
+
+  seller4 (KW — Kuwait Loft)
+  ---------------------------
+  Ring          Name          Gender  Colour  Stamina    Speed    Price
+  ------------- ------------- ------- ------- ---------- -------- ---------
+  KW-2024-001   Kuwait Star   male    White   excellent  87.00    4,500 KWD
+  KW-2024-002   Kuwait Pearl  female  Cream   verygood   82.00    2,800 KWD
+  KW-2024-003   Bay Glider    male    Blue    good       75.00    1,200 KWD
+
+  Achievements:
+    KW-2024-001  GCC open champion 2024
+
+  seller5 (QA — Doha Pigeons)
+  ----------------------------
+  Ring          Name          Gender  Colour   Stamina    Speed    Price
+  ------------- ------------- ------- -------- ---------- -------- ---------
+  QA-2024-001   Doha Racer    male    White    excellent  91.00    6,000 QAR
+  QA-2024-002   Pearl Diver   female  Silver   excellent  86.00    3,800 QAR
+  QA-2024-003   Lusail Wing   young   White    verygood   —        1,100 QAR
+
+  Achievements:
+    QA-2024-001  Qatar national champion 2024
+    QA-2024-002  Regional female champion 2024
+
+  All birds: is_market_listed=True, is_for_auction=True, status=available
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  6. PRODUCTS — NON-BIRD ASSETS (60 total, 12 per seller)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Each seller gets 3 products from each of the 4 non-bird pools (rotating window).
+  All products: is_market_listed=True, is_for_auction=False, status=available.
+
+  SUPPLY POOL (5 items — each seller gets 3 via rotation)
+  --------------------------------------------------------
+  Title                                  Count  Price
+  -------------------------------------- ------ --------
+  Racing Loft - 10 Section Wood              1   850.00
+  Transport Basket - 12 Bird Plastic         5    45.00
+  Nesting Box Set - 6 Pairs Wood             3   120.00
+  Galvanized Wire Mesh Panel 1m x 2m        10    25.00
+  Perch Bar Set - 20 Wooden Perches          4    35.00
+
+  ACCESSORY POOL (5 items)
+  -------------------------
+  Title                                  Count  Price
+  -------------------------------------- ------ --------
+  Aluminium Leg Rings 2024 Size 7 100pcs    10    15.00
+  Electronic Timing Band Set - 10pcs         5   200.00
+  Automatic Water Dispenser 5L               8    28.00
+  Drinker Cup Set - 50pcs                   20    18.00
+  Digital Pigeon Racing Clock                2   350.00
+
+  FEED POOL (5 items)
+  --------------------
+  Title                                  Count  Price
+  -------------------------------------- ------ --------
+  Racing Mix Premium - 20kg                 50    40.00
+  Breeding Mix Deluxe - 20kg                30    45.00
+  Depuration Mix - 10kg                     40    22.00
+  Sports Mix Plus - 25kg                    25    55.00
+  Natural Corn Blend - 10kg                 60    18.00
+
+  SUPPLEMENT POOL (5 items)
+  --------------------------
+  Title                                  Count  Price
+  -------------------------------------- ------ --------
+  Vitamin E + Selenium 250ml               30    25.00
+  Electrolyte Rehydration Powder 500g      25    30.00
+  Probiotics Powder 100g                   40    20.00
+  Grit and Minerals Mix 1kg                35    15.00
+  Calcium Block 500g                       50    10.00
+
+  SELLER ASSIGNMENT (rotating window of 3 per type)
+  --------------------------------------------------
+  Seller    Supply [idx]      Accessory [idx]    Feed [idx]         Supplement [idx]
+  --------- ----------------- ------------------ ------------------ ------------------
+  seller1   0, 1, 2           0, 1, 2            0, 1, 2            0, 1, 2
+  seller2   1, 2, 3           1, 2, 3            1, 2, 3            1, 2, 3
+  seller3   2, 3, 4           2, 3, 4            2, 3, 4            2, 3, 4
+  seller4   3, 4, 0           3, 4, 0            3, 4, 0            3, 4, 0
+  seller5   4, 0, 1           4, 0, 1            4, 0, 1            4, 0, 1
+
+  (idx = position in the pool list above, 0-based)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7. AUCTIONS (6 total — all 5 types covered)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Auction 1 — SINGLE (active)
+  ----------------------------
+  Title        : Sky King — Open Auction
+  Seller       : seller1 (EG Pigeons)
+  Status       : active  (started 6h ago, ends in 3 days)
+  Bird         : EG-2024-001  Sky King
+  Starting Price: 1,000 EGP
+  Min Increment: 100 EGP
+  Buy Now      : 3,000 EGP
+  Tags         : champion, race, male, EG
+
+  Bids (chronological):
+    customer2  ->  1,100 EGP
+    customer3  ->  1,250 EGP
+    customer4  ->  1,400 EGP  (current leader)
+
+  ─────────────────────────────────────────────────────
+  Auction 2 — PAIR (ended)
+  ─────────────────────────────────────────────────────
+  Title        : Desert Pair — Breeding Couple (Ended)
+  Seller       : seller1 (EG Pigeons)
+  Status       : ended  (ran 10 days ago, ended 2 days ago)
+  Birds        : EG-2024-002 Desert Rose (main) + EG-2024-003 Sand Storm (paired)
+  Starting Price: 2,000 EGP
+  Min Increment: 150 EGP
+  Buy Now      : disabled
+
+  Bids:
+    customer5  ->  2,200 EGP  (highest / winner)
+
+  ─────────────────────────────────────────────────────
+  Auction 3 — MULTI (active)
+  ─────────────────────────────────────────────────────
+  Title        : Gulf Wings Collection — 3 Birds
+  Seller       : seller2 (Gulf Wings)
+  Status       : active  (started 12h ago, ends in 5 days)
+  Birds        : 3 independent items
+
+  Item 1 — AE-2024-001 Gulf Pride
+    Starting Price: 2,000 AED
+    Bids:
+      customer1  ->  2,200 AED
+      customer3  ->  2,500 AED  (current leader)
+
+  Item 2 — AE-2024-002 Gulf Queen
+    Starting Price: 1,200 AED
+    Bids:
+      customer4  ->  1,400 AED  (current leader)
+
+  Item 3 — AE-2024-003 Oasis Flyer
+    Starting Price: 800 AED
+    Bids: none
+
+  Min Increment: 200 AED | Buy Now: disabled
+  Tags: multi, Gulf, UAE, collection
+
+  ─────────────────────────────────────────────────────
+  Auction 4 — BREEDING (active)
+  ─────────────────────────────────────────────────────
+  Title        : Arabian Champions Breeding Pair
+  Seller       : seller3 (Arabian Flyers)
+  Status       : active  (started 2h ago, ends in 7 days)
+  Birds        : SA-2024-001 Arabian Wind (main) + SA-2024-002 Arabian Moon (paired)
+  Starting Price: 5,000 SAR
+  Min Increment: 500 SAR
+  Buy Now      : 12,000 SAR
+  Tags         : breeding, champion, SA, rare
+
+  Bids:
+    customer1  ->  5,500 SAR
+    customer5  ->  6,200 SAR  (current leader)
+
+  ─────────────────────────────────────────────────────
+  Auction 5 — RACING (active)
+  ─────────────────────────────────────────────────────
+  Title        : Kuwait Star — Racing Champion
+  Seller       : seller4 (Kuwait Loft)
+  Status       : active  (started 1h ago, ends in 2 days)
+  Bird         : KW-2024-001  Kuwait Star
+  Starting Price: 3,000 KWD
+  Min Increment: 250 KWD
+  Buy Now      : disabled
+  Tags         : racing, champion, KW
+
+  Bids:
+    customer2  ->  3,250 KWD
+    customer3  ->  3,600 KWD
+    customer5  ->  4,000 KWD  (current leader)
+
+  ─────────────────────────────────────────────────────
+  Auction 6 — SINGLE (ended)
+  ─────────────────────────────────────────────────────
+  Title        : Doha Racer — Qatar National Champion (Ended)
+  Seller       : seller5 (Doha Pigeons)
+  Status       : ended  (ran 20 days ago, ended 5 days ago)
+  Bird         : QA-2024-001  Doha Racer
+  Starting Price: 4,000 QAR
+  Min Increment: 500 QAR
+  Buy Now      : 9,000 QAR (was available)
+
+  Bids (chronological):
+    customer1  ->  4,500 QAR
+    customer2  ->  5,000 QAR
+    customer3  ->  5,800 QAR
+    customer4  ->  6,500 QAR  (highest / winner)
+
+  Note: Bidders are CustomerProfiles of the indexed sellers, not the auction owner.
+        e.g. "customer2" = seller2's CustomerProfile account.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. RACES (3 total)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Race 1 — Cairo Classic 2024
+  ----------------------------
+  Station      : Cairo Racing Station
+  Season Year  : 2024
+  Released     : ~90 days ago
+  Distance     : 500 km
+  Total Birds  : 10   Competitors : 5
+  Coordinates  : 30.0444, 31.2357
+  Weather      : Clear skies, light NW wind 15 km/h, visibility excellent
+  Notes        : Annual classic race from Aswan to Cairo.
+
+  Results:
+  Rank  Competitor        Ring          Speed     Distance   Basket
+  ----  ----------------  ------------- --------- ---------- ------
+   1    Mohamed Ali       EG-2024-001    90.500   500.000 km   12
+   2    Ahmed Hussein     EG-2024-004    88.200   500.000 km    4
+   3    Abdullah Mohamed  SA-2024-001    85.700   500.000 km    7
+   4    Khaled Omar       KW-2024-001    82.100   500.000 km    3
+   5    Yousef Ahmed      QA-2024-001    79.800   500.000 km    9
+
+  ─────────────────────────────────────────────────────
+  Race 2 — Gulf Open 2024
+  ─────────────────────────────────────────────────────
+  Station      : Dubai Racing Club
+  Season Year  : 2024
+  Released     : ~60 days ago
+  Distance     : 350 km
+  Total Birds  : 8    Competitors : 4
+  Coordinates  : 25.2048, 55.2708
+  Weather      : Partly cloudy, SE wind 10 km/h, temperature 28 C
+  Notes        : Gulf regional open race, hosted by Dubai Racing Club.
+
+  Results:
+  Rank  Competitor        Ring          Speed     Distance   Basket
+  ----  ----------------  ------------- --------- ---------- ------
+   1    Ali Hassan        AE-2024-001    95.200   350.000 km    1
+   2    Omar Khalid       QA-2024-002    91.500   350.000 km    5
+   3    Fahad Al-Rashid   KW-2024-002    88.700   350.000 km    8
+   4    Ahmad Al-Farsi    SA-2024-002    84.300   350.000 km    2
+
+  ─────────────────────────────────────────────────────
+  Race 3 — National Championship 2025
+  ─────────────────────────────────────────────────────
+  Station      : International Racing Federation - Cairo
+  Season Year  : 2025
+  Released     : ~14 days ago
+  Distance     : 750 km
+  Total Birds  : 15   Competitors : 8
+  Coordinates  : 30.0444, 31.2357
+  Weather      : Clear, light NE wind 8 km/h, perfect racing conditions
+  Notes        : International federation national championship across Arab countries.
+
+  Results:
+  Rank  Competitor        Ring          Speed     Distance   Basket
+  ----  ----------------  ------------- --------- ---------- ------
+   1    Abdullah Mohamed  SA-2024-001    93.800   750.000 km    3
+   2    Mohamed Ali       EG-2024-001    90.100   750.000 km    7
+   3    Yousef Ahmed      QA-2024-001    88.900   750.000 km    1
+   4    Ali Hassan        AE-2024-001    85.600   750.000 km   11
+   5    Khaled Omar       KW-2024-001    82.400   750.000 km    4
+   6    Ahmed Hussein     EG-2024-004    79.200   750.000 km    9
+   7    Ahmad Al-Farsi    SA-2024-002    76.100   750.000 km    6
+   8    Fatima Al-Zahra   AE-2024-002    72.800   750.000 km   14
+
+  Bird appearances across all 3 races:
+    EG-2024-001  (Sky King)      — races 1, 3
+    EG-2024-004  (Silver Arrow)  — races 1, 3
+    SA-2024-001  (Arabian Wind)  — races 1, 3
+    SA-2024-002  (Arabian Moon)  — races 2, 3
+    KW-2024-001  (Kuwait Star)   — races 1, 3
+    KW-2024-002  (Kuwait Pearl)  — race 2
+    QA-2024-001  (Doha Racer)    — races 1, 3
+    QA-2024-002  (Pearl Diver)   — races 2, 3
+    AE-2024-001  (Gulf Pride)    — races 2, 3
+    AE-2024-002  (Gulf Queen)    — race 3
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  9. PROMOTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  DISCOUNT OFFERS
+  ---------------
+  Name                Value  Type        Target    Trigger        Min Order  Priority
+  ------------------- ------ ----------- --------- -------------- ---------- --------
+  Welcome Discount     10%   percentage  all       onboarding     0.00          10
+  Bird Lovers Deal     15%   percentage  category  manager_grant  500.00         5
+                                         (bird)
+
+  CASHBACK OFFERS
+  ---------------
+  Name                    Value  Type        Target  Trigger    Min Order  Redemption Cap
+  ----------------------- ------ ----------- ------- ---------- ---------- --------------
+  First Purchase Cashback   5%   percentage  all     onboarding  0.00         50.00
+
+  USER PROMOTION GRANTS (per CustomerProfile — 15 grants total)
+  -------------------------------------------------------------
+  Every customer receives all 3 grants in ACTIVE status:
+
+  Grant               Type      Source         Expires
+  ------------------- --------- -------------- ------------------
+  Welcome Discount    discount  onboarding     30 days from seed
+  Bird Lovers Deal    discount  manager_grant  60 days from seed
+  First Purchase Cash cashback  onboarding     30 days from seed
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  10. RATINGS & COMMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Pattern: customer[i] rates seller[(i+1) % 5] and their first 3 birds.
+  Each rating has an attached comment (is_rating_comment=True).
+
+  ASSET RATINGS (15 total)
+  ------------------------
+  Rater       Rated Bird    Stars  Comment (excerpt)
+  ----------- ------------- ------ ---------------------------------------------
+  customer1   AE-2024-001    5*    "Excellent pigeon, exactly as described..."
+  customer1   AE-2024-002    5*    "Very good bird, arrived in great condition..."
+  customer1   AE-2024-003    5*    "Good quality pigeon, priced fairly..."
+  customer2   SA-2024-001    4*    "Outstanding bird! Championship bloodline..."
+  customer2   SA-2024-002    4*    "Amazing pigeon, exceeded my expectations..."
+  customer2   SA-2024-003    4*    "Healthy and active bird. Ring verified..."
+  customer3   KW-2024-001    4*    "Lovely pigeon, beautiful colour..."
+  customer3   KW-2024-002    4*    "Excellent pigeon, exactly as described..."
+  customer3   KW-2024-003    4*    "Very good bird, arrived in great condition..."
+  customer4   QA-2024-001    5*    "Good quality pigeon, priced fairly..."
+  customer4   QA-2024-002    5*    "Outstanding bird! Championship bloodline..."
+  customer4   QA-2024-003    5*    "Amazing pigeon, exceeded my expectations..."
+  customer5   EG-2024-001    3*    "Healthy and active bird. Ring verified..."
+  customer5   EG-2024-002    3*    "Lovely pigeon, beautiful colour..."
+  customer5   EG-2024-003    3*    "Excellent pigeon, exactly as described..."
+
+  SELLER RATINGS (5 total)
+  ------------------------
+  Rater       Rated Seller  Stars  Comment (excerpt)
+  ----------- ------------- ------ ---------------------------------------------
+  customer1   seller2        5*    "Excellent seller! Very professional..."
+  customer2   seller3        4*    "Trustworthy seller. Honest about condition..."
+  customer3   seller4        5*    "Good experience. Fast communication..."
+  customer4   seller5        4*    "Great seller! Pigeon matched description..."
+  customer5   seller1        5*    "Top seller in the region. Highly recommend..."
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  11. PAYMENT REQUESTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Generated from the TWO ended auctions (highest bidder = winner).
+
+  #  Auction                            Buyer      Seller    Bird         Amount    Status
+  -- ---------------------------------- ---------- --------- ------------ --------- -------
+  1  Doha Racer — Qatar Champion (end.) customer4  seller5   QA-2024-001  6,500 QAR pending
+  2  Desert Pair — Breeding Couple (end.)customer5 seller1   EG-2024-002  2,200 EGP pending
+
+  Type: AuctionPaymentRequest
+  payment_proof: none (manual review pending)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  12. COMPLAINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  One complaint per payment request, each with a ComplaintEvent audit entry.
+
+  #  PayReq  Type        Status  Created By  Buyer      Seller
+  -- ------- ----------- ------- ----------- ---------- -------
+  1    #1    other       open    customer4   customer4  seller5
+  2    #2    post_sale   open    customer5   customer5  seller1
+
+  Description (both):
+    "Buyer reports the bird's condition does not match the listing.
+     Requesting admin review and resolution."
+
+  ComplaintEvent: event_type=complaint_created, actor=buyer
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  QUICK SUMMARY — RECORD COUNTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  UserAccount              6  (1 admin + 5 sellers/customers)
+  SellerProfile            5
+  CustomerProfile          5
+  ManagerProfile           1
+  Package                  3  (Starter / Professional / Premium)
+  AssetSellerPackage       5  (one active per seller)
+  LuckyWheelPrize          5
+  LuckyWheelGrant         10  (5 sellers + 5 customers, 5 attempts each)
+  PointWallet              5
+  PointTransaction         5  (one earn per user)
+  BadgeAward              35  (7 per user: 2 core + 3 seller + 2 customer)
+  Bird                    17
+  AssetMedia               0  (no images seeded — URLs required)
+  Auction                  6
+  AuctionItem              8  (1+1+3+1+1+1)
+  Bid                     14  (3+1+3+2+3+4 across all auctions)
+  Race                     3
+  RaceResult              17  (5+4+8)
+  DiscountOffer            2
+  CashbackOffer            1
+  UserPromotionGrant      15  (3 per customer)
+  AssetRating             15  (3 per rater x 5 raters)
+  AssetComment            15  (one per asset rating)
+  SellerRating             5
+  SellerComment            5
+  AuctionPaymentRequest    2
+  Complaint                2
+  ComplaintEvent           2
+  -----------------------------------------------
+  TOTAL seeded records:  ~261
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  IDEMPOTENCY NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  The command is safe to re-run any number of times.
+  Each section uses one of these strategies:
+
+  - get_or_create by unique key (phone_number, ring_number, idempotency_key)
+  - filter().first() then create-if-None  (Package, LuckyWheelPrize, offers)
+  - filter().exists() guard               (badges, ratings, payment requests,
+                                           complaints)
+  - LuckyWheelGrantService (built-in idempotency via idempotency_key)
+
+================================================================================

@@ -202,6 +202,15 @@ class AuctionItem(BaseModel):
         help_text="Minimum starting price for bids",
     )
 
+    reserve_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True,
+        blank=True,
+        help_text="Minimum price the seller will accept. If not met, item goes UNSOLD.",
+    )
+
     current_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,

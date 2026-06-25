@@ -55,7 +55,7 @@ class PaymentRequest(BaseModel):
     )
     buyer_note = models.TextField(blank=True)
     seller_note = models.TextField(blank=True)
-    payment_proof = models.FileField(upload_to='payment_proofs/', null=True, blank=True)
+    payment_proof = models.URLField(max_length=2048)
     approved_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     approved_by = models.ForeignKey(

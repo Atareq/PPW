@@ -169,7 +169,10 @@ class PaymentRequestDecisionViewSet(viewsets.GenericViewSet):
         return PaymentRequestDetailSerializer
 
     def create(self, request, *args, **kwargs):
-        profile = active_profile_or_denied(request, ProfileType.SELLER)
+        active_profile = request.user.active_profile
+        if active_profile.type not in (ProfileType.SELLER, ProfileType.MANAGER):
+            raise PermissionDenied("Active profile is not allowed for this action.")
+        profile = active_profile
 
         if self.decision == "approve":
             payment_request = PaymentRequestService.approve(

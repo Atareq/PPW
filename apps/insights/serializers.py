@@ -68,9 +68,19 @@ class PackageSummarySerializer(serializers.Serializer):
     )
 
 
+class HomeNotificationSerializer(serializers.Serializer):
+    kind = serializers.CharField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    created_at = serializers.CharField(read_only=True)
+    time_hint = serializers.CharField(read_only=True)
+    is_new = serializers.BooleanField(read_only=True)
+
+
 class SellerInsightsHomeSerializer(serializers.Serializer):
     auction_summary = AuctionSummarySerializer(read_only=True)
     market_summary = MarketSummarySerializer(read_only=True)
     engagement_summary = EngagementSummarySerializer(read_only=True)
     trust_summary = TrustSummarySerializer(read_only=True)
     package_summary = PackageSummarySerializer(read_only=True)
+    notifications = HomeNotificationSerializer(many=True, read_only=True)
+    notifications_new_count = serializers.IntegerField(read_only=True)

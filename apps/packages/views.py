@@ -1,7 +1,7 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
@@ -106,9 +106,12 @@ class MySellerPackageViewSet(
 
     def list(self, request, *args, **kwargs):
         if truthy_query_param(request.query_params.get("active", "false")):
-            active_package = SellerPackageService.get_active_package(
-                request.user.active_profile
-            )
+            try:
+                active_package = SellerPackageService.get_active_package(
+                    request.user.active_profile
+                )
+            except NotFound:
+                return Response(None, status=status.HTTP_200_OK)
             serializer = SellerPackageActiveSerializer(
                 active_package,
                 context=self.get_serializer_context(),

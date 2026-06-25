@@ -5,11 +5,14 @@ from rest_framework.exceptions import NotFound
 from apps.assets.models import Bird
 from apps.pedigrees.models import PedigreeDocument, PedigreeDocumentStatus
 from apps.users.constants import ProfileType
-import cv2
-import numpy as np
-from PIL import Image
-import pytesseract
-from PIL import Image, ImageOps, ImageEnhance
+try:
+    import cv2
+    import numpy as np
+    from PIL import Image, ImageOps, ImageEnhance
+    import pytesseract
+    _OCR_AVAILABLE = True
+except ImportError:
+    _OCR_AVAILABLE = False
 
 
 class PedigreeExtractionError(ValueError):
@@ -145,6 +148,8 @@ class PedigreeDocumentService:
 
 class PedigreeBoxOCRService:
     def extract_lines_for_boxes(self, image_file, boxes):
+        if not _OCR_AVAILABLE:
+            raise PedigreeExtractionError("OCR dependencies are not available in this environment.")
         image = self._load_image(image_file)
 
         boxes_with_lines = []
@@ -216,6 +221,8 @@ def pedigree_document_queryset():
 
 class PedigreeImageBoxDetectionService:
     def detect_boxes(self, image_file):
+        if not _OCR_AVAILABLE:
+            raise PedigreeExtractionError("OCR dependencies are not available in this environment.")
         image = self._load_image(image_file)
         mask = self._build_colored_box_mask(image)
         contours = self._find_contours(mask)

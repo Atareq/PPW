@@ -433,7 +433,7 @@ class CashbackService:
     @staticmethod
     def _get_locked_order_item(order_item_id):
         return (
-            OrderItem.objects.select_for_update()
+            OrderItem.objects.select_for_update(of=("self",))
             .select_related("order", "order__owner", "asset", "cashback_offer")
             .get(pk=order_item_id)
         )

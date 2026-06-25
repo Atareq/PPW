@@ -7,7 +7,7 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -119,6 +119,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     permission_resource = "AUCTION"
     queryset = Auction.objects.all().order_by("-created")
     permission_classes = [IsAuthenticated, HasAppAccess]
+    allow_scoped_read_access = True
     manager_permission_map = {
         "list": "auctions.list",
         "active": "auctions.list",
@@ -412,7 +413,8 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
     - buy_now: POST /auctions/items/{id}/buy_now/
     """
 
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_resource = "AUCTION_ITEM"
+    permission_classes = [IsAuthenticated, HasAppAccess]
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -421,7 +423,10 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Filter items by auction if provided"""
-        queryset = AuctionItem.objects.all()
+        queryset = (
+            AuctionItem.objects.select_related("bird", "paired_bird", "auction")
+            .prefetch_related("bird__media", "paired_bird__media", "bids")
+        )
         auction_id = self.request.query_params.get("auction_id")
         if auction_id:
             queryset = queryset.filter(auction_id=auction_id)
@@ -430,7 +435,7 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAuthenticated, IsNotManagerProfile],
+        permission_classes=[IsAuthenticated, IsNotManagerProfile],
     )
     def place_bid(self, request, pk=None):
         """
@@ -476,7 +481,7 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAuthenticated, IsNotManagerProfile],
+        permission_classes=[IsAuthenticated, IsNotManagerProfile],
     )
     def buy_now(self, request, pk=None):
         """
@@ -541,7 +546,7 @@ class BidViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = BidSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = Bid.objects.order_by("-amount")
@@ -553,10 +558,23 @@ class BidViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        item_id = self.request.query_params.get("item_id")
+        if item_id and self.action == "list":
+            try:
+                from apps.auctions.models import AuctionItem
+                from apps.auctions.serializers import _can_see_bidder_identity
+                item = AuctionItem.objects.select_related("auction").get(pk=item_id)
+                context["is_owner"] = _can_see_bidder_identity(item.auction, self.request)
+            except Exception:
+                context["is_owner"] = False
+        return context
+
     @action(
         detail=False,
         methods=["get"],
-        permission_classes=[permissions.IsAuthenticated],
+        permission_classes=[IsAuthenticated],
     )
     def my_bids(self, request):
         """
@@ -616,7 +634,7 @@ class AuctionEventViewSet(viewsets.ReadOnlyModelViewSet):
     """
 
     serializer_class = AuctionEventSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Filter events by auction if provided"""

@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.lucky_wheel.models import (
     LuckyWheelGrant,
+    LuckyWheelGrantSourceType,
     LuckyWheelPrize,
     LuckyWheelSpin,
 )
@@ -17,6 +18,7 @@ class LuckyWheelPrizeSerializer(serializers.ModelSerializer):
             "label",
             "description",
             "prize_type",
+            "target_profile_type",
             "weight",
             "is_active",
             "points_amount",
@@ -124,6 +126,43 @@ class AdminLuckyWheelSpinSerializer(serializers.ModelSerializer):
             "created",
         ]
         read_only_fields = fields
+
+
+class AdminLuckyWheelGrantSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = LuckyWheelGrant
+        fields = [
+            "id",
+            "user_id",
+            "profile_id",
+            "username",
+            "source_type",
+            "source_id",
+            "total_attempts",
+            "remaining_attempts",
+            "expires_at",
+            "is_active",
+            "idempotency_key",
+            "metadata",
+            "created",
+        ]
+        read_only_fields = fields
+
+
+class AdminGrantSpinSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    profile_id = serializers.IntegerField(required=False, allow_null=True)
+    attempts = serializers.IntegerField(min_value=1, default=1)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+    SOURCE_CHOICES = [(v, v) for v in LuckyWheelGrantSourceType.values]
+    source_type = serializers.ChoiceField(
+        choices=SOURCE_CHOICES,
+        default=LuckyWheelGrantSourceType.MANAGER_GRANT,
+    )
 
 
 def grant_for_spin(spin):

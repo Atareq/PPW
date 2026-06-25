@@ -1,11 +1,14 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
-from apps.lucky_wheel.models import LuckyWheelPrize, LuckyWheelSpin
+from apps.lucky_wheel.models import LuckyWheelGrant, LuckyWheelPrize, LuckyWheelSpin, WheelAudience
 from apps.lucky_wheel.serializers import (
+    AdminGrantSpinSerializer,
+    AdminLuckyWheelGrantSerializer,
     AdminLuckyWheelSpinSerializer,
     LuckyWheelCurrentSerializer,
     LuckyWheelPrizeSerializer,
@@ -23,7 +26,7 @@ from apps.loyalty.services import PointService
 from apps.promotions.serializers import UserPromotionGrantSerializer
 from apps.promotions.services import UserPromotionGrantService
 from apps.users.constants import ProfileType
-from apps.users.models import CustomerProfile
+from apps.users.models import CustomerProfile, Profile
 
 
 class LuckyWheelCurrentViewSet(viewsets.GenericViewSet):
@@ -38,7 +41,16 @@ class LuckyWheelCurrentViewSet(viewsets.GenericViewSet):
         profile = request.user.active_profile
         grants = list(LuckyWheelGrantService.active_grants(request.user, profile))
         remaining = sum(grant.remaining_attempts for grant in grants)
-        segments = LuckyWheelPrize.objects.filter(is_active=True).order_by("id")
+        profile_type = profile.type.lower() if profile else None
+        audience_filter = (
+            [profile_type, WheelAudience.BOTH]
+            if profile_type in (WheelAudience.CUSTOMER, WheelAudience.SELLER)
+            else [WheelAudience.BOTH]
+        )
+        segments = LuckyWheelPrize.objects.filter(
+            is_active=True,
+            target_profile_type__in=audience_filter,
+        ).order_by("id")
         promotion_grants = UserPromotionGrantService.get_active_grants_for_user(
             request.user,
             profile,
@@ -133,6 +145,9 @@ class MyLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         )
 
 
+MAX_WHEEL_PRIZES = 8
+
+
 @extend_schema_view(
     list=extend_schema(tags=["Lucky Wheel"]),
     create=extend_schema(tags=["Lucky Wheel"], request=LuckyWheelPrizeSerializer),
@@ -140,11 +155,14 @@ class MyLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         tags=["Lucky Wheel"],
         request=LuckyWheelPrizeSerializer,
     ),
+    destroy=extend_schema(tags=["Lucky Wheel"]),
+    reset=extend_schema(tags=["Lucky Wheel"]),
 )
 class AdminLuckyWheelPrizeViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
     """Manager prize configuration for weighted Lucky Wheel results."""
@@ -155,12 +173,44 @@ class AdminLuckyWheelPrizeViewSet(
         "list": "lucky_wheel.prizes.list",
         "create": "lucky_wheel.prizes.create",
         "partial_update": "lucky_wheel.prizes.update",
+        "destroy": "lucky_wheel.prizes.delete",
+        "reset": "lucky_wheel.prizes.delete",
     }
     serializer_class = LuckyWheelPrizeSerializer
     queryset = LuckyWheelPrize.objects.select_related(
         "discount_offer",
         "cashback_offer",
     ).order_by("label", "id")
+
+    def create(self, request, *args, **kwargs):
+        target = request.data.get("target_profile_type", WheelAudience.BOTH)
+        if target in (WheelAudience.CUSTOMER, WheelAudience.BOTH):
+            count = LuckyWheelPrize.objects.filter(
+                target_profile_type__in=[WheelAudience.CUSTOMER, WheelAudience.BOTH]
+            ).count()
+            if count >= MAX_WHEEL_PRIZES:
+                return Response(
+                    {"detail": f"Customer wheel already has {MAX_WHEEL_PRIZES} segments."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if target in (WheelAudience.SELLER, WheelAudience.BOTH):
+            count = LuckyWheelPrize.objects.filter(
+                target_profile_type__in=[WheelAudience.SELLER, WheelAudience.BOTH]
+            ).count()
+            if count >= MAX_WHEEL_PRIZES:
+                return Response(
+                    {"detail": f"Seller wheel already has {MAX_WHEEL_PRIZES} segments."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        return super().create(request, *args, **kwargs)
+
+    @action(detail=False, methods=["delete"], url_path="reset")
+    def reset(self, request, *args, **kwargs):
+        deleted_count, _ = LuckyWheelPrize.objects.all().delete()
+        return Response(
+            {"deleted": deleted_count},
+            status=status.HTTP_200_OK,
+        )
 
 
 class AdminLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -176,3 +226,80 @@ class AdminLuckyWheelSpinViewSet(mixins.ListModelMixin, viewsets.GenericViewSet)
         "grant",
         "prize",
     ).order_by("-created")
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["Lucky Wheel"]),
+    grant=extend_schema(tags=["Lucky Wheel"], request=AdminGrantSpinSerializer),
+    revoke=extend_schema(tags=["Lucky Wheel"]),
+)
+class AdminLuckyWheelGrantViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """Manager grant management: list all grants, issue manual grants, revoke pending grants."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "LUCKY_WHEEL_GRANT_ADMIN"
+    manager_permission_map = {
+        "list": "lucky_wheel.grants.list",
+        "grant": "lucky_wheel.grants.create",
+        "revoke": "lucky_wheel.grants.revoke",
+    }
+    serializer_class = AdminLuckyWheelGrantSerializer
+    queryset = LuckyWheelGrant.objects.select_related("user", "profile").order_by(
+        "-created"
+    )
+
+    @action(detail=False, methods=["post"], url_path="grant")
+    def grant(self, request, *args, **kwargs):
+        serializer = AdminGrantSpinSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+
+        from apps.authentication.models import UserAccount
+
+        try:
+            user = UserAccount.objects.get(pk=d["user_id"])
+        except UserAccount.DoesNotExist:
+            return Response(
+                {"user_id": "User not found."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        profile = None
+        if d.get("profile_id"):
+            try:
+                profile = Profile.objects.get(pk=d["profile_id"], user=user)
+            except Profile.DoesNotExist:
+                return Response(
+                    {"profile_id": "Profile not found for this user."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        import uuid
+
+        key = f"lucky_wheel:manager_grant:{uuid.uuid4()}"
+        metadata = {"note": d.get("note", ""), "granted_by": str(request.user.pk)}
+        grant = LuckyWheelGrantService.grant_attempt(
+            profile=profile or Profile.objects.filter(user=user).first(),
+            source_type=d["source_type"],
+            source_id="",
+            attempts=d["attempts"],
+            expires_at=d.get("expires_at"),
+            metadata=metadata,
+            idempotency_key=key,
+        )
+        return Response(
+            AdminLuckyWheelGrantSerializer(grant).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["delete"], url_path="revoke")
+    def revoke(self, request, *args, **kwargs):
+        grant = self.get_object()
+        if not grant.is_active or grant.remaining_attempts == 0:
+            return Response(
+                {"detail": "Grant is already exhausted or inactive."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        grant.is_active = False
+        grant.remaining_attempts = 0
+        grant.save(update_fields=["is_active", "remaining_attempts", "modified"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

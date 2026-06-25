@@ -94,6 +94,7 @@ class SellerPackageSerializer(serializers.ModelSerializer):
             "expires_at",
             "invalidated_at",
             "status",
+            "payment_proof",
             "created",
             "modified",
         ]
@@ -129,12 +130,14 @@ class SellerPackageActiveSerializer(serializers.ModelSerializer):
 
 class SellerPackageRequestSerializer(serializers.Serializer):
     package_id = serializers.IntegerField()
+    payment_proof = serializers.URLField(max_length=2048)
 
     def create(self, validated_data):
         request = self.context["request"]
         return SellerPackageService.request_package(
             request.user.active_profile,
             validated_data["package_id"],
+            payment_proof=validated_data["payment_proof"],
         )
 
 

@@ -29,6 +29,16 @@ SELLER_PERMISSIONS = {
         "ending_soon",
         "cancel",
     ],
+    "AUCTION_ITEM": [
+        "list",
+        "retrieve",
+        "place_bid",
+        "buy_now",
+    ],
+    "ORDER": [
+        "list",
+        "retrieve",
+    ],
     "ORDER_ITEM": [
         "list",
         "retrieve",
@@ -37,6 +47,11 @@ SELLER_PERMISSIONS = {
     ],
     "PAYMENT_REQUEST": [
         "list",
+        "create",
+    ],
+    "OWNERSHIP_TRANSFER": [
+        "list",
+        "retrieve",
         "create",
     ],
     "COMPLAINT": [
@@ -82,7 +97,14 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "DISCOUNT_OFFER": [
+        "list",
+    ],
+    "CASHBACK_OFFER": [
+        "list",
+    ],
     "PEDIGREE_DOCUMENT": [
+        "list",
         "create",
         "retrieve",
         "partial_update",
@@ -90,6 +112,10 @@ SELLER_PERMISSIONS = {
     "NOTIFICATION": [
         "list",
         "create",
+    ],
+    "ANNOUNCEMENT": [
+        "list",
+        "retrieve",
     ],
 }
 
@@ -119,6 +145,13 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "retrieve",
         "active",
+        "ending_soon",
+    ],
+    "AUCTION_ITEM": [
+        "list",
+        "retrieve",
+        "place_bid",
+        "buy_now",
     ],
     "ORDER": [
         "list",
@@ -129,6 +162,10 @@ CUSTOMER_PERMISSIONS = {
         "create",
         "list",
         "partial_update",
+    ],
+    "OWNERSHIP_TRANSFER": [
+        "list",
+        "retrieve",
     ],
     "COMPLAINT": [
         "list",
@@ -181,6 +218,7 @@ CUSTOMER_PERMISSIONS = {
         "retrieve",
     ],
     "PEDIGREE_DOCUMENT": [
+        "list",
         "create",
         "retrieve",
         "partial_update",
@@ -188,5 +226,9 @@ CUSTOMER_PERMISSIONS = {
     "NOTIFICATION": [
         "list",
         "create",
+    ],
+    "ANNOUNCEMENT": [
+        "list",
+        "retrieve",
     ],
 }

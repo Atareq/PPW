@@ -19,6 +19,7 @@ from apps.insights.models import (
     SellerInsightObjectType,
 )
 from apps.loyalty.models import BadgeAward
+from apps.notifications.models import Notification
 from apps.orders.models import OrderItem, OrderItemStatus
 from apps.packages.models import AssetSellerPackage, SellerPackageStatus
 from apps.payments.models import (
@@ -98,6 +99,7 @@ class SellerInsightsService:
         seller = SellerInsightsService._resolve_active_seller(seller_profile)
         now = timezone.now()
         recent_cutoff = now - timedelta(days=RECENT_WINDOW_DAYS)
+        notif_data = SellerInsightsService._notifications_summary(seller)
 
         return {
             "auction_summary": SellerInsightsService._auction_summary(
@@ -114,6 +116,8 @@ class SellerInsightsService:
                 recent_cutoff,
             ),
             "package_summary": SellerInsightsService._package_summary(seller),
+            "notifications": notif_data["notifications"],
+            "notifications_new_count": notif_data["notifications_new_count"],
         }
 
     @staticmethod
@@ -266,6 +270,62 @@ class SellerInsightsService:
                 deleted__isnull=True,
             ).count(),
         }
+
+    @staticmethod
+    def _notifications_summary(seller):
+        recent = Notification.objects.filter(
+            recipient_profile_id=seller.pk,
+            deleted__isnull=True,
+        ).order_by("-created")[:10]
+
+        unread_count = Notification.objects.filter(
+            recipient_profile_id=seller.pk,
+            is_read=False,
+            deleted__isnull=True,
+        ).count()
+
+        now = timezone.now()
+        items = []
+        for n in recent:
+            diff = int((now - n.created).total_seconds())
+            if diff < 60:
+                hint = "الآن"
+            elif diff < 3600:
+                hint = f"منذ {diff // 60} دقيقة"
+            elif diff < 86400:
+                hint = f"منذ {diff // 3600} ساعة"
+            elif diff < 604800:
+                hint = f"منذ {diff // 86400} يوم"
+            else:
+                hint = n.created.strftime("%Y-%m-%d")
+
+            items.append({
+                "kind": SellerInsightsService._map_notification_kind(n.notification_type),
+                "title": n.title,
+                "created_at": n.created.isoformat(),
+                "time_hint": hint,
+                "is_new": not n.is_read,
+            })
+
+        return {"notifications": items, "notifications_new_count": unread_count}
+
+    _ORDER_NOTIF_TYPES = frozenset({
+        "order_item_approved", "order_item_rejected",
+        "order_item_pending_seller", "order_item_auto_cancelled",
+        "payment_request_created", "payment_request_approved",
+        "payment_request_rejected",
+    })
+    _SOLD_NOTIF_TYPES = frozenset({
+        "auction_won", "auction_buy_now_success",
+    })
+
+    @staticmethod
+    def _map_notification_kind(notification_type):
+        if notification_type in SellerInsightsService._ORDER_NOTIF_TYPES:
+            return "order"
+        if notification_type in SellerInsightsService._SOLD_NOTIF_TYPES:
+            return "sold"
+        return "bid"
 
     @staticmethod
     def _package_summary(seller):

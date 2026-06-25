@@ -118,6 +118,7 @@ class SellerPackage(OwnerBaseModel):
         choices=SellerPackageStatus.choices,
         default=SellerPackageStatus.PENDING,
     )
+    payment_proof = models.URLField(max_length=2048, null=True, blank=True)
 
     class Meta:
         indexes = [

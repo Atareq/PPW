@@ -84,6 +84,7 @@ class CustomerProfileAdminSerializer(serializers.ModelSerializer):
 class SellerProfileMobileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     successful_invites_count = serializers.SerializerMethodField()
     completed_orders_count = serializers.SerializerMethodField()
     seller_level = serializers.SerializerMethodField()
@@ -97,6 +98,7 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
             "nickname",
             "username",
             "phone_number",
+            "avatar_url",
             "country",
             "currency",
             "recoded_voice",
@@ -118,6 +120,7 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
             "type",
             "username",
             "phone_number",
+            "avatar_url",
             "avg_rating",
             "ratings_count",
             "successful_invites_count",
@@ -129,6 +132,9 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
             "is_valid",
             "created",
         ]
+
+    def get_avatar_url(self, obj):
+        return obj.avatar or None
 
     def get_successful_invites_count(self, obj):
         return _successful_invites_count(obj)
@@ -146,6 +152,7 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
 class CustomerProfileMobileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     successful_invites_count = serializers.SerializerMethodField()
     completed_orders_count = serializers.SerializerMethodField()
     customer_level = serializers.SerializerMethodField()
@@ -194,6 +201,9 @@ class CustomerProfileMobileSerializer(serializers.ModelSerializer):
         return CustomerLevelService.get_discount_percent(
             self.get_completed_orders_count(obj)
         )
+
+    def get_avatar_url(self, obj):
+        return obj.avatar or None
 
     def get_level_cashback_percent(self, obj):
         return CustomerLevelService.get_cashback_percent(
@@ -396,6 +406,12 @@ class ProfileBalanceAdjustmentSerializer(serializers.Serializer):
             note=validated_data.get("note", ""),
             idempotency_key=validated_data["idempotency_key"],
         )
+
+
+class ProfileAvatarUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ["avatar"]
 
 
 def _successful_invites_count(profile):

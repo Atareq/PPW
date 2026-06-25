@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.assets.models import Bird
+from apps.assets.serializer import PublicAssetMediaSerializer
 from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
 from apps.auctions.services import AuctionService, SettlementService
 
@@ -16,6 +17,8 @@ from apps.auctions.services import AuctionService, SettlementService
 class BirdBasicSerializer(serializers.ModelSerializer):
     """Minimal bird info for auction display"""
 
+    media = PublicAssetMediaSerializer(many=True, read_only=True)
+
     class Meta:
         model = Bird
         fields = [
@@ -25,30 +28,50 @@ class BirdBasicSerializer(serializers.ModelSerializer):
             "gender",
             "colour",
             "birthday",
+            "media",
         ]
 
 
 class BidSerializer(serializers.ModelSerializer):
-    """Bid display serializer"""
+    """Bid display — auction owner sees full bidder identity; everyone else sees amount only."""
 
-    is_winning_bid = serializers.BooleanField(read_only=True)
-    bidder_username = serializers.CharField(source="bidder.username", read_only=True)
+    is_winning_bid = serializers.SerializerMethodField()
+    bidder_username = serializers.SerializerMethodField()
+    bidder_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Bid
         fields = [
             "id",
             "amount",
+            "created",
+            "is_winning_bid",
             "bidder",
             "bidder_username",
-            "created",
-            "is_winning_bid",
+            "bidder_phone",
         ]
-        read_only_fields = [
-            "id",
-            "created",
-            "is_winning_bid",
-        ]
+        read_only_fields = fields
+
+    def _is_owner(self) -> bool:
+        return bool(self.context.get("is_owner", False))
+
+    def get_is_winning_bid(self, obj) -> bool:
+        return obj.is_winning_bid()
+
+    def get_bidder_username(self, obj) -> str | None:
+        return obj.bidder.user.username if obj.bidder_id else None
+
+    def get_bidder_phone(self, obj) -> str | None:
+        if not self._is_owner():
+            return None
+        return str(obj.bidder.user.phone_number) if obj.bidder_id else None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._is_owner():
+            data.pop("bidder", None)
+            data.pop("bidder_phone", None)
+        return data
 
 
 class AuctionItemDetailSerializer(serializers.ModelSerializer):
@@ -56,7 +79,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
 
     bird = BirdBasicSerializer(read_only=True)
     paired_bird = BirdBasicSerializer(read_only=True)
-    bids = BidSerializer(many=True, read_only=True)
+    bids = serializers.SerializerMethodField()
     current_highest_bidder = serializers.CharField(read_only=True)
     winner_username = serializers.CharField(
         source="winner.username", read_only=True, allow_null=True
@@ -108,6 +131,14 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
         if payment_request is None:
             return None
         return payment_request.pk
+
+    def get_bids(self, obj):
+        is_owner = self.context.get("is_owner", False)
+        return BidSerializer(
+            obj.bids.all(),
+            many=True,
+            context={**self.context, "is_owner": is_owner},
+        ).data
 
 
 class AuctionItemListSerializer(serializers.ModelSerializer):
@@ -173,7 +204,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
     seller_nickname = serializers.CharField(
         source="owner.sellerprofile.nickname", read_only=True
     )
-    items = AuctionItemDetailSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
     events = AuctionEventSerializer(many=True, read_only=True)
 
     time_remaining = serializers.SerializerMethodField()
@@ -260,6 +291,14 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
 
     def get_is_owner(self, obj):
         return _is_request_profile_owner(obj, self.context.get("request"))
+
+    def get_items(self, obj):
+        can_see_bidders = _can_see_bidder_identity(obj, self.context.get("request"))
+        return AuctionItemDetailSerializer(
+            obj.items.all(),
+            many=True,
+            context={**self.context, "is_owner": can_see_bidders},
+        ).data
 
 
 class AuctionListSerializer(serializers.ModelSerializer):
@@ -364,7 +403,23 @@ def _auction_thumbnail_url(auction):
     return media_items[0].media_url
 
 
+def _can_see_bidder_identity(auction, request) -> bool:
+    """True for the auction owner OR any manager — both get full bidder details."""
+    from apps.users.constants import ProfileType
+
+    if request is None or not getattr(request, "user", None):
+        return False
+    try:
+        active_profile = request.user.active_profile
+    except PermissionDenied:
+        return False
+    if active_profile.type == ProfileType.MANAGER:
+        return True
+    return active_profile.pk == auction.owner_id
+
+
 def _is_request_profile_owner(auction, request):
+    """Returns True if the requester is the auction owner. Used for is_owner response field."""
     if request is None or not getattr(request, "user", None):
         return False
     try:

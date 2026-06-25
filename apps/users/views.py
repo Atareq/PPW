@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.http import Http404
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
@@ -188,13 +189,9 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
                 {"message": "Manager accounts cannot create seller profiles"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if user.profiles.filter(type=ProfileType.SELLER).exists():
-            return Response(
-                {"message": "Profile already exists"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         data = request.data.copy()
-        data["nickname"] = user.username
+        if not data.get("nickname"):
+            data["nickname"] = user.username
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
 
@@ -215,32 +212,48 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
 
         LuckyWheelGrantService.grant_onboarding_attempt(seller_profile)
         return Response(
-            {"message": "Seller profile created successfully"},
+            {"message": "Seller profile created successfully", "id": seller_profile.id},
             status=status.HTTP_201_CREATED,
         )
 
     def get_queryset(self):
         return (
             SellerProfile.objects.select_related("user")
-            .filter(user=self.request.user, deleted__isnull=True, is_active=True)
+            .filter(user=self.request.user, deleted__isnull=True)
             .order_by("-created")
         )
-
-    def get_object(self):
-        if self.get_queryset():
-            return self.get_queryset().first()
-        raise Http404
 
     def perform_destroy(self, instance):
         """Soft-delete the profile and move the user away from it when active."""
 
         if instance.is_active:
-            other_profile = instance.user.profiles.exclude(id=instance.id).first()
+            other_profile = (
+                instance.user.profiles.filter(deleted__isnull=True)
+                .exclude(id=instance.id)
+                .first()
+            )
             if other_profile:
-                switch_user_profile(instance.user, other_profile.type)
+                switch_user_profile(
+                    instance.user, profile_id=other_profile.id
+                )
             instance.is_active = False
             instance.is_valid = False
         instance.delete()
+
+    @action(detail=True, methods=["patch"], url_path="avatar")
+    def update_avatar(self, request, pk=None):
+        profile = self.get_object()
+        avatar_url = request.data.get("avatar")
+        if not avatar_url:
+            return Response(
+                {"avatar": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        profile_ptr = profile.profile_ptr
+        profile_ptr.avatar = avatar_url
+        profile_ptr.save(update_fields=["avatar"])
+        profile.refresh_from_db()
+        return Response(self.get_serializer(profile).data)
 
 
 class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
@@ -291,3 +304,18 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
             instance.is_active = False
             instance.is_valid = False
         instance.delete()
+
+    @action(detail=True, methods=["patch"], url_path="avatar")
+    def update_avatar(self, request, pk=None):
+        profile = self.get_object()
+        avatar_url = request.data.get("avatar")
+        if not avatar_url:
+            return Response(
+                {"avatar": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        profile_ptr = profile.profile_ptr
+        profile_ptr.avatar = avatar_url
+        profile_ptr.save(update_fields=["avatar"])
+        profile.refresh_from_db()
+        return Response(self.get_serializer(profile).data)

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.lucky_wheel.views import (
+    AdminLuckyWheelGrantViewSet,
     AdminLuckyWheelPrizeViewSet,
     AdminLuckyWheelSpinViewSet,
     LuckyWheelCurrentViewSet,
@@ -36,12 +37,32 @@ urlpatterns = [
     ),
     path(
         "admin/prizes/<int:pk>/",
-        AdminLuckyWheelPrizeViewSet.as_view(PARTIAL_UPDATE_ACTION),
+        AdminLuckyWheelPrizeViewSet.as_view({**PARTIAL_UPDATE_ACTION, "delete": "destroy"}),
         name="admin-lucky-wheel-prize-detail",
+    ),
+    path(
+        "admin/prizes/reset/",
+        AdminLuckyWheelPrizeViewSet.as_view({"delete": "reset"}),
+        name="admin-lucky-wheel-prize-reset",
     ),
     path(
         "admin/spins/",
         AdminLuckyWheelSpinViewSet.as_view(LIST_ACTION),
         name="admin-lucky-wheel-spin-list",
+    ),
+    path(
+        "admin/grants/",
+        AdminLuckyWheelGrantViewSet.as_view(LIST_ACTION),
+        name="admin-lucky-wheel-grant-list",
+    ),
+    path(
+        "admin/grants/grant/",
+        AdminLuckyWheelGrantViewSet.as_view({"post": "grant"}),
+        name="admin-lucky-wheel-grant-create",
+    ),
+    path(
+        "admin/grants/<int:pk>/revoke/",
+        AdminLuckyWheelGrantViewSet.as_view({"delete": "revoke"}),
+        name="admin-lucky-wheel-grant-revoke",
     ),
 ]

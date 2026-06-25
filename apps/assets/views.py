@@ -55,6 +55,30 @@ class BirdViewSet(viewsets.ModelViewSet):
     permission_resource = "BIRD"
     manager_permission_namespace = "assets"
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.is_superuser:
+            return queryset
+
+        role = user.role
+
+        if role == ProfileType.MANAGER:
+            return queryset
+
+        active_profile = user.active_profile
+
+        if self.request.method in SAFE_METHODS:
+            if role == ProfileType.CUSTOMER:
+                return queryset.filter(is_market_listed=True)
+
+            if role == ProfileType.SELLER:
+                return queryset.filter(
+                    Q(owner=active_profile) | Q(is_market_listed=True)
+                )
+
+        return queryset
+
 
 class PublicBirdViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Public-safe bird identity lookup by stable UUID."""

@@ -15,7 +15,7 @@ class CreateAuctionPaymentRequestSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
-    payment_proof = serializers.FileField(required=False, allow_null=True)
+    payment_proof = serializers.URLField(max_length=2048)
 
 
 class CreateMarketPaymentRequestSerializer(serializers.Serializer):
@@ -25,12 +25,12 @@ class CreateMarketPaymentRequestSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
     )
-    payment_proof = serializers.FileField(required=False, allow_null=True)
+    payment_proof = serializers.URLField(max_length=2048)
 
 
 class UpdatePaymentRequestSerializer(serializers.Serializer):
     buyer_note = serializers.CharField(required=False, allow_blank=True)
-    payment_proof = serializers.FileField(required=False, allow_null=True)
+    payment_proof = serializers.URLField(max_length=2048, required=False, allow_null=True)
 
 
 class RejectPaymentRequestSerializer(serializers.Serializer):
@@ -84,6 +84,7 @@ class PaymentRequestListSerializer(serializers.ModelSerializer):
         return {
             "id": profile.pk,
             "type": profile.type,
+            "phone": str(profile.user.phone_number) if profile.user else None,
         }
 
 

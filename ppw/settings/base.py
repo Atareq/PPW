@@ -67,6 +67,8 @@ APPS = [
     "apps.insights",
     "apps.pedigrees",
     "apps.seasons",
+    "apps.announcements",
+    "apps.transfers",
 ]
 
 DEBUG_APPS = []
