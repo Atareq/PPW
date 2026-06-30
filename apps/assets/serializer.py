@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db.models import Avg, Count
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 from decimal import Decimal
 from rest_framework import serializers
 
@@ -23,14 +24,14 @@ class RemovedThumbnailUrlMixin:
     def to_internal_value(self, data):
         if isinstance(data, dict) and "images" in data:
             raise serializers.ValidationError(
-                {"images": ("images is no longer supported. Use media instead.")}
+                {"images": (_("images is no longer supported. Use media instead."))}
             )
 
         if isinstance(data, dict) and "thumbnail_url" in data:
             raise serializers.ValidationError(
                 {
                     "thumbnail_url": (
-                        "thumbnail_url is no longer supported. " "Use media instead."
+                        _("thumbnail_url is no longer supported. " "Use media instead.")
                     )
                 }
             )
@@ -74,7 +75,7 @@ class BirdSerializer(RemovedThumbnailUrlMixin, serializers.ModelSerializer):
         request = self.context.get("request")
         owner = request.user.active_profile if request else None
         if owner is None:
-            raise serializers.ValidationError({"owner": "Owner profile is required."})
+            raise serializers.ValidationError({"owner": _("Owner profile is required.")})
 
         return BirdValidator.validate(
             attrs=attrs,

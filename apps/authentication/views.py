@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.translation import gettext as _
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -73,7 +74,7 @@ class CustomerRegisterAPIView(APIView):
 
             return Response(
                 {
-                    "message": "User created successfully",
+                    "message": _("User created successfully"),
                 },
                 status=status.HTTP_201_CREATED,
             )
@@ -100,7 +101,7 @@ class ManagerRegisterAPIView(APIView):
 
         return Response(
             {
-                "message": "User created successfully",
+                "message": _("User created successfully"),
             },
             status=status.HTTP_201_CREATED,
         )
@@ -140,7 +141,7 @@ class SwitchProfileAPIView(APIView):
 
         if not switched:
             return Response(
-                {"message": "Failed to switch profile. Profile not found."},
+                {"message": _("Failed to switch profile. Profile not found.")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

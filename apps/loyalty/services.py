@@ -1,6 +1,7 @@
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from apps.authentication.models import UserAccount
 from apps.users.models import Profile
 from rest_framework.exceptions import ValidationError
@@ -21,13 +22,13 @@ class Level:
 
 
 LEVEL_THRESHOLDS = [
-    (10000, Level("legendary", "Legendary")),
-    (5000, Level("elite", "Elite")),
-    (1000, Level("golden", "Golden")),
-    (500, Level("reliable", "Reliable")),
-    (100, Level("verified", "Verified")),
+    (10000, Level("legendary", _("Legendary"))),
+    (5000, Level("elite", _("Elite"))),
+    (1000, Level("golden", _("Golden"))),
+    (500, Level("reliable", _("Reliable"))),
+    (100, Level("verified", _("Verified"))),
 ]
-BASIC_LEVEL = Level("basic", "Basic")
+BASIC_LEVEL = Level("basic", _("Basic"))
 
 
 def normalize_optional_string(value):
@@ -203,7 +204,7 @@ class PointService:
 
         if current_balance < points:
             raise ValidationError(
-                {"points": "Insufficient point balance for this action."}
+                {"points": _("Insufficient point balance for this action.")}
             )
 
         if transaction_type in {
@@ -212,7 +213,7 @@ class PointService:
         }:
             return current_balance - points
 
-        raise ValidationError({"transaction_type": "Unsupported type."})
+        raise ValidationError({"transaction_type": _("Unsupported type.")})
 
     @staticmethod
     def _get_idempotent_transaction(idempotency_key):
@@ -259,8 +260,8 @@ class PointService:
             raise ValidationError(
                 {
                     "idempotency_key": (
-                        "Idempotency key was already used for a different "
-                        "transaction."
+                        _("Idempotency key was already used for a different "
+                        "transaction.")
                     )
                 }
             )
@@ -378,7 +379,7 @@ class BadgeService:
             lambda: NotificationService.safe_create_notification(
                 recipient_profile=award.profile,
                 notification_type="badge_awarded",
-                title="Badge awarded",
+                title=_("Badge awarded"),
                 body=f"You earned the {badge_name} badge.",
                 object_type="badge_award",
                 object_id=award.pk,

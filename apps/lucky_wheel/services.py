@@ -3,6 +3,7 @@ import random
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
 from apps.loyalty.constants import RewardSourceType
@@ -67,7 +68,7 @@ class LuckyWheelGrantService:
         profile = Profile.objects.select_related("user").get(pk=profile.pk)
         attempts = int(attempts)
         if attempts <= 0:
-            raise ValidationError({"attempts": "Attempts must be greater than 0."})
+            raise ValidationError({"attempts": _("Attempts must be greater than 0.")})
         idempotency_key = idempotency_key or (
             f"lucky_wheel:{source_type}:{source_id}:profile:{profile.pk}"
         )
@@ -127,7 +128,7 @@ class LuckyWheelSpinService:
 
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
-            raise ValidationError({"idempotency_key": "This field is required."})
+            raise ValidationError({"idempotency_key": _("This field is required.")})
 
         existing = (
             LuckyWheelSpin.objects.select_related("grant", "prize", "profile")
@@ -143,7 +144,7 @@ class LuckyWheelSpinService:
             .first()
         )
         if grant is None:
-            raise ValidationError({"detail": "No lucky wheel attempts are available."})
+            raise ValidationError({"detail": _("No lucky wheel attempts are available.")})
 
         prize = LuckyWheelSpinService._choose_prize()
         status = (
@@ -183,7 +184,7 @@ class LuckyWheelSpinService:
             .order_by("id")
         )
         if not available:
-            raise ValidationError({"detail": "No lucky wheel prizes are configured."})
+            raise ValidationError({"detail": _("No lucky wheel prizes are configured.")})
 
         total_weight = sum(prize.weight for prize in available)
         pick = random.randint(1, total_weight)
@@ -200,7 +201,7 @@ class LuckyWheelSpinService:
             prize.quantity_total is not None
             and prize.quantity_awarded >= prize.quantity_total
         ):
-            raise ValidationError({"detail": "Selected prize is no longer available."})
+            raise ValidationError({"detail": _("Selected prize is no longer available.")})
         prize.quantity_awarded += 1
         prize.save(update_fields=["quantity_awarded", "modified"])
         return prize
@@ -251,7 +252,7 @@ class LuckyWheelSpinService:
                 idempotency_key=f"lucky_wheel:spin:{spin.pk}:badge",
                 metadata={"spin_id": spin.pk, "prize_id": prize.pk},
             )
-        raise ValidationError({"prize_type": "Unsupported prize type."})
+        raise ValidationError({"prize_type": _("Unsupported prize type.")})
 
     @staticmethod
     def _snapshot_prize(prize):

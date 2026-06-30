@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
@@ -48,7 +49,7 @@ class SellerFollow(BaseModel):
         if self.follower_id and self.seller_id:
             if self.follower.user_id == self.seller.user_id:
                 raise ValidationError(
-                    {"seller": ("Customers cannot follow their own seller profile.")}
+                    {"seller": (_("Customers cannot follow their own seller profile."))}
                 )
 
     def __str__(self):
@@ -93,7 +94,7 @@ class SellerPackageFollow(BaseModel):
                 raise ValidationError(
                     {
                         "seller_package": (
-                            "Customers cannot follow their own seller package."
+                            _("Customers cannot follow their own seller package.")
                         )
                     }
                 )

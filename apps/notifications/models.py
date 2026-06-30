@@ -1,54 +1,55 @@
 from django.db import models
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
 
 class NotificationType(models.TextChoices):
-    CHAT_MESSAGE_RECEIVED = "chat_message_received", "Chat Message Received"
+    CHAT_MESSAGE_RECEIVED = "chat_message_received", _("Chat Message Received")
     MANUAL_MANAGER_NOTIFICATION = (
         "manual_manager_notification",
-        "Manual Manager Notification",
+        _("Manual Manager Notification"),
     )
-    AUCTION_BID_PLACED = "auction_bid_placed", "Auction Bid Placed"
+    AUCTION_BID_PLACED = "auction_bid_placed", _("Auction Bid Placed")
     AUCTION_BUY_NOW_SUCCESS = (
         "auction_buy_now_success",
-        "Auction Buy Now Success",
+        _("Auction Buy Now Success"),
     )
     PAYMENT_REQUEST_CREATED = (
         "payment_request_created",
-        "Payment Request Created",
+        _("Payment Request Created"),
     )
     PAYMENT_REQUEST_APPROVED = (
         "payment_request_approved",
-        "Payment Request Approved",
+        _("Payment Request Approved"),
     )
     PAYMENT_REQUEST_REJECTED = (
         "payment_request_rejected",
-        "Payment Request Rejected",
+        _("Payment Request Rejected"),
     )
-    ORDER_ITEM_APPROVED = "order_item_approved", "Order Item Approved"
-    ORDER_ITEM_REJECTED = "order_item_rejected", "Order Item Rejected"
+    ORDER_ITEM_APPROVED = "order_item_approved", _("Order Item Approved")
+    ORDER_ITEM_REJECTED = "order_item_rejected", _("Order Item Rejected")
     ORDER_ITEM_PENDING_SELLER = (
         "order_item_pending_seller",
-        "Order Item Pending Seller",
+        _("Order Item Pending Seller"),
     )
     ORDER_ITEM_AUTO_CANCELLED = (
         "order_item_auto_cancelled",
-        "Order Item Auto Cancelled",
+        _("Order Item Auto Cancelled"),
     )
-    AUCTION_WON = "auction_won", "Auction Won"
-    AUCTION_OUTBID = "auction_outbid", "Auction Outbid"
-    COMPLAINT_CREATED = "complaint_created", "Complaint Created"
+    AUCTION_WON = "auction_won", _("Auction Won")
+    AUCTION_OUTBID = "auction_outbid", _("Auction Outbid")
+    COMPLAINT_CREATED = "complaint_created", _("Complaint Created")
     COMPLAINT_STATUS_UPDATED = (
         "complaint_status_updated",
-        "Complaint Status Updated",
+        _("Complaint Status Updated"),
     )
-    CASHBACK_EARNED = "cashback_earned", "Cashback Earned"
-    BADGE_AWARDED = "badge_awarded", "Badge Awarded"
+    CASHBACK_EARNED = "cashback_earned", _("Cashback Earned")
+    BADGE_AWARDED = "badge_awarded", _("Badge Awarded")
     PACKAGE_EXPIRING_SOON = (
         "package_expiring_soon",
-        "Package Expiring Soon",
+        _("Package Expiring Soon"),
     )
 
 

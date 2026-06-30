@@ -1,53 +1,54 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class ProfileType(models.TextChoices):
-    SELLER = "Seller", "Seller"
-    CUSTOMER = "Customer", "Customer"
-    MANAGER = "Manager", "Manager"
+    SELLER = "Seller", _("Seller")
+    CUSTOMER = "Customer", _("Customer")
+    MANAGER = "Manager", _("Manager")
 
 
 class CountryOptions(models.TextChoices):
-    EGYPT = "EG", "Egypt"
-    UAE = "AE", "United Arab Emirates"
-    SAUDI = "SA", "Saudi Arabia"
-    KUWAIT = "KW", "Kuwait"
-    QATAR = "QA", "Qatar"
-    BAHRAIN = "BH", "Bahrain"
-    OMAN = "OM", "Oman"
-    JORDAN = "JO", "Jordan"
-    LEBANON = "LB", "Lebanon"
-    IRAQ = "IQ", "Iraq"
-    PALESTINE = "PS", "Palestine"
-    MOROCCO = "MA", "Morocco"
-    TUNISIA = "TN", "Tunisia"
-    ALGERIA = "DZ", "Algeria"
-    LIBYA = "LY", "Libya"
-    SUDAN = "SD", "Sudan"
-    YEMEN = "YE", "Yemen"
-    SYRIA = "SY", "Syria"
-    USA = "US", "United States"
-    EUROPE = "EU", "European Union"
+    EGYPT = "EG", _("Egypt")
+    UAE = "AE", _("United Arab Emirates")
+    SAUDI = "SA", _("Saudi Arabia")
+    KUWAIT = "KW", _("Kuwait")
+    QATAR = "QA", _("Qatar")
+    BAHRAIN = "BH", _("Bahrain")
+    OMAN = "OM", _("Oman")
+    JORDAN = "JO", _("Jordan")
+    LEBANON = "LB", _("Lebanon")
+    IRAQ = "IQ", _("Iraq")
+    PALESTINE = "PS", _("Palestine")
+    MOROCCO = "MA", _("Morocco")
+    TUNISIA = "TN", _("Tunisia")
+    ALGERIA = "DZ", _("Algeria")
+    LIBYA = "LY", _("Libya")
+    SUDAN = "SD", _("Sudan")
+    YEMEN = "YE", _("Yemen")
+    SYRIA = "SY", _("Syria")
+    USA = "US", _("United States")
+    EUROPE = "EU", _("European Union")
 
 
 class CurrencyOptions(models.TextChoices):
-    EGP = "EGP", "Egyptian Pound"
-    AED = "AED", "UAE Dirham"
-    SAR = "SAR", "Saudi Riyal"
-    KWD = "KWD", "Kuwaiti Dinar"
-    QAR = "QAR", "Qatari Riyal"
-    BHD = "BHD", "Bahraini Dinar"
-    OMR = "OMR", "Omani Rial"
-    JOD = "JOD", "Jordanian Dinar"
-    LBP = "LBP", "Lebanese Pound"
-    IQD = "IQD", "Iraqi Dinar"
-    ILS = "ILS", "Israeli Shekel"
-    MAD = "MAD", "Moroccan Dirham"
-    TND = "TND", "Tunisian Dinar"
-    DZD = "DZD", "Algerian Dinar"
-    LYD = "LYD", "Libyan Dinar"
-    SDG = "SDG", "Sudanese Pound"
-    YER = "YER", "Yemeni Rial"
-    SYP = "SYP", "Syrian Pound"
-    USD = "USD", "US Dollar"
-    EUR = "EUR", "Euro"
+    EGP = "EGP", _("Egyptian Pound")
+    AED = "AED", _("UAE Dirham")
+    SAR = "SAR", _("Saudi Riyal")
+    KWD = "KWD", _("Kuwaiti Dinar")
+    QAR = "QAR", _("Qatari Riyal")
+    BHD = "BHD", _("Bahraini Dinar")
+    OMR = "OMR", _("Omani Rial")
+    JOD = "JOD", _("Jordanian Dinar")
+    LBP = "LBP", _("Lebanese Pound")
+    IQD = "IQD", _("Iraqi Dinar")
+    ILS = "ILS", _("Israeli Shekel")
+    MAD = "MAD", _("Moroccan Dirham")
+    TND = "TND", _("Tunisian Dinar")
+    DZD = "DZD", _("Algerian Dinar")
+    LYD = "LYD", _("Libyan Dinar")
+    SDG = "SDG", _("Sudanese Pound")
+    YER = "YER", _("Yemeni Rial")
+    SYP = "SYP", _("Syrian Pound")
+    USD = "USD", _("US Dollar")
+    EUR = "EUR", _("Euro")

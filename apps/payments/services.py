@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
@@ -75,14 +76,14 @@ class PaymentRequestService:
         )
 
         if item.status != AuctionItemStatus.SOLD:
-            raise ValidationError("Auction item must be sold.")
+            raise ValidationError(_("Auction item must be sold."))
 
         if item.winner_id != buyer_profile.pk:
-            raise ValidationError("Only the winning buyer can create this request.")
+            raise ValidationError(_("Only the winning buyer can create this request."))
 
         seller = item.auction.owner
         if seller.type != ProfileType.SELLER:
-            raise ValidationError("Auction must be owned by a seller.")
+            raise ValidationError(_("Auction must be owned by a seller."))
         PaymentRequestService._validate_not_blocked(buyer_profile, seller)
 
         asset = item.bird
@@ -111,8 +112,8 @@ class PaymentRequestService:
             recipient_profile=seller,
             actor_profile=buyer_profile,
             notification_type="payment_request_created",
-            title="New payment request",
-            body="A buyer created a payment request for your auction item.",
+            title=_("New payment request"),
+            body=_("A buyer created a payment request for your auction item."),
             idempotency_key=f"payment_request_created:{payment_request.pk}",
         )
         return PaymentRequestService.get_request(payment_request.pk)
@@ -135,10 +136,10 @@ class PaymentRequestService:
         )
 
         if item.order.owner_id != buyer_profile.pk:
-            raise ValidationError("Only the order owner can create this request.")
+            raise ValidationError(_("Only the order owner can create this request."))
 
         if item.status != OrderItemStatus.APPROVED:
-            raise ValidationError("Order item must be approved.")
+            raise ValidationError(_("Order item must be approved."))
         PaymentRequestService._validate_not_blocked(buyer_profile, item.seller)
 
         PaymentRequestService._validate_no_active_duplicate(
@@ -166,8 +167,8 @@ class PaymentRequestService:
             recipient_profile=item.seller,
             actor_profile=buyer_profile,
             notification_type="payment_request_created",
-            title="New payment request",
-            body="A buyer created a payment request for your order item.",
+            title=_("New payment request"),
+            body=_("A buyer created a payment request for your order item."),
             idempotency_key=f"payment_request_created:{payment_request.pk}",
         )
         return PaymentRequestService.get_request(payment_request.pk)
@@ -181,10 +182,10 @@ class PaymentRequestService:
         payment_request = PaymentRequestService._get_locked_request(payment_request_id)
 
         if payment_request.buyer_id != buyer_profile.pk:
-            raise NotFound("Payment request was not found.")
+            raise NotFound(_("Payment request was not found."))
 
         if payment_request.status not in PaymentRequestService.NON_FINAL_STATUSES:
-            raise ValidationError("Only pending or rejected requests can be updated.")
+            raise ValidationError(_("Only pending or rejected requests can be updated."))
 
         update_fields = ["modified"]
         if buyer_note is not None:
@@ -225,17 +226,17 @@ class PaymentRequestService:
         payment_request = PaymentRequestService._get_locked_request(payment_request_id)
 
         if payment_request.seller_id != seller_profile.pk:
-            raise NotFound("Payment request was not found.")
+            raise NotFound(_("Payment request was not found."))
 
         if payment_request.status != PaymentRequestStatus.PENDING:
-            raise ValidationError("Only pending requests can be approved.")
+            raise ValidationError(_("Only pending requests can be approved."))
 
         if payment_request.request_type == PaymentRequestType.MARKET:
             PaymentRequestService._approve_market_request(payment_request)
         elif payment_request.request_type == PaymentRequestType.AUCTION:
             PaymentRequestService._approve_auction_request(payment_request)
         else:
-            raise ValidationError("Unsupported payment request type.")
+            raise ValidationError(_("Unsupported payment request type."))
 
         payment_request.status = PaymentRequestStatus.APPROVED
         payment_request.approved_by = seller_profile
@@ -258,8 +259,8 @@ class PaymentRequestService:
             recipient_profile=payment_request.buyer,
             actor_profile=seller_profile,
             notification_type="payment_request_approved",
-            title="Payment request approved",
-            body="The seller approved your payment request.",
+            title=_("Payment request approved"),
+            body=_("The seller approved your payment request."),
             idempotency_key=f"payment_request_approved:{payment_request.pk}",
         )
         PaymentRequestService._handle_approved_rewards(payment_request)
@@ -274,10 +275,10 @@ class PaymentRequestService:
         payment_request = PaymentRequestService._get_locked_request(payment_request_id)
 
         if payment_request.seller_id != seller_profile.pk:
-            raise NotFound("Payment request was not found.")
+            raise NotFound(_("Payment request was not found."))
 
         if payment_request.status != PaymentRequestStatus.PENDING:
-            raise ValidationError("Only pending requests can be rejected.")
+            raise ValidationError(_("Only pending requests can be rejected."))
 
         payment_request.status = PaymentRequestStatus.REJECTED
         payment_request.rejected_by = seller_profile
@@ -304,8 +305,8 @@ class PaymentRequestService:
             recipient_profile=payment_request.buyer,
             actor_profile=seller_profile,
             notification_type="payment_request_rejected",
-            title="Payment request rejected",
-            body="The seller rejected your payment request.",
+            title=_("Payment request rejected"),
+            body=_("The seller rejected your payment request."),
             idempotency_key=f"payment_request_rejected:{payment_request.pk}",
         )
         return PaymentRequestService.get_request(payment_request.pk)
@@ -330,14 +331,14 @@ class PaymentRequestService:
             status__in=PaymentRequestService.NON_FINAL_STATUSES,
         ).exists():
             raise ValidationError(
-                "An active payment request already exists for this asset."
+                _("An active payment request already exists for this asset.")
             )
 
     @staticmethod
     def _validate_not_blocked(buyer_profile, seller_profile):
         if BlockService.is_blocked_between(buyer_profile, seller_profile):
             raise ValidationError(
-                "Payment requests are not allowed while a block is active."
+                _("Payment requests are not allowed while a block is active.")
             )
 
     @staticmethod
@@ -356,16 +357,16 @@ class PaymentRequestService:
         )
 
         if order_item.status != OrderItemStatus.APPROVED:
-            raise ValidationError("Order item must still be approved.")
+            raise ValidationError(_("Order item must still be approved."))
 
         if order_item.order.owner_id != payment_request.buyer_id:
-            raise ValidationError("Payment request buyer does not match the order.")
+            raise ValidationError(_("Payment request buyer does not match the order."))
 
         if order_item.seller_id != payment_request.seller_id:
-            raise ValidationError("Payment request seller does not match the item.")
+            raise ValidationError(_("Payment request seller does not match the item."))
 
         if order_item.asset_id != payment_request.asset_id:
-            raise ValidationError("Payment request asset does not match the item.")
+            raise ValidationError(_("Payment request asset does not match the item."))
 
         asset = PaymentRequestService._get_locked_asset(payment_request.asset_id)
         PaymentRequestService._reduce_market_stock(asset, order_item.quantity)
@@ -403,16 +404,16 @@ class PaymentRequestService:
         )
 
         if auction_item.status != AuctionItemStatus.SOLD:
-            raise ValidationError("Auction item must still be sold.")
+            raise ValidationError(_("Auction item must still be sold."))
 
         if auction_item.winner_id != payment_request.buyer_id:
-            raise ValidationError("Payment request buyer does not match the winner.")
+            raise ValidationError(_("Payment request buyer does not match the winner."))
 
         if auction_item.auction.owner_id != payment_request.seller_id:
-            raise ValidationError("Payment request seller does not match the auction.")
+            raise ValidationError(_("Payment request seller does not match the auction."))
 
         if auction_item.bird_id != payment_request.asset_id:
-            raise ValidationError("Payment request asset does not match the item.")
+            raise ValidationError(_("Payment request asset does not match the item."))
 
         assets = [auction_item.bird_id]
         if auction_item.paired_bird_id:
@@ -434,14 +435,14 @@ class PaymentRequestService:
         try:
             return Asset.all_objects.select_for_update().get(pk=asset_id)
         except Asset.DoesNotExist as exc:
-            raise ValidationError({"asset": "Asset is no longer available."}) from exc
+            raise ValidationError({"asset": _("Asset is no longer available.")}) from exc
 
     @staticmethod
     def _reduce_market_stock(asset, quantity):
         """Apply market stock mutation at payment approval time only."""
 
         if asset.count < quantity:
-            raise ValidationError({"detail": "Insufficient stock"})
+            raise ValidationError({"detail": _("Insufficient stock")})
 
         asset.count -= quantity
         update_fields = ["count", "modified"]
@@ -460,7 +461,7 @@ class PaymentRequestService:
             return
 
         if asset.owner_id != from_profile_id:
-            raise ValidationError("Seller does not currently own this asset.")
+            raise ValidationError(_("Seller does not currently own this asset."))
 
         asset.owner_id = to_profile_id
         asset.save(update_fields=["owner", "modified"])

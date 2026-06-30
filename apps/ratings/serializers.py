@@ -15,6 +15,7 @@ from apps.ratings.services import (
     create_seller_rating,
 )
 from apps.users.models import Profile, SellerProfile
+from django.utils.translation import gettext_lazy as _
 
 
 class OwnerSummarySerializer(serializers.ModelSerializer):
@@ -63,7 +64,7 @@ class RatingCommentInputSerializer(serializers.Serializer):
     def validate(self, attrs):
         if "id" in attrs:
             raise serializers.ValidationError(
-                {"id": "Rating comments must be created inline."}
+                {"id": _("Rating comments must be created inline.")}
             )
         return attrs
 

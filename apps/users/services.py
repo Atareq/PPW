@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.loyalty.constants import RewardSourceType
@@ -38,14 +39,14 @@ class ProfileBalanceService:
         """Lock the concrete profile, mutate balance, and write one audit row."""
 
         if manager_profile.type != ProfileType.MANAGER:
-            raise PermissionDenied("Only manager profiles can adjust balances.")
+            raise PermissionDenied(_("Only manager profiles can adjust balances."))
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
-            raise ValidationError({"idempotency_key": "This field is required."})
+            raise ValidationError({"idempotency_key": _("This field is required.")})
 
         amount = quantize_money(amount)
         if amount == 0:
-            raise ValidationError({"amount": "Adjustment amount cannot be zero."})
+            raise ValidationError({"amount": _("Adjustment amount cannot be zero.")})
 
         existing = ProfileBalanceTransaction.objects.filter(
             idempotency_key=idempotency_key
@@ -64,13 +65,13 @@ class ProfileBalanceService:
             )
         else:
             raise ValidationError(
-                {"profile_id": "Only customer and seller balances are adjustable."}
+                {"profile_id": _("Only customer and seller balances are adjustable.")}
             )
 
         next_balance = quantize_money(concrete_profile.balance + amount)
         if next_balance < 0:
             raise ValidationError(
-                {"amount": "Adjustment would make profile balance negative."}
+                {"amount": _("Adjustment would make profile balance negative.")}
             )
 
         concrete_profile.balance = next_balance
@@ -147,7 +148,7 @@ class ManagerPermissionService:
     @classmethod
     def require_permission(cls, user, required_permission: str) -> bool:
         if not user or not getattr(user, "is_authenticated", False):
-            raise PermissionDenied("Authentication credentials were not provided.")
+            raise PermissionDenied(_("Authentication credentials were not provided."))
 
         if user.is_superuser:
             return True
@@ -159,12 +160,13 @@ class ManagerPermissionService:
 
         if active_profile.type != ProfileType.MANAGER:
             raise PermissionDenied(
-                "Only an active manager profile can use manager permissions."
+                _("Only an active manager profile can use manager permissions.")
             )
 
         if not cls.has_permission(active_profile, required_permission):
             raise PermissionDenied(
-                f"Missing required manager permission: {required_permission}"
+                _("Missing required manager permission: %(permission)s")
+                % {"permission": required_permission}
             )
 
         return True

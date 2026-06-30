@@ -1,4 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -221,7 +222,7 @@ class MyCashbackTransactionViewSet(
         active_profile = self.request.user.active_profile
         if active_profile.type != ProfileType.CUSTOMER:
             raise PermissionDenied(
-                "Only customer profiles can view cashback transactions."
+                _("Only customer profiles can view cashback transactions.")
             )
         return cashback_transaction_queryset().filter(customer_id=active_profile.pk)
 
@@ -242,16 +243,16 @@ class CashbackBalanceViewSet(viewsets.GenericViewSet):
         if customer_id:
             if active_profile.type != ProfileType.MANAGER:
                 raise PermissionDenied(
-                    "Only manager profiles can look up customer cashback balance."
+                    _("Only manager profiles can look up customer cashback balance.")
                 )
             try:
                 customer = CustomerProfile.objects.get(pk=customer_id)
             except CustomerProfile.DoesNotExist as exc:
-                raise NotFound("Customer profile was not found.") from exc
+                raise NotFound(_("Customer profile was not found.")) from exc
             return self._balance_response(customer)
 
         if active_profile.type != ProfileType.CUSTOMER:
-            raise PermissionDenied("Only customer profiles can view cashback balance.")
+            raise PermissionDenied(_("Only customer profiles can view cashback balance."))
         customer = CustomerProfile.objects.get(pk=active_profile.pk)
         return self._balance_response(customer)
 

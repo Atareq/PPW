@@ -4,6 +4,7 @@ import pytest
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient
+from django.utils import translation
 
 from apps.authentication.services import build_token_for_user
 from apps.users.constants import CountryOptions, CurrencyOptions, ProfileType
@@ -32,7 +33,10 @@ pytestmark = pytest.mark.django_db
 def authenticated_client_for(user):
     client = APIClient()
     refresh = build_token_for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}",
+        HTTP_ACCEPT_LANGUAGE="en",
+    )
     return client
 
 
@@ -300,7 +304,8 @@ def test_permission_registry_endpoint_returns_valid_codes(superuser_manager):
     response = client.get("/api/users/admin/manager-permissions/")
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["groups"] == get_manager_permission_groups()
+    with translation.override("en"):
+        assert response.data["groups"] == get_manager_permission_groups()
     returned_codes = {
         permission["code"]
         for group in response.data["groups"]

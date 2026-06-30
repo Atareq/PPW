@@ -1,68 +1,69 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.users.constants import ProfileType
 
 
 class PointTransactionType(models.TextChoices):
-    EARN = "earn", "Earn"
-    SPEND = "spend", "Spend"
-    EXPIRE = "expire", "Expire"
+    EARN = "earn", _("Earn")
+    SPEND = "spend", _("Spend")
+    EXPIRE = "expire", _("Expire")
 
 
 class RewardSourceType(models.TextChoices):
-    ONBOARDING = "onboarding", "Onboarding"
-    LUCKY_WHEEL = "lucky_wheel", "Lucky Wheel"
-    AUCTION_COMPLETED = "auction_completed", "Auction Completed"
-    ORDER_COMPLETED_AMOUNT = "order_completed_amount", "Order Completed Amount"
-    ORDER_COMPLETED_BONUS = "order_completed_bonus", "Order Completed Bonus"
-    AUCTION_POSTED = "auction_posted", "Auction Posted"
-    RATING_RECEIVED = "rating_received", "Rating Received"
-    REFERRAL_ACCEPTED = "referral_accepted", "Referral Accepted"
-    FIRST_BID_COMPLETED = "first_bid_completed", "First Bid Completed"
-    SEASON_WINNER = "season_winner", "Season Winner"
+    ONBOARDING = "onboarding", _("Onboarding")
+    LUCKY_WHEEL = "lucky_wheel", _("Lucky Wheel")
+    AUCTION_COMPLETED = "auction_completed", _("Auction Completed")
+    ORDER_COMPLETED_AMOUNT = "order_completed_amount", _("Order Completed Amount")
+    ORDER_COMPLETED_BONUS = "order_completed_bonus", _("Order Completed Bonus")
+    AUCTION_POSTED = "auction_posted", _("Auction Posted")
+    RATING_RECEIVED = "rating_received", _("Rating Received")
+    REFERRAL_ACCEPTED = "referral_accepted", _("Referral Accepted")
+    FIRST_BID_COMPLETED = "first_bid_completed", _("First Bid Completed")
+    SEASON_WINNER = "season_winner", _("Season Winner")
     CASHBACK_POINTS_PURCHASE = (
         "cashback_points_purchase",
-        "Cashback Points Purchase",
+        _("Cashback Points Purchase"),
     )
-    MANAGER_ADJUSTMENT = "manager_adjustment", "Manager Adjustment"
+    MANAGER_ADJUSTMENT = "manager_adjustment", _("Manager Adjustment")
 
 
 class BadgeType(models.TextChoices):
-    FIRST_ORDER = "first_order", "First Order"
-    POINTS_STARTER = "points_starter", "Points Starter"
-    SELLER_STARTER = "seller_starter", "Seller Starter"
-    WELCOME_BUYER = "WELCOME_BUYER", "Welcome Buyer"
-    WELCOME_SELLER = "WELCOME_SELLER", "Welcome Seller"
-    FIRST_BIDDER = "FIRST_BIDDER", "First Bidder"
-    LAST_MINUTE_FIGHTER = "LAST_MINUTE_FIGHTER", "Last Minute Fighter"
+    FIRST_ORDER = "first_order", _("First Order")
+    POINTS_STARTER = "points_starter", _("Points Starter")
+    SELLER_STARTER = "seller_starter", _("Seller Starter")
+    WELCOME_BUYER = "WELCOME_BUYER", _("Welcome Buyer")
+    WELCOME_SELLER = "WELCOME_SELLER", _("Welcome Seller")
+    FIRST_BIDDER = "FIRST_BIDDER", _("First Bidder")
+    LAST_MINUTE_FIGHTER = "LAST_MINUTE_FIGHTER", _("Last Minute Fighter")
     AUCTION_PURCHASE_CONFIRMED = (
         "AUCTION_PURCHASE_CONFIRMED",
-        "Auction Purchase Confirmed",
+        _("Auction Purchase Confirmed"),
     )
     MARKET_PURCHASE_CONFIRMED = (
         "MARKET_PURCHASE_CONFIRMED",
-        "Market Purchase Confirmed",
+        _("Market Purchase Confirmed"),
     )
-    REVIEWER_BUYER = "REVIEWER_BUYER", "Reviewer Buyer"
-    LOYAL_FOLLOWER = "LOYAL_FOLLOWER", "Loyal Follower"
+    REVIEWER_BUYER = "REVIEWER_BUYER", _("Reviewer Buyer")
+    LOYAL_FOLLOWER = "LOYAL_FOLLOWER", _("Loyal Follower")
     FIRST_AUCTION_PUBLISHED = (
         "FIRST_AUCTION_PUBLISHED",
-        "First Auction Published",
+        _("First Auction Published"),
     )
     FIRST_MARKET_ITEM_LISTED = (
         "FIRST_MARKET_ITEM_LISTED",
-        "First Market Item Listed",
+        _("First Market Item Listed"),
     )
     FIRST_AUCTION_SALE_CONFIRMED = (
         "FIRST_AUCTION_SALE_CONFIRMED",
-        "First Auction Sale Confirmed",
+        _("First Auction Sale Confirmed"),
     )
     FIRST_MARKET_SALE_CONFIRMED = (
         "FIRST_MARKET_SALE_CONFIRMED",
-        "First Market Sale Confirmed",
+        _("First Market Sale Confirmed"),
     )
-    TRUSTED_BUYER = "TRUSTED_BUYER", "Trusted Buyer"
-    TRUSTED_SELLER = "TRUSTED_SELLER", "Trusted Seller"
+    TRUSTED_BUYER = "TRUSTED_BUYER", _("Trusted Buyer")
+    TRUSTED_SELLER = "TRUSTED_SELLER", _("Trusted Seller")
 
 
 BADGE_ELIGIBLE_ANY = "any"

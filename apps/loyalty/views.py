@@ -1,4 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -131,7 +132,7 @@ class BadgeViewSet(viewsets.GenericViewSet):
         if profile_id:
             if request.user.role != ProfileType.MANAGER:
                 raise PermissionDenied(
-                    "Only manager profiles can list badge awards by profile."
+                    _("Only manager profiles can list badge awards by profile.")
                 )
             queryset = self.get_queryset().filter(profile_id=profile_id)
             serializer = BadgeAwardSerializer(queryset, many=True)
@@ -150,7 +151,7 @@ class BadgeViewSet(viewsets.GenericViewSet):
     )
     def create(self, request):
         if request.user.role != ProfileType.MANAGER:
-            raise PermissionDenied("Only manager profiles can award badges.")
+            raise PermissionDenied(_("Only manager profiles can award badges."))
 
         serializer = BadgeAwardCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

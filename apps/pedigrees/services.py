@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound
 
 from apps.assets.models import Bird
@@ -129,7 +130,7 @@ class PedigreeDocumentService:
         try:
             return queryset.get(pk=bird_id)
         except Bird.DoesNotExist as exc:
-            raise NotFound("Bird was not found.") from exc
+            raise NotFound(_("Bird was not found.")) from exc
 
     @staticmethod
     def _get_locked_document_for_actor(document_id, actor_profile):
@@ -140,7 +141,7 @@ class PedigreeDocumentService:
         try:
             return queryset.get(pk=document_id)
         except PedigreeDocument.DoesNotExist as exc:
-            raise NotFound("Pedigree document was not found.") from exc
+            raise NotFound(_("Pedigree document was not found.")) from exc
 
 
 class PedigreeBoxOCRService:

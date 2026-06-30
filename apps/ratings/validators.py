@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
 from apps.assets.models import Asset
@@ -17,7 +18,7 @@ class RatingValidator:
     def get_customer_profile(profile):
         if profile.type != ProfileType.CUSTOMER:
             raise ValidationError(
-                {"customer": "Only customer profiles can create ratings."}
+                {"customer": _("Only customer profiles can create ratings.")}
             )
         return CustomerProfile.objects.get(pk=profile.pk)
 
@@ -26,14 +27,14 @@ class RatingValidator:
         try:
             return Asset.objects.get(pk=asset_id)
         except Asset.DoesNotExist as exc:
-            raise ValidationError({"asset": "Asset was not found."}) from exc
+            raise ValidationError({"asset": _("Asset was not found.")}) from exc
 
     @staticmethod
     def get_seller(seller_id):
         try:
             return SellerProfile.objects.get(pk=seller_id)
         except SellerProfile.DoesNotExist as exc:
-            raise ValidationError({"seller": "Seller profile was not found."}) from exc
+            raise ValidationError({"seller": _("Seller profile was not found.")}) from exc
 
     @staticmethod
     def validate_asset_completed_order(customer_profile, asset):
@@ -44,7 +45,7 @@ class RatingValidator:
         ).exists()
         if not has_completed_item:
             raise ValidationError(
-                {"asset": ("A completed order item is required to rate this " "asset.")}
+                {"asset": (_("A completed order item is required to rate this " "asset."))}
             )
 
     @staticmethod
@@ -58,7 +59,7 @@ class RatingValidator:
             raise ValidationError(
                 {
                     "seller": (
-                        "A completed order item is required to rate this " "seller."
+                        _("A completed order item is required to rate this " "seller.")
                     )
                 }
             )
@@ -69,7 +70,7 @@ class RatingValidator:
             owner=customer_profile,
             asset=asset,
         ).exists():
-            raise ValidationError({"asset": "You have already rated this asset."})
+            raise ValidationError({"asset": _("You have already rated this asset.")})
 
     @staticmethod
     def validate_duplicate_seller_rating(customer_profile, seller):
@@ -77,7 +78,7 @@ class RatingValidator:
             owner=customer_profile,
             seller=seller,
         ).exists():
-            raise ValidationError({"seller": "You have already rated this seller."})
+            raise ValidationError({"seller": _("You have already rated this seller.")})
 
 
 class CommentValidator:
@@ -93,5 +94,5 @@ class CommentValidator:
         ).exists()
         if recent_comment_exists:
             raise ValidationError(
-                {"detail": ("You must wait before commenting again on this " "target.")}
+                {"detail": (_("You must wait before commenting again on this " "target."))}
             )

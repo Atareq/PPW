@@ -1,29 +1,30 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
 
 class ComplaintType(models.TextChoices):
-    POST_SALE = "post_sale", "Post Sale"
-    PAYMENT_REJECTED = "payment_rejected", "Payment Rejected"
-    OTHER = "other", "Other"
+    POST_SALE = "post_sale", _("Post Sale")
+    PAYMENT_REJECTED = "payment_rejected", _("Payment Rejected")
+    OTHER = "other", _("Other")
 
 
 class ComplaintStatus(models.TextChoices):
-    OPEN = "open", "Open"
-    IN_REVIEW = "in_review", "In Review"
-    RESOLVED = "resolved", "Resolved"
-    REJECTED = "rejected", "Rejected"
-    CANCELLED = "cancelled", "Cancelled"
+    OPEN = "open", _("Open")
+    IN_REVIEW = "in_review", _("In Review")
+    RESOLVED = "resolved", _("Resolved")
+    REJECTED = "rejected", _("Rejected")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class ComplaintEventType(models.TextChoices):
-    CREATED = "complaint_created", "Complaint Created"
-    IN_REVIEW = "complaint_in_review", "Complaint In Review"
-    RESOLVED = "complaint_resolved", "Complaint Resolved"
-    REJECTED = "complaint_rejected", "Complaint Rejected"
-    REOPENED = "complaint_reopened", "Complaint Reopened"
-    CANCELLED = "complaint_cancelled", "Complaint Cancelled"
+    CREATED = "complaint_created", _("Complaint Created")
+    IN_REVIEW = "complaint_in_review", _("Complaint In Review")
+    RESOLVED = "complaint_resolved", _("Complaint Resolved")
+    REJECTED = "complaint_rejected", _("Complaint Rejected")
+    REOPENED = "complaint_reopened", _("Complaint Reopened")
+    CANCELLED = "complaint_cancelled", _("Complaint Cancelled")
 
 
 class Complaint(BaseModel):

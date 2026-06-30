@@ -1,6 +1,7 @@
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel, OwnerBaseModel
 from apps.users.models import Profile
@@ -13,30 +14,30 @@ from apps.users.models import Profile
 class AuctionType(models.TextChoices):
     """Auction type classification - drives behavior and validation"""
 
-    SINGLE = "single", "Single Bird"
-    MULTI = "multi", "Multi-Bird Independent"
-    PAIR = "pair", "Pair (Male + Female)"
-    BREEDING = "breeding", "Breeding/Squab Pair"
-    RACING = "racing", "Racing/Loft Group"
+    SINGLE = "single", _("Single Bird")
+    MULTI = "multi", _("Multi-Bird Independent")
+    PAIR = "pair", _("Pair (Male + Female)")
+    BREEDING = "breeding", _("Breeding/Squab Pair")
+    RACING = "racing", _("Racing/Loft Group")
 
 
 class AuctionItemStatus(models.TextChoices):
     """Individual item states within an auction"""
 
-    ACTIVE = "active", "Active"
-    SOLD = "sold", "Sold"
-    UNSOLD = "unsold", "Unsold"
-    WITHDRAWN = "withdrawn", "Withdrawn"
-    CANCELLED = "cancelled", "Cancelled"
+    ACTIVE = "active", _("Active")
+    SOLD = "sold", _("Sold")
+    UNSOLD = "unsold", _("Unsold")
+    WITHDRAWN = "withdrawn", _("Withdrawn")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class AuctionStatus(models.TextChoices):
     """Individual item states within an auction"""
 
-    ACTIVE = "active", "Active"
-    ENDED = "ended", "Ended"
-    CANCELLED = "cancelled", "Cancelled"  # By owner
-    CLOSED = "closed", "Closed"  # By admin
+    ACTIVE = "active", _("Active")
+    ENDED = "ended", _("Ended")
+    CANCELLED = "cancelled", _("Cancelled")  # By owner
+    CLOSED = "closed", _("Closed")  # By admin
 
 
 class Auction(OwnerBaseModel):
@@ -73,7 +74,7 @@ class Auction(OwnerBaseModel):
     auto_extend_minutes = models.PositiveIntegerField(
         default=5,
         validators=[MinValueValidator(1)],
-        help_text="Minutes to extend auction if bid placed in final window",
+        help_text=_("Minutes to extend auction if bid placed in final window"),
     )
 
     # Payment rules
@@ -88,7 +89,7 @@ class Auction(OwnerBaseModel):
     payment_deadline_days = models.PositiveIntegerField(
         null=True,
         blank=True,
-        help_text="Days after auction end to complete payment",
+        help_text=_("Days after auction end to complete payment"),
     )
 
     # Bid
@@ -97,7 +98,7 @@ class Auction(OwnerBaseModel):
         decimal_places=2,
         default=1.00,
         validators=[MinValueValidator(0)],
-        help_text="Minimum amount next bid must exceed current",
+        help_text=_("Minimum amount next bid must exceed current"),
     )
 
     buy_now_enabled = models.BooleanField(default=False)
@@ -107,12 +108,12 @@ class Auction(OwnerBaseModel):
         null=True,
         blank=True,
         validators=[MinValueValidator(0)],
-        help_text="Instant buy price for this item",
+        help_text=_("Instant buy price for this item"),
     )
 
     # Visibility
     is_visible = models.BooleanField(
-        default=True, help_text="Whether this auction is visible to the public"
+        default=True, help_text=_("Whether this auction is visible to the public")
     )
 
     # Metadata
@@ -199,7 +200,7 @@ class AuctionItem(BaseModel):
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(0)],
-        help_text="Minimum starting price for bids",
+        help_text=_("Minimum starting price for bids"),
     )
 
     current_price = models.DecimalField(
@@ -315,15 +316,15 @@ class AuctionEvent(BaseModel):
     """
 
     EVENT_TYPES = [
-        ("created", "Auction Created"),
-        ("published", "Auction Published"),
-        ("started", "Auction Started"),
-        ("bid_placed", "Bid Placed"),
-        ("auto_extended", "Auto-Extended"),
-        ("buy_now_triggered", "Buy Now Triggered"),
-        ("item_sold", "Item Sold"),
-        ("auction_ended", "Auction Ended"),
-        ("cancelled", "Auction Cancelled"),
+        ("created", _("Auction Created")),
+        ("published", _("Auction Published")),
+        ("started", _("Auction Started")),
+        ("bid_placed", _("Bid Placed")),
+        ("auto_extended", _("Auto-Extended")),
+        ("buy_now_triggered", _("Buy Now Triggered")),
+        ("item_sold", _("Item Sold")),
+        ("auction_ended", _("Auction Ended")),
+        ("cancelled", _("Auction Cancelled")),
     ]
 
     auction = models.ForeignKey(

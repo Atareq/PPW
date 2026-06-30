@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.races.models import Race, RaceResult
@@ -117,7 +118,7 @@ class RaceResultValidationMixin:
             raise serializers.ValidationError(
                 {
                     "arrival_datetime": (
-                        "Arrival datetime must be after race release datetime."
+                        _("Arrival datetime must be after race release datetime.")
                     )
                 }
             )
@@ -134,7 +135,7 @@ class RaceResultValidationMixin:
                 raise serializers.ValidationError(
                     {
                         "bird_ring_number": (
-                            "This bird ring number already exists in this race."
+                            _("This bird ring number already exists in this race.")
                         )
                     }
                 )
@@ -252,7 +253,7 @@ class BulkRaceResultCreateSerializer(serializers.Serializer):
         }
         if duplicate_ring_numbers:
             raise serializers.ValidationError(
-                "Duplicate bird_ring_number entries are not allowed."
+                _("Duplicate bird_ring_number entries are not allowed.")
             )
 
         existing_ring_numbers = set(
@@ -263,7 +264,7 @@ class BulkRaceResultCreateSerializer(serializers.Serializer):
         )
         if existing_ring_numbers:
             raise serializers.ValidationError(
-                "bird_ring_number already exists in this race."
+                _("bird_ring_number already exists in this race.")
             )
 
         return results

@@ -1,5 +1,6 @@
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
+from django.utils.translation import gettext_lazy as _
 from safedelete.models import SafeDeleteModel
 
 
@@ -21,8 +22,8 @@ class OwnerBaseModel(BaseModel):
 
 
 class MediaType(models.TextChoices):
-    IMAGE = "image", "Image"
-    VIDEO = "video", "Video"
+    IMAGE = "image", _("Image")
+    VIDEO = "video", _("Video")
 
 
 class Media(BaseModel):

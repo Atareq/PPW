@@ -1,6 +1,7 @@
 import phonenumbers
 from phonenumbers import NumberParseException, PhoneNumberFormat
 from rest_framework import serializers
+from django.utils.translation import gettext_lazy as _
 
 
 class PhoneValidationMixin:
@@ -19,10 +20,10 @@ class PhoneValidationMixin:
     @staticmethod
     def normalize_phone(phone_number: str, region: str) -> str:
         if not phone_number:
-            raise ValueError("Phone number is required.")
+            raise ValueError(_("Phone number is required."))
 
         if not region:
-            raise ValueError("Region is required.")
+            raise ValueError(_("Region is required."))
 
         phone_number = str(phone_number).strip()
         region = str(region).strip().upper()
@@ -30,13 +31,13 @@ class PhoneValidationMixin:
         try:
             parsed = phonenumbers.parse(phone_number, region)
         except NumberParseException:
-            raise ValueError("Invalid phone number format.")
+            raise ValueError(_("Invalid phone number format."))
 
         if not phonenumbers.is_possible_number(parsed):
-            raise ValueError("Phone number is not possible.")
+            raise ValueError(_("Phone number is not possible."))
 
         if not phonenumbers.is_valid_number(parsed):
-            raise ValueError("Phone number is not valid.")
+            raise ValueError(_("Phone number is not valid."))
 
         return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
 
@@ -45,7 +46,7 @@ class PhoneValidationMixin:
         region = attrs.get("region")
 
         if not region:
-            raise serializers.ValidationError({"region": "Region is required."})
+            raise serializers.ValidationError({"region": _("Region is required.")})
 
         region = str(region).strip().upper()
 

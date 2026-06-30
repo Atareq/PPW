@@ -1,5 +1,6 @@
 from django.db.models import Prefetch
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -256,5 +257,5 @@ class OrderItemViewSet(
     def _get_active_seller_profile(self):
         active_profile = self.request.user.active_profile
         if active_profile.type != ProfileType.SELLER:
-            raise PermissionDenied("Only seller profiles can manage order items.")
+            raise PermissionDenied(_("Only seller profiles can manage order items."))
         return active_profile

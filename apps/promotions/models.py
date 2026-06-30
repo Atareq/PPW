@@ -3,49 +3,50 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.assets.models import AssetCategory
 from apps.general.models import BaseModel
 
 
 class OfferTriggerType(models.TextChoices):
-    GLOBAL = "global", "Global"
-    LUCKY_WHEEL = "lucky_wheel", "Lucky Wheel"
-    ONBOARDING = "onboarding", "Onboarding"
-    REFERRAL = "referral", "Referral"
-    SEASON = "season", "Season"
-    MANAGER_GRANT = "manager_grant", "Manager Grant"
+    GLOBAL = "global", _("Global")
+    LUCKY_WHEEL = "lucky_wheel", _("Lucky Wheel")
+    ONBOARDING = "onboarding", _("Onboarding")
+    REFERRAL = "referral", _("Referral")
+    SEASON = "season", _("Season")
+    MANAGER_GRANT = "manager_grant", _("Manager Grant")
 
 
 class OfferValueType(models.TextChoices):
-    PERCENTAGE = "percentage", "Percentage"
-    FIXED_AMOUNT = "fixed_amount", "Fixed Amount"
+    PERCENTAGE = "percentage", _("Percentage")
+    FIXED_AMOUNT = "fixed_amount", _("Fixed Amount")
 
 
 class OfferTargetType(models.TextChoices):
-    ALL = "all", "All"
-    CATEGORY = "category", "Category"
-    ASSET = "asset", "Asset"
+    ALL = "all", _("All")
+    CATEGORY = "category", _("Category")
+    ASSET = "asset", _("Asset")
 
 
 class CashbackTransactionType(models.TextChoices):
-    EARNED = "earned", "Earned"
-    REDEEMED = "redeemed", "Redeemed"
-    REFUNDED = "refunded", "Refunded"
-    ADMIN_ADJUSTMENT = "admin_adjustment", "Admin Adjustment"
-    POINTS_PURCHASE = "points_purchase", "Points Purchase"
+    EARNED = "earned", _("Earned")
+    REDEEMED = "redeemed", _("Redeemed")
+    REFUNDED = "refunded", _("Refunded")
+    ADMIN_ADJUSTMENT = "admin_adjustment", _("Admin Adjustment")
+    POINTS_PURCHASE = "points_purchase", _("Points Purchase")
 
 
 class UserPromotionGrantType(models.TextChoices):
-    DISCOUNT = "discount", "Discount"
-    CASHBACK = "cashback", "Cashback"
+    DISCOUNT = "discount", _("Discount")
+    CASHBACK = "cashback", _("Cashback")
 
 
 class UserPromotionGrantStatus(models.TextChoices):
-    ACTIVE = "active", "Active"
-    REDEEMED = "redeemed", "Redeemed"
-    EXPIRED = "expired", "Expired"
-    CANCELLED = "cancelled", "Cancelled"
+    ACTIVE = "active", _("Active")
+    REDEEMED = "redeemed", _("Redeemed")
+    EXPIRED = "expired", _("Expired")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class OfferBase(BaseModel):
@@ -308,7 +309,7 @@ class CashbackOffer(OfferBase):
             raise ValidationError(
                 {
                     "allowed_redemption_amount": (
-                        "Allowed redemption amount cannot be negative."
+                        _("Allowed redemption amount cannot be negative.")
                     )
                 }
             )

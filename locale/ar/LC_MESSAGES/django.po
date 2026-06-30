@@ -1,0 +1,2855 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PPW\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-30 18:49+0300\n"
+"PO-Revision-Date: 2026-06-30 18:35+0300\n"
+"Last-Translator: PPW Backend <dev@local>\n"
+"Language-Team: PPW Backend <dev@local>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+
+#: apps/assets/models.py:12
+msgid "Bird"
+msgstr "طائر"
+
+#: apps/assets/models.py:13
+msgid "Supply"
+msgstr "مستلزم"
+
+#: apps/assets/models.py:14
+msgid "Accessory"
+msgstr "إكسسوار"
+
+#: apps/assets/models.py:15
+msgid "Feed"
+msgstr "علف"
+
+#: apps/assets/models.py:16
+msgid "Supplement"
+msgstr "مكمل"
+
+#: apps/assets/models.py:20
+msgid "Available"
+msgstr "متاح"
+
+#: apps/assets/models.py:21 apps/auctions/models.py:28
+msgid "Sold"
+msgstr "مباع"
+
+#: apps/assets/models.py:22
+msgid "Inactive"
+msgstr "غير نشط"
+
+#: apps/assets/models.py:26
+msgid "Seller Market"
+msgstr "سوق البائع"
+
+#: apps/assets/models.py:27
+msgid "Platform"
+msgstr "المنصة"
+
+#: apps/assets/models.py:114
+msgid "Male"
+msgstr "ذكر"
+
+#: apps/assets/models.py:115
+msgid "Female"
+msgstr "أنثى"
+
+#: apps/assets/models.py:116
+msgid "Young"
+msgstr "صغير"
+
+#: apps/assets/models.py:146
+msgid "Excellent"
+msgstr "ممتاز"
+
+#: apps/assets/models.py:147
+msgid "VeryGood"
+msgstr "جيد جدًا"
+
+#: apps/assets/models.py:148
+msgid "Good"
+msgstr "جيد"
+
+#: apps/assets/serializer.py:27
+msgid "images is no longer supported. Use media instead."
+msgstr "لم يعد حقل images مدعومًا. استخدم media بدلًا منه."
+
+#: apps/assets/serializer.py:34
+msgid "thumbnail_url is no longer supported. Use media instead."
+msgstr "لم يعد حقل thumbnail_url مدعومًا. استخدم media بدلًا منه."
+
+#: apps/assets/serializer.py:78
+msgid "Owner profile is required."
+msgstr "الملف الشخصي للمالك مطلوب."
+
+#: apps/assets/services.py:128
+msgid "Only seller profiles can create product assets."
+msgstr "يمكن لملفات البائعين فقط إنشاء أصول المنتجات."
+
+#: apps/assets/services.py:164
+msgid ""
+"Supply products are platform-controlled and cannot be created by sellers."
+msgstr "منتجات المستلزمات تتحكم بها المنصة ولا يمكن للبائعين إنشاؤها."
+
+#: apps/auctions/models.py:17
+msgid "Single Bird"
+msgstr "طائر واحد"
+
+#: apps/auctions/models.py:18
+msgid "Multi-Bird Independent"
+msgstr "عدة طيور مستقلة"
+
+#: apps/auctions/models.py:19
+msgid "Pair (Male + Female)"
+msgstr "زوج (ذكر + أنثى)"
+
+#: apps/auctions/models.py:20
+msgid "Breeding/Squab Pair"
+msgstr "زوج للتفريخ/الفراخ"
+
+#: apps/auctions/models.py:21
+msgid "Racing/Loft Group"
+msgstr "مجموعة سباق/لوفت"
+
+#: apps/auctions/models.py:27 apps/auctions/models.py:37
+#: apps/orders/models.py:13 apps/packages/models.py:16
+#: apps/promotions/models.py:46
+msgid "Active"
+msgstr "نشط"
+
+#: apps/auctions/models.py:29
+msgid "Unsold"
+msgstr "غير مباع"
+
+#: apps/auctions/models.py:30
+msgid "Withdrawn"
+msgstr "مسحوب"
+
+#: apps/auctions/models.py:31 apps/auctions/models.py:39
+#: apps/complaints/models.py:18 apps/orders/models.py:22
+#: apps/orders/models.py:36 apps/packages/models.py:18
+#: apps/payments/models.py:12 apps/promotions/models.py:49
+msgid "Cancelled"
+msgstr "ملغى"
+
+#: apps/auctions/models.py:38
+msgid "Ended"
+msgstr "منتهٍ"
+
+#: apps/auctions/models.py:40
+msgid "Closed"
+msgstr "مغلق"
+
+#: apps/auctions/models.py:77
+msgid "Minutes to extend auction if bid placed in final window"
+msgstr "عدد الدقائق لتمديد المزاد عند تقديم مزايدة في النافذة الأخيرة"
+
+#: apps/auctions/models.py:92
+msgid "Days after auction end to complete payment"
+msgstr "عدد الأيام بعد نهاية المزاد لإكمال الدفع"
+
+#: apps/auctions/models.py:101
+msgid "Minimum amount next bid must exceed current"
+msgstr "أقل مبلغ يجب أن تتجاوز به المزايدة التالية السعر الحالي"
+
+#: apps/auctions/models.py:111
+msgid "Instant buy price for this item"
+msgstr "سعر الشراء الفوري لهذا العنصر"
+
+#: apps/auctions/models.py:116
+msgid "Whether this auction is visible to the public"
+msgstr "ما إذا كان هذا المزاد ظاهرًا للعامة"
+
+#: apps/auctions/models.py:203
+msgid "Minimum starting price for bids"
+msgstr "أقل سعر بداية للمزايدات"
+
+#: apps/auctions/models.py:319 apps/packages/models.py:22
+msgid "Auction Created"
+msgstr "تم إنشاء المزاد"
+
+#: apps/auctions/models.py:320
+msgid "Auction Published"
+msgstr "تم نشر المزاد"
+
+#: apps/auctions/models.py:321
+msgid "Auction Started"
+msgstr "بدأ المزاد"
+
+#: apps/auctions/models.py:322
+msgid "Bid Placed"
+msgstr "تم تقديم المزايدة"
+
+#: apps/auctions/models.py:323
+msgid "Auto-Extended"
+msgstr "تم التمديد تلقائيًا"
+
+#: apps/auctions/models.py:324
+msgid "Buy Now Triggered"
+msgstr "تم تشغيل الشراء الآن"
+
+#: apps/auctions/models.py:325
+msgid "Item Sold"
+msgstr "تم بيع العنصر"
+
+#: apps/auctions/models.py:326
+msgid "Auction Ended"
+msgstr "انتهى المزاد"
+
+#: apps/auctions/models.py:327
+msgid "Auction Cancelled"
+msgstr "تم إلغاء المزاد"
+
+#: apps/auctions/serializers.py:477
+msgid "Start time must be before end time"
+msgstr "يجب أن يكون وقت البداية قبل وقت النهاية"
+
+#: apps/auctions/serializers.py:482
+msgid "Start time must be in the future"
+msgstr "يجب أن يكون وقت البداية في المستقبل"
+
+#: apps/auctions/serializers.py:489
+msgid "Required when auto_extend_enabled=True"
+msgstr "مطلوب عندما تكون auto_extend_enabled=True"
+
+#: apps/auctions/serializers.py:496
+msgid "Required when deposit_required=True"
+msgstr "مطلوب عندما تكون deposit_required=True"
+
+#: apps/auctions/serializers.py:502
+msgid "Required when buy_now_enabled=True"
+msgstr "مطلوب عندما تكون buy_now_enabled=True"
+
+#: apps/auctions/serializers.py:513
+msgid "Required for pair and breeding auctions."
+msgstr "مطلوب لمزادات الأزواج والتفريخ."
+
+#: apps/auctions/serializers.py:560 apps/auctions/serializers.py:583
+msgid "Invalid request context"
+msgstr "سياق الطلب غير صالح"
+
+#: apps/auctions/services.py:110
+msgid "Duplicate bird_id found in items."
+msgstr "تم العثور على bird_id مكرر داخل العناصر."
+
+#: apps/auctions/services.py:128
+msgid "A bird or more is not found."
+msgstr "لم يتم العثور على طائر واحد أو أكثر."
+
+#: apps/auctions/services.py:136
+msgid "A bird or more is already placed in an active auction."
+msgstr "يوجد طائر واحد أو أكثر بالفعل في مزاد نشط."
+
+#: apps/auctions/services.py:151
+#, python-format
+msgid "Sellers can auction only birds they own. Invalid bird ids: %(ids)s."
+msgstr ""
+"يمكن للبائعين عرض الطيور التي يملكونها فقط في المزاد. معرفات الطيور غير "
+"الصالحة: %(ids)s."
+
+#: apps/auctions/services.py:430 apps/auctions/services.py:519
+msgid "Auction is already cancelled"
+msgstr "تم إلغاء المزاد بالفعل"
+
+#: apps/auctions/services.py:434
+msgid "Cannot cancel ended auction. Use settlement for dispute resolution."
+msgstr "لا يمكن إلغاء مزاد منتهٍ. استخدم التسوية لحل النزاع."
+
+#: apps/auctions/services.py:559
+msgid "Only active auctions can be updated."
+msgstr "يمكن تحديث المزادات النشطة فقط."
+
+#: apps/auctions/services.py:562
+msgid "Auction cannot be updated after it starts."
+msgstr "لا يمكن تحديث المزاد بعد بدئه."
+
+#: apps/auctions/services.py:565
+msgid "Auction cannot be updated after it receives bids."
+msgstr "لا يمكن تحديث المزاد بعد استلام مزايدات."
+
+#: apps/auctions/services.py:649
+msgid "Auction is not currently active"
+msgstr "المزاد غير نشط حاليًا"
+
+#: apps/auctions/services.py:652
+#, python-format
+msgid "Item is not accepting bids. Current status: %(status)s"
+msgstr "العنصر لا يقبل مزايدات. الحالة الحالية: %(status)s"
+
+#: apps/auctions/services.py:660
+msgid "Only customers can place bids"
+msgstr "يمكن للعملاء فقط تقديم مزايدات"
+
+#: apps/auctions/services.py:668
+#, python-format
+msgid "Bid must be at least %(amount)s (starting price)"
+msgstr "يجب أن تكون المزايدة %(amount)s على الأقل (سعر البداية)"
+
+#: apps/auctions/services.py:680
+#, python-format
+msgid ""
+"Bid must be at least %(amount)s (current %(current)s + increment "
+"%(increment)s)"
+msgstr ""
+"يجب أن تكون المزايدة %(amount)s على الأقل (الحالي %(current)s + الزيادة "
+"%(increment)s)"
+
+#: apps/auctions/services.py:817
+msgid "New auction bid"
+msgstr "مزايدة جديدة على المزاد"
+
+#: apps/auctions/services.py:818
+msgid "A customer placed a bid on your auction item."
+msgstr "قدّم عميل مزايدة على عنصر المزاد الخاص بك."
+
+#: apps/auctions/services.py:906
+msgid "Buy now not enabled for this auction"
+msgstr "الشراء الآن غير مفعّل لهذا المزاد"
+
+#: apps/auctions/services.py:909
+msgid "Buy now price not set"
+msgstr "لم يتم تحديد سعر الشراء الآن"
+
+#: apps/auctions/services.py:912
+msgid "Item is not available for buy now"
+msgstr "العنصر غير متاح للشراء الآن"
+
+#: apps/auctions/services.py:915
+msgid "Auction owner cannot buy own auction"
+msgstr "لا يمكن لمالك المزاد شراء مزاده"
+
+#: apps/auctions/services.py:955
+msgid "Auction won"
+msgstr "تم الفوز بالمزاد"
+
+#: apps/auctions/services.py:956
+msgid "You won the auction item."
+msgstr "لقد فزت بعنصر المزاد."
+
+#: apps/auctions/services.py:978
+msgid "Buy now completed"
+msgstr "اكتمل الشراء الآن"
+
+#: apps/auctions/services.py:979
+msgid "Your buy-now purchase was confirmed."
+msgstr "تم تأكيد عملية الشراء الآن الخاصة بك."
+
+#: apps/auctions/views.py:230
+msgid "Failed to create auction"
+msgstr "فشل إنشاء المزاد"
+
+#: apps/authentication/authentication.py:19
+msgid "Token profile claim is required."
+msgstr "ادعاء profile في الرمز مطلوب."
+
+#: apps/authentication/mixins.py:23
+msgid "Phone number is required."
+msgstr "رقم الهاتف مطلوب."
+
+#: apps/authentication/mixins.py:26 apps/authentication/mixins.py:49
+msgid "Region is required."
+msgstr "المنطقة مطلوبة."
+
+#: apps/authentication/mixins.py:34
+msgid "Invalid phone number format."
+msgstr "تنسيق رقم الهاتف غير صالح."
+
+#: apps/authentication/mixins.py:37
+msgid "Phone number is not possible."
+msgstr "رقم الهاتف غير ممكن."
+
+#: apps/authentication/mixins.py:40
+msgid "Phone number is not valid."
+msgstr "رقم الهاتف غير صالح."
+
+#: apps/authentication/models.py:32
+msgid "No active profile found for this user."
+msgstr "لا يوجد ملف شخصي نشط لهذا المستخدم."
+
+#: apps/authentication/views.py:77 apps/authentication/views.py:104
+msgid "User created successfully"
+msgstr "تم إنشاء المستخدم بنجاح"
+
+#: apps/authentication/views.py:144
+msgid "Failed to switch profile. Profile not found."
+msgstr "فشل تبديل الملف الشخصي. لم يتم العثور على الملف الشخصي."
+
+#: apps/chat/models.py:64
+msgid "Customer and seller must belong to different users."
+msgstr "يجب أن ينتمي العميل والبائع إلى مستخدمين مختلفين."
+
+#: apps/chat/models.py:109
+msgid "Sender must be a conversation participant."
+msgstr "يجب أن يكون المرسل مشاركًا في المحادثة."
+
+#: apps/chat/models.py:113
+msgid "Receiver must be a conversation participant."
+msgstr "يجب أن يكون المستلم مشاركًا في المحادثة."
+
+#: apps/chat/models.py:117
+msgid "Receiver must be the other participant."
+msgstr "يجب أن يكون المستلم هو المشارك الآخر."
+
+#: apps/chat/services.py:65
+msgid "Cannot create a conversation with yourself."
+msgstr "لا يمكن إنشاء محادثة مع نفسك."
+
+#: apps/chat/services.py:72
+msgid "Cannot create a conversation with another profile on your account."
+msgstr "لا يمكن إنشاء محادثة مع ملف شخصي آخر في حسابك."
+
+#: apps/chat/services.py:85
+msgid "Cannot create a conversation while a block is active."
+msgstr "لا يمكن إنشاء محادثة أثناء وجود حظر نشط."
+
+#: apps/chat/services.py:107
+msgid "You must follow this seller before starting a conversation."
+msgstr "يجب أن تتابع هذا البائع قبل بدء محادثة."
+
+#: apps/chat/services.py:133
+msgid "Conversation is not active."
+msgstr "المحادثة غير نشطة."
+
+#: apps/chat/services.py:140
+msgid "Cannot send messages while a block is active."
+msgstr "لا يمكن إرسال الرسائل أثناء وجود حظر نشط."
+
+#: apps/chat/services.py:185 apps/chat/services.py:240
+#: apps/chat/services.py:248
+msgid "Conversation was not found."
+msgstr "لم يتم العثور على المحادثة."
+
+#: apps/chat/services.py:203 apps/feed/services.py:217
+#: apps/loyalty/serializers.py:121 apps/loyalty/validators.py:14
+#: apps/notifications/services.py:148 apps/users/serializers.py:390
+msgid "Profile was not found."
+msgstr "لم يتم العثور على الملف الشخصي."
+
+#: apps/chat/services.py:213
+msgid "Profile is not active."
+msgstr "الملف الشخصي غير نشط."
+
+#: apps/chat/services.py:222
+msgid "Conversations must be between one customer and one seller."
+msgstr "يجب أن تكون المحادثات بين عميل واحد وبائع واحد."
+
+#: apps/chat/services.py:263
+msgid ""
+"Sharing contact details or external links is not allowed in chat messages."
+msgstr "مشاركة بيانات الاتصال أو الروابط الخارجية غير مسموحة في رسائل الدردشة."
+
+#: apps/chat/tasks.py:36
+msgid "New message received"
+msgstr "تم استلام رسالة جديدة"
+
+#: apps/complaints/models.py:8
+msgid "Post Sale"
+msgstr "ما بعد البيع"
+
+#: apps/complaints/models.py:9
+msgid "Payment Rejected"
+msgstr "تم رفض الدفع"
+
+#: apps/complaints/models.py:10
+msgid "Other"
+msgstr "أخرى"
+
+#: apps/complaints/models.py:14
+msgid "Open"
+msgstr "مفتوحة"
+
+#: apps/complaints/models.py:15
+msgid "In Review"
+msgstr "قيد المراجعة"
+
+#: apps/complaints/models.py:16
+msgid "Resolved"
+msgstr "تم الحل"
+
+#: apps/complaints/models.py:17 apps/orders/models.py:29
+#: apps/payments/models.py:11
+msgid "Rejected"
+msgstr "مرفوض"
+
+#: apps/complaints/models.py:22 apps/notifications/models.py:43
+msgid "Complaint Created"
+msgstr "تم إنشاء الشكوى"
+
+#: apps/complaints/models.py:23
+msgid "Complaint In Review"
+msgstr "الشكوى قيد المراجعة"
+
+#: apps/complaints/models.py:24
+msgid "Complaint Resolved"
+msgstr "تم حل الشكوى"
+
+#: apps/complaints/models.py:25
+msgid "Complaint Rejected"
+msgstr "تم رفض الشكوى"
+
+#: apps/complaints/models.py:26
+msgid "Complaint Reopened"
+msgstr "تمت إعادة فتح الشكوى"
+
+#: apps/complaints/models.py:27
+msgid "Complaint Cancelled"
+msgstr "تم إلغاء الشكوى"
+
+#: apps/complaints/services.py:59 apps/complaints/services.py:280
+#: apps/payments/services.py:185 apps/payments/services.py:229
+#: apps/payments/services.py:278
+msgid "Payment request was not found."
+msgstr "لم يتم العثور على طلب الدفع."
+
+#: apps/complaints/services.py:66
+msgid ""
+"Complaints can only be created for approved or rejected payment requests."
+msgstr "يمكن إنشاء الشكاوى فقط لطلبات الدفع الموافق عليها أو المرفوضة."
+
+#: apps/complaints/services.py:98
+msgid "Only open complaints can move to review."
+msgstr "يمكن نقل الشكاوى المفتوحة فقط إلى المراجعة."
+
+#: apps/complaints/services.py:120
+msgid "Complaint in review"
+msgstr "الشكوى قيد المراجعة"
+
+#: apps/complaints/services.py:121
+msgid "Your complaint is now in review."
+msgstr "شكواك الآن قيد المراجعة."
+
+#: apps/complaints/services.py:133
+msgid "Only open or in-review complaints can be resolved."
+msgstr "يمكن حل الشكاوى المفتوحة أو قيد المراجعة فقط."
+
+#: apps/complaints/services.py:158
+msgid "Complaint resolved"
+msgstr "تم حل الشكوى"
+
+#: apps/complaints/services.py:159
+msgid "A manager resolved the complaint tied to your payment request."
+msgstr "حل مدير الشكوى المرتبطة بطلب الدفع الخاص بك."
+
+#: apps/complaints/services.py:171
+msgid "Only open or in-review complaints can be rejected."
+msgstr "يمكن رفض الشكاوى المفتوحة أو قيد المراجعة فقط."
+
+#: apps/complaints/services.py:195
+msgid "Complaint rejected"
+msgstr "تم رفض الشكوى"
+
+#: apps/complaints/services.py:196
+msgid "A manager rejected the complaint tied to your payment request."
+msgstr "رفض مدير الشكوى المرتبطة بطلب الدفع الخاص بك."
+
+#: apps/complaints/services.py:212
+msgid "Only resolved or rejected complaints can be reopened."
+msgstr "يمكن إعادة فتح الشكاوى المحلولة أو المرفوضة فقط."
+
+#: apps/complaints/services.py:234
+msgid "Complaint reopened"
+msgstr "تمت إعادة فتح الشكوى"
+
+#: apps/complaints/services.py:235
+msgid "A manager reopened the complaint tied to your payment request."
+msgstr "أعاد مدير فتح الشكوى المرتبطة بطلب الدفع الخاص بك."
+
+#: apps/complaints/services.py:246 apps/complaints/services.py:287
+msgid "Complaint was not found."
+msgstr "لم يتم العثور على الشكوى."
+
+#: apps/complaints/services.py:249
+msgid "Only open complaints can be cancelled."
+msgstr "يمكن إلغاء الشكاوى المفتوحة فقط."
+
+#: apps/complaints/services.py:296
+msgid "An active complaint already exists for this payment request."
+msgstr "توجد شكوى نشطة بالفعل لطلب الدفع هذا."
+
+#: apps/complaints/services.py:310
+msgid "Only manager profiles can review complaints."
+msgstr "يمكن لملفات المديرين فقط مراجعة الشكاوى."
+
+#: apps/complaints/views.py:85
+msgid "Only managers can list all complaints."
+msgstr "يمكن للمديرين فقط عرض كل الشكاوى."
+
+#: apps/feed/models.py:52 apps/feed/services.py:363
+msgid "Customers cannot follow their own seller profile."
+msgstr "لا يمكن للعملاء متابعة ملف البائع الخاص بهم."
+
+#: apps/feed/models.py:97 apps/feed/services.py:470
+msgid "Customers cannot follow their own seller package."
+msgstr "لا يمكن للعملاء متابعة باقة البائع الخاصة بهم."
+
+#: apps/feed/services.py:91
+msgid "Active block was not found."
+msgstr "لم يتم العثور على حظر نشط."
+
+#: apps/feed/services.py:95
+msgid "Only the profile that created the block can unblock."
+msgstr "يمكن فقط للملف الشخصي الذي أنشأ الحظر إلغاءه."
+
+#: apps/feed/services.py:168
+msgid "Blocks are supported only between customers and sellers."
+msgstr "الحظر مدعوم فقط بين العملاء والبائعين."
+
+#: apps/feed/services.py:174
+msgid "Blocks must be between one customer and one seller."
+msgstr "يجب أن يكون الحظر بين عميل واحد وبائع واحد."
+
+#: apps/feed/services.py:180
+msgid "Cannot block another customer or seller profile on your account."
+msgstr "لا يمكن حظر ملف عميل أو بائع آخر في حسابك."
+
+#: apps/feed/services.py:199
+msgid "Only customer and seller profiles can use blocks."
+msgstr "يمكن لملفات العملاء والبائعين فقط استخدام الحظر."
+
+#: apps/feed/services.py:206 apps/orders/validators.py:15
+#: apps/orders/validators.py:32 apps/packages/validators.py:46
+msgid "Active profile is required."
+msgstr "الملف الشخصي النشط مطلوب."
+
+#: apps/feed/services.py:225 apps/orders/validators.py:26
+#: apps/promotions/serializers.py:169 apps/promotions/views.py:251
+msgid "Customer profile was not found."
+msgstr "لم يتم العثور على ملف العميل."
+
+#: apps/feed/services.py:234 apps/orders/validators.py:42
+#: apps/packages/validators.py:56 apps/ratings/validators.py:37
+msgid "Seller profile was not found."
+msgstr "لم يتم العثور على ملف البائع."
+
+#: apps/feed/services.py:247
+msgid "Cannot follow this seller while a block is active."
+msgstr "لا يمكن متابعة هذا البائع أثناء وجود حظر نشط."
+
+#: apps/feed/services.py:278 apps/feed/services.py:347
+#: apps/feed/services.py:357
+msgid "Seller was not found."
+msgstr "لم يتم العثور على البائع."
+
+#: apps/feed/services.py:339
+msgid "Active profile must be a customer."
+msgstr "يجب أن يكون الملف الشخصي النشط عميلاً."
+
+#: apps/feed/services.py:412 apps/feed/services.py:462
+#: apps/packages/services.py:120
+msgid "Seller package was not found."
+msgstr "لم يتم العثور على باقة البائع."
+
+#: apps/feed/services.py:478
+msgid "Cannot follow this seller package while a block is active."
+msgstr "لا يمكن متابعة باقة البائع هذه أثناء وجود حظر نشط."
+
+#: apps/feed/services.py:496
+msgid "Seller package is not followable."
+msgstr "باقة البائع غير قابلة للمتابعة."
+
+#: apps/feed/services.py:515 apps/feed/services.py:549
+#: apps/feed/services.py:552 apps/feed/services.py:554
+msgid "Invalid cursor."
+msgstr "المؤشر غير صالح."
+
+#: apps/feed/services.py:583 apps/feed/services.py:595
+msgid "Limit must be an integer."
+msgstr "يجب أن يكون الحد عددًا صحيحًا."
+
+#: apps/feed/services.py:585 apps/feed/services.py:597
+msgid "Limit must be at least 1."
+msgstr "يجب أن يكون الحد 1 على الأقل."
+
+#: apps/general/models.py:25
+msgid "Image"
+msgstr "صورة"
+
+#: apps/general/models.py:26
+msgid "Video"
+msgstr "فيديو"
+
+#: apps/general/serializers.py:23
+msgid "Media ids are not accepted for nested asset media writes."
+msgstr "معرفات الوسائط غير مقبولة عند كتابة وسائط الأصل المتداخلة."
+
+#: apps/insights/models.py:8
+msgid "Seller Profile View"
+msgstr "عرض ملف البائع"
+
+#: apps/insights/models.py:9
+msgid "Auction View"
+msgstr "عرض المزاد"
+
+#: apps/insights/models.py:10
+msgid "Market Item View"
+msgstr "عرض عنصر السوق"
+
+#: apps/insights/models.py:14
+msgid "Seller Profile"
+msgstr "ملف البائع"
+
+#: apps/insights/models.py:15 apps/payments/models.py:16
+msgid "Auction"
+msgstr "مزاد"
+
+#: apps/insights/models.py:16
+msgid "Market Item"
+msgstr "عنصر السوق"
+
+#: apps/insights/services.py:62
+msgid "Invalid seller insight event type."
+msgstr "نوع حدث رؤى البائع غير صالح."
+
+#: apps/insights/services.py:64
+msgid "Invalid seller insight object type."
+msgstr "نوع كائن رؤى البائع غير صالح."
+
+#: apps/insights/views.py:33
+msgid "Active profile must be a seller."
+msgstr "يجب أن يكون الملف الشخصي النشط بائعًا."
+
+#: apps/loyalty/constants.py:8
+msgid "Earn"
+msgstr "كسب"
+
+#: apps/loyalty/constants.py:9
+msgid "Spend"
+msgstr "إنفاق"
+
+#: apps/loyalty/constants.py:10
+msgid "Expire"
+msgstr "انتهاء"
+
+#: apps/loyalty/constants.py:14 apps/lucky_wheel/models.py:13
+#: apps/promotions/models.py:15
+msgid "Onboarding"
+msgstr "الانضمام"
+
+#: apps/loyalty/constants.py:15 apps/promotions/models.py:14
+msgid "Lucky Wheel"
+msgstr "عجلة الحظ"
+
+#: apps/loyalty/constants.py:16 apps/lucky_wheel/models.py:14
+msgid "Auction Completed"
+msgstr "اكتمل المزاد"
+
+#: apps/loyalty/constants.py:17
+msgid "Order Completed Amount"
+msgstr "مبلغ الطلب المكتمل"
+
+#: apps/loyalty/constants.py:18
+msgid "Order Completed Bonus"
+msgstr "مكافأة الطلب المكتمل"
+
+#: apps/loyalty/constants.py:19
+msgid "Auction Posted"
+msgstr "تم نشر المزاد"
+
+#: apps/loyalty/constants.py:20
+msgid "Rating Received"
+msgstr "تم استلام تقييم"
+
+#: apps/loyalty/constants.py:21
+msgid "Referral Accepted"
+msgstr "تم قبول الإحالة"
+
+#: apps/loyalty/constants.py:22
+msgid "First Bid Completed"
+msgstr "اكتملت أول مزايدة"
+
+#: apps/loyalty/constants.py:23
+msgid "Season Winner"
+msgstr "فائز الموسم"
+
+#: apps/loyalty/constants.py:26
+msgid "Cashback Points Purchase"
+msgstr "شراء نقاط بالكاش باك"
+
+#: apps/loyalty/constants.py:28 apps/users/models.py:145
+msgid "Manager Adjustment"
+msgstr "تعديل المدير"
+
+#: apps/loyalty/constants.py:32
+msgid "First Order"
+msgstr "أول طلب"
+
+#: apps/loyalty/constants.py:33
+msgid "Points Starter"
+msgstr "بداية النقاط"
+
+#: apps/loyalty/constants.py:34
+msgid "Seller Starter"
+msgstr "بداية البائع"
+
+#: apps/loyalty/constants.py:35
+msgid "Welcome Buyer"
+msgstr "ترحيب بالمشتري"
+
+#: apps/loyalty/constants.py:36
+msgid "Welcome Seller"
+msgstr "ترحيب بالبائع"
+
+#: apps/loyalty/constants.py:37
+msgid "First Bidder"
+msgstr "أول مزايد"
+
+#: apps/loyalty/constants.py:38
+msgid "Last Minute Fighter"
+msgstr "منافس اللحظة الأخيرة"
+
+#: apps/loyalty/constants.py:41
+msgid "Auction Purchase Confirmed"
+msgstr "تم تأكيد شراء المزاد"
+
+#: apps/loyalty/constants.py:45
+msgid "Market Purchase Confirmed"
+msgstr "تم تأكيد شراء السوق"
+
+#: apps/loyalty/constants.py:47
+msgid "Reviewer Buyer"
+msgstr "مشتري مقيّم"
+
+#: apps/loyalty/constants.py:48
+msgid "Loyal Follower"
+msgstr "متابع وفي"
+
+#: apps/loyalty/constants.py:51
+msgid "First Auction Published"
+msgstr "أول مزاد منشور"
+
+#: apps/loyalty/constants.py:55
+msgid "First Market Item Listed"
+msgstr "أول عنصر سوق مدرج"
+
+#: apps/loyalty/constants.py:59
+msgid "First Auction Sale Confirmed"
+msgstr "تم تأكيد أول بيع مزاد"
+
+#: apps/loyalty/constants.py:63
+msgid "First Market Sale Confirmed"
+msgstr "تم تأكيد أول بيع سوق"
+
+#: apps/loyalty/constants.py:65
+msgid "Trusted Buyer"
+msgstr "مشتري موثوق"
+
+#: apps/loyalty/constants.py:66
+msgid "Trusted Seller"
+msgstr "بائع موثوق"
+
+#: apps/loyalty/serializers.py:142
+msgid "Only customer profiles can buy points with cashback."
+msgstr "يمكن لملفات العملاء فقط شراء النقاط بالكاش باك."
+
+#: apps/loyalty/services.py:25
+msgid "Legendary"
+msgstr "أسطوري"
+
+#: apps/loyalty/services.py:26
+msgid "Elite"
+msgstr "نخبة"
+
+#: apps/loyalty/services.py:27
+msgid "Golden"
+msgstr "ذهبي"
+
+#: apps/loyalty/services.py:28
+msgid "Reliable"
+msgstr "موثوق"
+
+#: apps/loyalty/services.py:29
+msgid "Verified"
+msgstr "موثق"
+
+#: apps/loyalty/services.py:31
+msgid "Basic"
+msgstr "أساسي"
+
+#: apps/loyalty/services.py:207
+msgid "Insufficient point balance for this action."
+msgstr "رصيد النقاط غير كافٍ لهذا الإجراء."
+
+#: apps/loyalty/services.py:216
+msgid "Unsupported type."
+msgstr "النوع غير مدعوم."
+
+#: apps/loyalty/services.py:263
+msgid "Idempotency key was already used for a different transaction."
+msgstr "تم استخدام مفتاح التكرار بالفعل لمعاملة مختلفة."
+
+#: apps/loyalty/services.py:382
+msgid "Badge awarded"
+msgstr "تم منح الشارة"
+
+#: apps/loyalty/validators.py:17
+msgid "Profile must belong to the user."
+msgstr "يجب أن ينتمي الملف الشخصي إلى المستخدم."
+
+#: apps/loyalty/validators.py:24
+msgid "Points must be greater than 0."
+msgstr "يجب أن تكون النقاط أكبر من 0."
+
+#: apps/loyalty/validators.py:30
+msgid "Reason is required."
+msgstr "السبب مطلوب."
+
+#: apps/loyalty/validators.py:41
+msgid "Badge is not eligible for this profile type."
+msgstr "الشارة غير مؤهلة لهذا النوع من الملفات الشخصية."
+
+#: apps/loyalty/views.py:135
+msgid "Only manager profiles can list badge awards by profile."
+msgstr "يمكن لملفات المديرين فقط عرض جوائز الشارات حسب الملف الشخصي."
+
+#: apps/loyalty/views.py:154
+msgid "Only manager profiles can award badges."
+msgstr "يمكن لملفات المديرين فقط منح الشارات."
+
+#: apps/lucky_wheel/models.py:15 apps/promotions/models.py:16
+msgid "Referral"
+msgstr "إحالة"
+
+#: apps/lucky_wheel/models.py:16 apps/promotions/models.py:18
+msgid "Manager Grant"
+msgstr "منحة مدير"
+
+#: apps/lucky_wheel/models.py:17 apps/promotions/models.py:17
+msgid "Season"
+msgstr "موسم"
+
+#: apps/lucky_wheel/models.py:21
+msgid "PP Coins"
+msgstr "نقاط PP"
+
+#: apps/lucky_wheel/models.py:22
+msgid "Discount Offer"
+msgstr "عرض خصم"
+
+#: apps/lucky_wheel/models.py:23
+msgid "Cashback Offer"
+msgstr "عرض كاش باك"
+
+#: apps/lucky_wheel/models.py:24
+msgid "Badge"
+msgstr "شارة"
+
+#: apps/lucky_wheel/models.py:25 apps/lucky_wheel/models.py:30
+msgid "No Prize"
+msgstr "لا توجد جائزة"
+
+#: apps/lucky_wheel/models.py:29
+msgid "Awarded"
+msgstr "تم المنح"
+
+#: apps/lucky_wheel/models.py:31 apps/pedigrees/models.py:12
+msgid "Failed"
+msgstr "فشل"
+
+#: apps/lucky_wheel/services.py:71
+msgid "Attempts must be greater than 0."
+msgstr "يجب أن يكون عدد المحاولات أكبر من 0."
+
+#: apps/lucky_wheel/services.py:131 apps/packages/services.py:110
+#: apps/promotions/services.py:384 apps/referrals/services.py:49
+#: apps/users/services.py:45
+msgid "This field is required."
+msgstr "This field مطلوب."
+
+#: apps/lucky_wheel/services.py:147
+msgid "No lucky wheel attempts are available."
+msgstr "لا توجد محاولات متاحة لعجلة الحظ."
+
+#: apps/lucky_wheel/services.py:187
+msgid "No lucky wheel prizes are configured."
+msgstr "لم يتم إعداد جوائز عجلة الحظ."
+
+#: apps/lucky_wheel/services.py:204
+msgid "Selected prize is no longer available."
+msgstr "الجائزة المحددة لم تعد متاحة."
+
+#: apps/lucky_wheel/services.py:255
+msgid "Unsupported prize type."
+msgstr "نوع الجائزة غير مدعوم."
+
+#: apps/notifications/models.py:9
+msgid "Chat Message Received"
+msgstr "تم استلام رسالة دردشة"
+
+#: apps/notifications/models.py:12
+msgid "Manual Manager Notification"
+msgstr "إشعار يدوي من المدير"
+
+#: apps/notifications/models.py:14
+msgid "Auction Bid Placed"
+msgstr "تم تقديم مزايدة في المزاد"
+
+#: apps/notifications/models.py:17
+msgid "Auction Buy Now Success"
+msgstr "نجاح الشراء الآن في المزاد"
+
+#: apps/notifications/models.py:21 apps/payments/models.py:21
+msgid "Payment Request Created"
+msgstr "تم إنشاء طلب الدفع"
+
+#: apps/notifications/models.py:25 apps/payments/models.py:23
+msgid "Payment Request Approved"
+msgstr "تمت الموافقة على طلب الدفع"
+
+#: apps/notifications/models.py:29 apps/payments/models.py:24
+msgid "Payment Request Rejected"
+msgstr "تم رفض طلب الدفع"
+
+#: apps/notifications/models.py:31
+msgid "Order Item Approved"
+msgstr "تمت الموافقة على عنصر الطلب"
+
+#: apps/notifications/models.py:32
+msgid "Order Item Rejected"
+msgstr "تم رفض عنصر الطلب"
+
+#: apps/notifications/models.py:35
+msgid "Order Item Pending Seller"
+msgstr "عنصر الطلب بانتظار البائع"
+
+#: apps/notifications/models.py:39
+msgid "Order Item Auto Cancelled"
+msgstr "تم إلغاء عنصر الطلب تلقائيًا"
+
+#: apps/notifications/models.py:41
+msgid "Auction Won"
+msgstr "تم الفوز بالمزاد"
+
+#: apps/notifications/models.py:42
+msgid "Auction Outbid"
+msgstr "تم تجاوز مزايدتك"
+
+#: apps/notifications/models.py:46
+msgid "Complaint Status Updated"
+msgstr "تم تحديث حالة الشكوى"
+
+#: apps/notifications/models.py:48
+msgid "Cashback Earned"
+msgstr "تم كسب كاش باك"
+
+#: apps/notifications/models.py:49
+msgid "Badge Awarded"
+msgstr "تم منح شارة"
+
+#: apps/notifications/models.py:52
+msgid "Package Expiring Soon"
+msgstr "الباقة ستنتهي قريبًا"
+
+#: apps/notifications/serializers.py:90
+msgid "Recipient profile was not found."
+msgstr "لم يتم العثور على ملف المستلم."
+
+#: apps/notifications/services.py:50
+msgid "Title is required."
+msgstr "العنوان مطلوب."
+
+#: apps/notifications/services.py:52
+msgid "Body is required."
+msgstr "النص مطلوب."
+
+#: apps/notifications/services.py:104
+msgid "Notification was not found."
+msgstr "لم يتم العثور على الإشعار."
+
+#: apps/notifications/views.py:67
+msgid "Only managers can create manual notifications."
+msgstr "يمكن للمديرين فقط إنشاء إشعارات يدوية."
+
+#: apps/orders/models.py:14
+msgid "Converted"
+msgstr "تم تحويله"
+
+#: apps/orders/models.py:15
+msgid "Abandoned"
+msgstr "متروك"
+
+#: apps/orders/models.py:19 apps/packages/models.py:15
+#: apps/payments/models.py:9
+msgid "Pending"
+msgstr "قيد الانتظار"
+
+#: apps/orders/models.py:20
+msgid "Processing"
+msgstr "قيد المعالجة"
+
+#: apps/orders/models.py:21 apps/orders/models.py:35
+msgid "Completed"
+msgstr "مكتمل"
+
+#: apps/orders/models.py:23
+msgid "Partial Rejected"
+msgstr "مرفوض جزئيًا"
+
+#: apps/orders/models.py:27
+msgid "Pending Seller"
+msgstr "بانتظار البائع"
+
+#: apps/orders/models.py:28 apps/payments/models.py:10
+msgid "Approved"
+msgstr "تمت الموافقة"
+
+#: apps/orders/models.py:32
+msgid "Awaiting Payment Review"
+msgstr "بانتظار مراجعة الدفع"
+
+#: apps/orders/models.py:34
+msgid "Ready Handoff"
+msgstr "جاهز للتسليم"
+
+#: apps/orders/models.py:40
+msgid "Order Created"
+msgstr "تم إنشاء الطلب"
+
+#: apps/orders/models.py:41
+msgid "Seller Pending Item"
+msgstr "عنصر بانتظار البائع"
+
+#: apps/orders/models.py:42
+msgid "Seller Approved"
+msgstr "وافق البائع"
+
+#: apps/orders/models.py:45
+msgid "Seller Auto Cancelled"
+msgstr "إلغاء تلقائي من البائع"
+
+#: apps/orders/services.py:148 apps/orders/services.py:180
+msgid "Cart item was not found."
+msgstr "لم يتم العثور على عنصر السلة."
+
+#: apps/orders/services.py:272 apps/orders/validators.py:264
+msgid "Cart is empty."
+msgstr "السلة فارغة."
+
+#: apps/orders/services.py:395 apps/orders/validators.py:141
+#: apps/payments/services.py:445
+msgid "Insufficient stock"
+msgstr "المخزون غير كافٍ"
+
+#: apps/orders/services.py:404
+msgid "Order created."
+msgstr "تم إنشاء الطلب."
+
+#: apps/orders/services.py:413
+msgid "Seller notified of pending item."
+msgstr "تم إشعار البائع بعنصر بانتظار المراجعة."
+
+#: apps/orders/services.py:431
+msgid "New order item"
+msgstr "عنصر طلب جديد"
+
+#: apps/orders/services.py:432
+msgid "A customer placed an order item for your review."
+msgstr "أنشأ عميل عنصر طلب لمراجعتك."
+
+#: apps/orders/services.py:493
+msgid "Only pending order items can be approved."
+msgstr "يمكن الموافقة فقط على عناصر الطلب قيد الانتظار."
+
+#: apps/orders/services.py:503
+msgid "Order item approved"
+msgstr "تمت الموافقة على عنصر الطلب"
+
+#: apps/orders/services.py:505
+msgid ""
+"The seller approved your order item. You can now create a payment request."
+msgstr "وافق البائع على عنصر الطلب. يمكنك الآن إنشاء طلب دفع."
+
+#: apps/orders/services.py:526
+msgid "Only pending order items can be rejected."
+msgstr "يمكن رفض عناصر الطلب قيد الانتظار فقط."
+
+#: apps/orders/services.py:534
+msgid "Order item rejected"
+msgstr "تم رفض عنصر الطلب"
+
+#: apps/orders/services.py:535
+msgid "The seller rejected your order item."
+msgstr "رفض البائع عنصر الطلب الخاص بك."
+
+#: apps/orders/services.py:581
+msgid "Order item was not found."
+msgstr "لم يتم العثور على عنصر الطلب."
+
+#: apps/orders/services.py:590
+msgid "Seller approved your order you need to complete the payment."
+msgstr "وافق البائع على طلبك ويجب عليك إكمال الدفع."
+
+#: apps/orders/services.py:601
+msgid "Order item was cancelled because the seller did not act."
+msgstr "تم إلغاء عنصر الطلب لأن البائع لم يتخذ إجراءً."
+
+#: apps/orders/services.py:648
+msgid "Order item cancelled"
+msgstr "تم إلغاء عنصر الطلب"
+
+#: apps/orders/services.py:649
+msgid "An order item was cancelled because the seller did not act."
+msgstr "تم إلغاء عنصر طلب لأن البائع لم يتخذ إجراءً."
+
+#: apps/orders/validators.py:19
+msgid "Only customer profiles can checkout orders."
+msgstr "يمكن لملفات العملاء فقط إتمام طلبات الشراء."
+
+#: apps/orders/validators.py:36 apps/orders/views.py:260
+msgid "Only seller profiles can manage order items."
+msgstr "يمكن لملفات البائعين فقط إدارة عناصر الطلب."
+
+#: apps/orders/validators.py:53 apps/ratings/validators.py:30
+msgid "Asset was not found."
+msgstr "لم يتم العثور على الأصل."
+
+#: apps/orders/validators.py:62 apps/orders/validators.py:237
+#: apps/orders/validators.py:291
+#, python-format
+msgid "Seller for asset #%(asset_id)s was not found."
+msgstr "لم يتم العثور على البائع للأصل رقم %(asset_id)s."
+
+#: apps/orders/validators.py:80
+#, python-format
+msgid "Asset #%(asset_id)s is no longer available."
+msgstr "الأصل رقم %(asset_id)s لم يعد متاحًا."
+
+#: apps/orders/validators.py:90
+#, python-format
+msgid "Asset #%(asset_id)s is not available."
+msgstr "الأصل رقم %(asset_id)s غير متاح."
+
+#: apps/orders/validators.py:98
+#, python-format
+msgid "Asset #%(asset_id)s is not listed for market."
+msgstr "الأصل رقم %(asset_id)s غير مدرج في السوق."
+
+#: apps/orders/validators.py:115
+#, python-format
+msgid "Asset #%(asset_id)s is not owned by a valid seller."
+msgstr "الأصل رقم %(asset_id)s ليس مملوكًا لبائع صالح."
+
+#: apps/orders/validators.py:124
+msgid "Customers cannot order their own seller assets."
+msgstr "لا يمكن للعملاء طلب أصول البائع الخاصة بهم."
+
+#: apps/orders/validators.py:130
+msgid "Quantity must be greater than 0."
+msgstr "يجب أن تكون الكمية أكبر من 0."
+
+#: apps/orders/validators.py:135
+#, python-format
+msgid "Bird asset #%(asset_id)s quantity must be 1."
+msgstr "يجب أن تكون كمية أصل الطائر رقم %(asset_id)s هي 1."
+
+#: apps/orders/validators.py:199
+msgid "Duplicate asset_id entries are not allowed."
+msgstr "إدخالات asset_id المكررة غير مسموحة."
+
+#: apps/orders/validators.py:213
+msgid "One or more assets were not found."
+msgstr "لم يتم العثور على أصل واحد أو أكثر."
+
+#: apps/orders/validators.py:279
+msgid "One or more cart assets were not found."
+msgstr "لم يتم العثور على أصل واحد أو أكثر في السلة."
+
+#: apps/packages/models.py:17
+msgid "Exhausted"
+msgstr "مستنفدة"
+
+#: apps/packages/models.py:23
+msgid "Product Created"
+msgstr "تم إنشاء المنتج"
+
+#: apps/packages/models.py:24
+msgid "Pedigree Created"
+msgstr "تم إنشاء النسب"
+
+#: apps/packages/services.py:49 apps/packages/services.py:87
+msgid "Active package has expired."
+msgstr "انتهت صلاحية الباقة النشطة."
+
+#: apps/packages/services.py:58 apps/packages/services.py:151
+msgid "Insufficient package points for this action."
+msgstr "نقاط الباقة غير كافية لهذا الإجراء."
+
+#: apps/packages/services.py:105 apps/packages/services.py:181
+msgid "Unsupported package usage type."
+msgstr "نوع استخدام الباقة غير مدعوم."
+
+#: apps/packages/services.py:125
+msgid "Seller package does not belong to this seller."
+msgstr "باقة البائع لا تنتمي إلى هذا البائع."
+
+#: apps/packages/services.py:133
+msgid "Seller package is not active."
+msgstr "باقة البائع غير نشطة."
+
+#: apps/packages/services.py:240
+msgid "Package was not found."
+msgstr "لم يتم العثور على الباقة."
+
+#: apps/packages/services.py:243
+msgid "Package is not currently available."
+msgstr "الباقة غير متاحة حاليًا."
+
+#: apps/packages/services.py:251
+msgid "A pending request for this package already exists."
+msgstr "يوجد طلب معلق بالفعل لهذه الباقة."
+
+#: apps/packages/services.py:283 apps/packages/services.py:287
+msgid "Active seller package was not found."
+msgstr "لم يتم العثور على باقة بائع نشطة."
+
+#: apps/packages/services.py:306
+msgid "Only pending seller packages can be activated."
+msgstr "يمكن تفعيل باقات البائع المعلقة فقط."
+
+#: apps/packages/services.py:310
+msgid "Seller package is already activated."
+msgstr "باقة البائع مفعّلة بالفعل."
+
+#: apps/packages/services.py:314
+msgid "Referenced package is not currently available."
+msgstr "الباقة المشار إليها غير متاحة حاليًا."
+
+#: apps/packages/services.py:337
+msgid "Seller already has an active package."
+msgstr "لدى البائع باقة نشطة بالفعل."
+
+#: apps/packages/services.py:355
+msgid "Only pending seller packages can be cancelled."
+msgstr "يمكن إلغاء باقات البائع المعلقة فقط."
+
+#: apps/packages/validators.py:50
+msgid "Only seller profiles can request packages."
+msgstr "يمكن لملفات البائعين فقط طلب الباقات."
+
+#: apps/packages/views.py:181
+msgid "Only manager profiles can update seller packages."
+msgstr "يمكن لملفات المديرين فقط تحديث باقات البائع."
+
+#: apps/payments/models.py:17
+msgid "Market"
+msgstr "السوق"
+
+#: apps/payments/models.py:22
+msgid "Payment Request Updated"
+msgstr "تم تحديث طلب الدفع"
+
+#: apps/payments/services.py:79
+msgid "Auction item must be sold."
+msgstr "يجب أن يكون عنصر المزاد مباعًا."
+
+#: apps/payments/services.py:82
+msgid "Only the winning buyer can create this request."
+msgstr "يمكن للمشتري الفائز فقط إنشاء هذا الطلب."
+
+#: apps/payments/services.py:86
+msgid "Auction must be owned by a seller."
+msgstr "يجب أن يكون المزاد مملوكًا لبائع."
+
+#: apps/payments/services.py:115 apps/payments/services.py:170
+msgid "New payment request"
+msgstr "طلب دفع جديد"
+
+#: apps/payments/services.py:116
+msgid "A buyer created a payment request for your auction item."
+msgstr "أنشأ مشترٍ طلب دفع لعنصر المزاد الخاص بك."
+
+#: apps/payments/services.py:139
+msgid "Only the order owner can create this request."
+msgstr "يمكن لمالك الطلب فقط إنشاء هذا الطلب."
+
+#: apps/payments/services.py:142
+msgid "Order item must be approved."
+msgstr "يجب أن يكون عنصر الطلب موافقًا عليه."
+
+#: apps/payments/services.py:171
+msgid "A buyer created a payment request for your order item."
+msgstr "أنشأ مشترٍ طلب دفع لعنصر الطلب الخاص بك."
+
+#: apps/payments/services.py:188
+msgid "Only pending or rejected requests can be updated."
+msgstr "يمكن تحديث الطلبات قيد الانتظار أو المرفوضة فقط."
+
+#: apps/payments/services.py:232
+msgid "Only pending requests can be approved."
+msgstr "يمكن الموافقة على الطلبات قيد الانتظار فقط."
+
+#: apps/payments/services.py:239
+msgid "Unsupported payment request type."
+msgstr "نوع طلب الدفع غير مدعوم."
+
+#: apps/payments/services.py:262
+msgid "Payment request approved"
+msgstr "تمت الموافقة على طلب الدفع"
+
+#: apps/payments/services.py:263
+msgid "The seller approved your payment request."
+msgstr "وافق البائع على طلب الدفع الخاص بك."
+
+#: apps/payments/services.py:281
+msgid "Only pending requests can be rejected."
+msgstr "يمكن رفض الطلبات قيد الانتظار فقط."
+
+#: apps/payments/services.py:308
+msgid "Payment request rejected"
+msgstr "تم رفض طلب الدفع"
+
+#: apps/payments/services.py:309
+msgid "The seller rejected your payment request."
+msgstr "رفض البائع طلب الدفع الخاص بك."
+
+#: apps/payments/services.py:334
+msgid "An active payment request already exists for this asset."
+msgstr "يوجد بالفعل طلب دفع نشط لهذا الأصل."
+
+#: apps/payments/services.py:341
+msgid "Payment requests are not allowed while a block is active."
+msgstr "طلبات الدفع غير مسموحة أثناء وجود حظر نشط."
+
+#: apps/payments/services.py:360
+msgid "Order item must still be approved."
+msgstr "يجب أن يظل عنصر الطلب موافقًا عليه."
+
+#: apps/payments/services.py:363
+msgid "Payment request buyer does not match the order."
+msgstr "مشتري طلب الدفع لا يطابق الطلب."
+
+#: apps/payments/services.py:366
+msgid "Payment request seller does not match the item."
+msgstr "بائع طلب الدفع لا يطابق العنصر."
+
+#: apps/payments/services.py:369 apps/payments/services.py:416
+msgid "Payment request asset does not match the item."
+msgstr "أصل طلب الدفع لا يطابق العنصر."
+
+#: apps/payments/services.py:407
+msgid "Auction item must still be sold."
+msgstr "يجب أن يظل عنصر المزاد مباعًا."
+
+#: apps/payments/services.py:410
+msgid "Payment request buyer does not match the winner."
+msgstr "مشتري طلب الدفع لا يطابق الفائز."
+
+#: apps/payments/services.py:413
+msgid "Payment request seller does not match the auction."
+msgstr "بائع طلب الدفع لا يطابق المزاد."
+
+#: apps/payments/services.py:438
+msgid "Asset is no longer available."
+msgstr "الأصل لم يعد متاحًا."
+
+#: apps/payments/services.py:464
+msgid "Seller does not currently own this asset."
+msgstr "البائع لا يملك هذا الأصل حاليًا."
+
+#: apps/payments/validators.py:11
+msgid "Only customer profiles can create payment requests."
+msgstr "يمكن لملفات العملاء فقط إنشاء طلبات دفع."
+
+#: apps/payments/validators.py:16
+msgid "Only seller profiles can manage payment requests."
+msgstr "يمكن لملفات البائعين فقط إدارة طلبات الدفع."
+
+#: apps/payments/views.py:30
+msgid "Active profile is not allowed for this action."
+msgstr "الملف الشخصي النشط غير مسموح له بهذا الإجراء."
+
+#: apps/pedigrees/models.py:9
+msgid "Uploaded"
+msgstr "تم الرفع"
+
+#: apps/pedigrees/models.py:10
+msgid "Processed"
+msgstr "تمت المعالجة"
+
+#: apps/pedigrees/models.py:11
+msgid "Reviewed"
+msgstr "تمت المراجعة"
+
+#: apps/pedigrees/services.py:133
+msgid "Bird was not found."
+msgstr "لم يتم العثور على الطائر."
+
+#: apps/pedigrees/services.py:144
+msgid "Pedigree document was not found."
+msgstr "لم يتم العثور على مستند النسب."
+
+#: apps/promotions/models.py:13
+msgid "Global"
+msgstr "عام"
+
+#: apps/promotions/models.py:22
+msgid "Percentage"
+msgstr "نسبة مئوية"
+
+#: apps/promotions/models.py:23
+msgid "Fixed Amount"
+msgstr "مبلغ ثابت"
+
+#: apps/promotions/models.py:27
+msgid "All"
+msgstr "الكل"
+
+#: apps/promotions/models.py:28
+msgid "Category"
+msgstr "فئة"
+
+#: apps/promotions/models.py:29
+msgid "Asset"
+msgstr "أصل"
+
+#: apps/promotions/models.py:33
+msgid "Earned"
+msgstr "مكتسب"
+
+#: apps/promotions/models.py:34 apps/promotions/models.py:47
+msgid "Redeemed"
+msgstr "مستخدم"
+
+#: apps/promotions/models.py:35
+msgid "Refunded"
+msgstr "مسترد"
+
+#: apps/promotions/models.py:36
+msgid "Admin Adjustment"
+msgstr "تعديل إداري"
+
+#: apps/promotions/models.py:37
+msgid "Points Purchase"
+msgstr "شراء نقاط"
+
+#: apps/promotions/models.py:41
+msgid "Discount"
+msgstr "خصم"
+
+#: apps/promotions/models.py:42 apps/users/manager_permissions.py:399
+msgid "Cashback"
+msgstr "كاش باك"
+
+#: apps/promotions/models.py:48
+msgid "Expired"
+msgstr "منتهٍ"
+
+#: apps/promotions/models.py:312
+msgid "Allowed redemption amount cannot be negative."
+msgstr "لا يمكن أن يكون مبلغ الاسترداد المسموح به سالبًا."
+
+#: apps/promotions/services.py:321
+msgid "Only manager profiles can adjust cashback balances."
+msgstr "يمكن لملفات المديرين فقط تعديل أرصدة الكاش باك."
+
+#: apps/promotions/services.py:326 apps/users/services.py:49
+msgid "Adjustment amount cannot be zero."
+msgstr "لا يمكن أن يكون مبلغ التعديل صفرًا."
+
+#: apps/promotions/services.py:351
+msgid "Adjustment would make cashback balance negative."
+msgstr "سيجعل هذا التعديل رصيد الكاش باك سالبًا."
+
+#: apps/promotions/services.py:380
+msgid "Cashback amount must be greater than zero."
+msgstr "يجب أن يكون مبلغ الكاش باك أكبر من صفر."
+
+#: apps/promotions/services.py:407
+msgid "Insufficient cashback balance."
+msgstr "رصيد الكاش باك غير كافٍ."
+
+#: apps/promotions/services.py:498
+msgid "Idempotency key was already used for a different cashback transaction."
+msgstr "تم استخدام مفتاح التكرار بالفعل لمعاملة كاش باك مختلفة."
+
+#: apps/promotions/services.py:640
+msgid "Idempotency key is required."
+msgstr "مفتاح التكرار مطلوب."
+
+#: apps/promotions/views.py:225
+msgid "Only customer profiles can view cashback transactions."
+msgstr "يمكن لملفات العملاء فقط عرض معاملات الكاش باك."
+
+#: apps/promotions/views.py:246
+msgid "Only manager profiles can look up customer cashback balance."
+msgstr "يمكن لملفات المديرين فقط الاستعلام عن رصيد كاش باك العميل."
+
+#: apps/promotions/views.py:255
+msgid "Only customer profiles can view cashback balance."
+msgstr "يمكن لملفات العملاء فقط عرض رصيد الكاش باك."
+
+#: apps/races/serializers.py:121
+msgid "Arrival datetime must be after race release datetime."
+msgstr "يجب أن يكون وقت الوصول بعد وقت إطلاق السباق."
+
+#: apps/races/serializers.py:138
+msgid "This bird ring number already exists in this race."
+msgstr "رقم حلقة هذا الطائر موجود بالفعل في هذا السباق."
+
+#: apps/races/serializers.py:256
+msgid "Duplicate bird_ring_number entries are not allowed."
+msgstr "إدخالات bird_ring_number المكررة غير مسموحة."
+
+#: apps/races/serializers.py:267
+msgid "bird_ring_number already exists in this race."
+msgstr "bird_ring_number موجود بالفعل في هذا السباق."
+
+#: apps/ratings/serializers.py:67
+msgid "Rating comments must be created inline."
+msgstr "يجب إنشاء تعليقات التقييم ضمن الطلب نفسه."
+
+#: apps/ratings/validators.py:21
+msgid "Only customer profiles can create ratings."
+msgstr "يمكن لملفات العملاء فقط إنشاء التقييمات."
+
+#: apps/ratings/validators.py:48
+msgid "A completed order item is required to rate this asset."
+msgstr "يلزم عنصر طلب مكتمل لتقييم هذا الأصل."
+
+#: apps/ratings/validators.py:62
+msgid "A completed order item is required to rate this seller."
+msgstr "يلزم عنصر طلب مكتمل لتقييم هذا البائع."
+
+#: apps/ratings/validators.py:73
+msgid "You have already rated this asset."
+msgstr "لقد قيّمت هذا الأصل بالفعل."
+
+#: apps/ratings/validators.py:81
+msgid "You have already rated this seller."
+msgstr "لقد قيّمت هذا البائع بالفعل."
+
+#: apps/ratings/validators.py:97
+msgid "You must wait before commenting again on this target."
+msgstr "يجب الانتظار قبل التعليق مرة أخرى على هذا الهدف."
+
+#: apps/referrals/services.py:40
+msgid "Could not create a unique referral code."
+msgstr "تعذر إنشاء رمز إحالة فريد."
+
+#: apps/referrals/services.py:55
+msgid "Referral code is only valid for new accounts."
+msgstr "رمز الإحالة صالح للحسابات الجديدة فقط."
+
+#: apps/referrals/services.py:65
+msgid "Referral code was not found."
+msgstr "لم يتم العثور على رمز الإحالة."
+
+#: apps/referrals/services.py:68
+msgid "Referral code was already used."
+msgstr "تم استخدام رمز الإحالة بالفعل."
+
+#: apps/referrals/services.py:70
+msgid "Referral code has expired."
+msgstr "انتهت صلاحية رمز الإحالة."
+
+#: apps/referrals/services.py:75
+msgid "Cannot redeem your own referral code."
+msgstr "لا يمكنك استخدام رمز الإحالة الخاص بك."
+
+#: apps/seasons/models.py:10
+msgid "Draft"
+msgstr "مسودة"
+
+#: apps/seasons/models.py:11
+msgid "Calculated"
+msgstr "محسوب"
+
+#: apps/seasons/models.py:12
+msgid "Finalized"
+msgstr "نهائي"
+
+#: apps/seasons/models.py:40
+msgid "Season end must be after start."
+msgstr "يجب أن تكون نهاية الموسم بعد بدايته."
+
+#: apps/seasons/views.py:74
+msgid "Only calculated seasons can be finalized."
+msgstr "يمكن إنهاء المواسم المحسوبة فقط."
+
+#: apps/users/constants.py:6
+msgid "Seller"
+msgstr "بائع"
+
+#: apps/users/constants.py:7
+msgid "Customer"
+msgstr "عميل"
+
+#: apps/users/constants.py:8
+msgid "Manager"
+msgstr "مدير"
+
+#: apps/users/constants.py:12
+msgid "Egypt"
+msgstr "مصر"
+
+#: apps/users/constants.py:13
+msgid "United Arab Emirates"
+msgstr "الإمارات العربية المتحدة"
+
+#: apps/users/constants.py:14
+msgid "Saudi Arabia"
+msgstr "السعودية"
+
+#: apps/users/constants.py:15
+msgid "Kuwait"
+msgstr "الكويت"
+
+#: apps/users/constants.py:16
+msgid "Qatar"
+msgstr "قطر"
+
+#: apps/users/constants.py:17
+msgid "Bahrain"
+msgstr "البحرين"
+
+#: apps/users/constants.py:18
+msgid "Oman"
+msgstr "عُمان"
+
+#: apps/users/constants.py:19
+msgid "Jordan"
+msgstr "الأردن"
+
+#: apps/users/constants.py:20
+msgid "Lebanon"
+msgstr "لبنان"
+
+#: apps/users/constants.py:21
+msgid "Iraq"
+msgstr "العراق"
+
+#: apps/users/constants.py:22
+msgid "Palestine"
+msgstr "فلسطين"
+
+#: apps/users/constants.py:23
+msgid "Morocco"
+msgstr "المغرب"
+
+#: apps/users/constants.py:24
+msgid "Tunisia"
+msgstr "تونس"
+
+#: apps/users/constants.py:25
+msgid "Algeria"
+msgstr "الجزائر"
+
+#: apps/users/constants.py:26
+msgid "Libya"
+msgstr "ليبيا"
+
+#: apps/users/constants.py:27
+msgid "Sudan"
+msgstr "السودان"
+
+#: apps/users/constants.py:28
+msgid "Yemen"
+msgstr "اليمن"
+
+#: apps/users/constants.py:29
+msgid "Syria"
+msgstr "سوريا"
+
+#: apps/users/constants.py:30
+msgid "United States"
+msgstr "الولايات المتحدة"
+
+#: apps/users/constants.py:31
+msgid "European Union"
+msgstr "الاتحاد الأوروبي"
+
+#: apps/users/constants.py:35
+msgid "Egyptian Pound"
+msgstr "جنيه مصري"
+
+#: apps/users/constants.py:36
+msgid "UAE Dirham"
+msgstr "درهم إماراتي"
+
+#: apps/users/constants.py:37
+msgid "Saudi Riyal"
+msgstr "ريال سعودي"
+
+#: apps/users/constants.py:38
+msgid "Kuwaiti Dinar"
+msgstr "دينار كويتي"
+
+#: apps/users/constants.py:39
+msgid "Qatari Riyal"
+msgstr "ريال قطري"
+
+#: apps/users/constants.py:40
+msgid "Bahraini Dinar"
+msgstr "دينار بحريني"
+
+#: apps/users/constants.py:41
+msgid "Omani Rial"
+msgstr "ريال عُماني"
+
+#: apps/users/constants.py:42
+msgid "Jordanian Dinar"
+msgstr "دينار أردني"
+
+#: apps/users/constants.py:43
+msgid "Lebanese Pound"
+msgstr "ليرة لبنانية"
+
+#: apps/users/constants.py:44
+msgid "Iraqi Dinar"
+msgstr "دينار عراقي"
+
+#: apps/users/constants.py:45
+msgid "Israeli Shekel"
+msgstr "شيكل إسرائيلي"
+
+#: apps/users/constants.py:46
+msgid "Moroccan Dirham"
+msgstr "درهم مغربي"
+
+#: apps/users/constants.py:47
+msgid "Tunisian Dinar"
+msgstr "دينار تونسي"
+
+#: apps/users/constants.py:48
+msgid "Algerian Dinar"
+msgstr "دينار جزائري"
+
+#: apps/users/constants.py:49
+msgid "Libyan Dinar"
+msgstr "دينار ليبي"
+
+#: apps/users/constants.py:50
+msgid "Sudanese Pound"
+msgstr "جنيه سوداني"
+
+#: apps/users/constants.py:51
+msgid "Yemeni Rial"
+msgstr "ريال يمني"
+
+#: apps/users/constants.py:52
+msgid "Syrian Pound"
+msgstr "ليرة سورية"
+
+#: apps/users/constants.py:53
+msgid "US Dollar"
+msgstr "دولار أمريكي"
+
+#: apps/users/constants.py:54
+msgid "Euro"
+msgstr "يورو"
+
+#: apps/users/manager_permissions.py:28 apps/users/manager_permissions.py:35
+#: apps/users/manager_permissions.py:42
+msgid "Seller Profiles"
+msgstr "ملفات البائعين"
+
+#: apps/users/manager_permissions.py:29
+msgid "List sellers"
+msgstr "عرض البائعين"
+
+#: apps/users/manager_permissions.py:30
+msgid "View the seller profile directory."
+msgstr "عرض دليل ملفات البائعين."
+
+#: apps/users/manager_permissions.py:36
+msgid "View seller details"
+msgstr "عرض تفاصيل البائع"
+
+#: apps/users/manager_permissions.py:37
+msgid "Open one seller profile record."
+msgstr "فتح سجل ملف بائع واحد."
+
+#: apps/users/manager_permissions.py:43
+msgid "Update sellers"
+msgstr "تحديث البائعين"
+
+#: apps/users/manager_permissions.py:44
+msgid "Edit seller profile moderation and correction fields."
+msgstr "تعديل حقول مراجعة وتصحيح ملفات البائعين."
+
+#: apps/users/manager_permissions.py:49 apps/users/manager_permissions.py:56
+#: apps/users/manager_permissions.py:63
+msgid "Customer Profiles"
+msgstr "ملفات العملاء"
+
+#: apps/users/manager_permissions.py:50
+msgid "List customers"
+msgstr "عرض العملاء"
+
+#: apps/users/manager_permissions.py:51
+msgid "View the customer profile directory."
+msgstr "عرض دليل ملفات العملاء."
+
+#: apps/users/manager_permissions.py:57
+msgid "View customer details"
+msgstr "عرض تفاصيل العميل"
+
+#: apps/users/manager_permissions.py:58
+msgid "Open one customer profile record."
+msgstr "فتح سجل ملف عميل واحد."
+
+#: apps/users/manager_permissions.py:64
+msgid "Update customers"
+msgstr "تحديث العملاء"
+
+#: apps/users/manager_permissions.py:65
+msgid "Edit customer profile moderation and correction fields."
+msgstr "تعديل حقول مراجعة وتصحيح ملفات العملاء."
+
+#: apps/users/manager_permissions.py:70 apps/users/manager_permissions.py:77
+msgid "Managers"
+msgstr "المديرون"
+
+#: apps/users/manager_permissions.py:71
+msgid "List managers"
+msgstr "عرض المديرين"
+
+#: apps/users/manager_permissions.py:72
+msgid "View manager accounts."
+msgstr "عرض حسابات المديرين."
+
+#: apps/users/manager_permissions.py:78
+msgid "View manager details"
+msgstr "عرض تفاصيل المدير"
+
+#: apps/users/manager_permissions.py:79
+msgid "Open one manager account."
+msgstr "فتح حساب مدير واحد."
+
+#: apps/users/manager_permissions.py:84 apps/users/manager_permissions.py:91
+#: apps/users/manager_permissions.py:98 apps/users/manager_permissions.py:105
+#: apps/users/manager_permissions.py:112 apps/users/manager_permissions.py:119
+msgid "Assets"
+msgstr "الأصول"
+
+#: apps/users/manager_permissions.py:85
+msgid "List assets"
+msgstr "عرض الأصول"
+
+#: apps/users/manager_permissions.py:86
+msgid "View birds and market products."
+msgstr "عرض الطيور ومنتجات السوق."
+
+#: apps/users/manager_permissions.py:92
+msgid "View asset details"
+msgstr "عرض تفاصيل الأصل"
+
+#: apps/users/manager_permissions.py:93
+msgid "Open one bird or product record."
+msgstr "فتح سجل طائر أو منتج واحد."
+
+#: apps/users/manager_permissions.py:99
+msgid "Create assets"
+msgstr "إنشاء الأصول"
+
+#: apps/users/manager_permissions.py:100
+msgid "Create product or bird asset records."
+msgstr "إنشاء سجلات منتجات أو طيور."
+
+#: apps/users/manager_permissions.py:106
+msgid "Update assets"
+msgstr "تحديث الأصول"
+
+#: apps/users/manager_permissions.py:107
+msgid "Edit product or bird asset records."
+msgstr "تعديل سجلات المنتجات أو الطيور."
+
+#: apps/users/manager_permissions.py:113
+msgid "Delete assets"
+msgstr "حذف الأصول"
+
+#: apps/users/manager_permissions.py:114
+msgid "Delete product or bird asset records."
+msgstr "حذف سجلات المنتجات أو الطيور."
+
+#: apps/users/manager_permissions.py:120
+msgid "Moderate assets"
+msgstr "مراجعة الأصول"
+
+#: apps/users/manager_permissions.py:121
+msgid "Perform asset moderation actions exposed by admin endpoints."
+msgstr "تنفيذ إجراءات مراجعة الأصول المتاحة عبر نقاط الإدارة."
+
+#: apps/users/manager_permissions.py:126 apps/users/manager_permissions.py:133
+#: apps/users/manager_permissions.py:140 apps/users/manager_permissions.py:147
+#: apps/users/manager_permissions.py:154
+msgid "Platform Products"
+msgstr "منتجات المنصة"
+
+#: apps/users/manager_permissions.py:127
+msgid "List platform products"
+msgstr "عرض منتجات المنصة"
+
+#: apps/users/manager_permissions.py:128
+msgid "View platform-owned supply products."
+msgstr "عرض منتجات المستلزمات المملوكة للمنصة."
+
+#: apps/users/manager_permissions.py:134
+msgid "View platform product details"
+msgstr "عرض تفاصيل منتج المنصة"
+
+#: apps/users/manager_permissions.py:135
+msgid "Open one platform-owned supply product."
+msgstr "فتح منتج مستلزمات مملوك للمنصة."
+
+#: apps/users/manager_permissions.py:141
+msgid "Create platform products"
+msgstr "إنشاء منتجات المنصة"
+
+#: apps/users/manager_permissions.py:142
+msgid "Can create platform-owned supply products."
+msgstr "يمكنه إنشاء منتجات مستلزمات مملوكة للمنصة."
+
+#: apps/users/manager_permissions.py:148
+msgid "Update platform products"
+msgstr "تحديث منتجات المنصة"
+
+#: apps/users/manager_permissions.py:149
+msgid "Edit platform-owned supply products."
+msgstr "تعديل منتجات المستلزمات المملوكة للمنصة."
+
+#: apps/users/manager_permissions.py:155
+msgid "Delete platform products"
+msgstr "حذف منتجات المنصة"
+
+#: apps/users/manager_permissions.py:156
+msgid "Delete or deactivate platform-owned supply products."
+msgstr "حذف أو إلغاء تفعيل منتجات المستلزمات المملوكة للمنصة."
+
+#: apps/users/manager_permissions.py:161 apps/users/manager_permissions.py:168
+#: apps/users/manager_permissions.py:175 apps/users/manager_permissions.py:182
+msgid "Auctions"
+msgstr "المزادات"
+
+#: apps/users/manager_permissions.py:162
+msgid "List auctions"
+msgstr "عرض المزادات"
+
+#: apps/users/manager_permissions.py:163
+msgid "View auction listings."
+msgstr "عرض قوائم المزادات."
+
+#: apps/users/manager_permissions.py:169
+msgid "View auction details"
+msgstr "عرض تفاصيل المزاد"
+
+#: apps/users/manager_permissions.py:170
+msgid "Open one auction record."
+msgstr "فتح سجل مزاد واحد."
+
+#: apps/users/manager_permissions.py:176
+msgid "Cancel auctions"
+msgstr "إلغاء المزادات"
+
+#: apps/users/manager_permissions.py:177
+msgid "Cancel an active auction through the manager flow."
+msgstr "إلغاء مزاد نشط عبر مسار المدير."
+
+#: apps/users/manager_permissions.py:183
+msgid "Close auctions"
+msgstr "إغلاق المزادات"
+
+#: apps/users/manager_permissions.py:184
+msgid "Manually close an auction and resolve winners."
+msgstr "إغلاق مزاد يدويًا وتحديد الفائزين."
+
+#: apps/users/manager_permissions.py:189 apps/users/manager_permissions.py:196
+msgid "Orders"
+msgstr "الطلبات"
+
+#: apps/users/manager_permissions.py:190
+msgid "List orders"
+msgstr "عرض الطلبات"
+
+#: apps/users/manager_permissions.py:191
+msgid "View marketplace orders."
+msgstr "عرض طلبات السوق."
+
+#: apps/users/manager_permissions.py:197
+msgid "View order details"
+msgstr "عرض تفاصيل الطلب"
+
+#: apps/users/manager_permissions.py:198
+msgid "Open one marketplace order."
+msgstr "فتح طلب سوق واحد."
+
+#: apps/users/manager_permissions.py:203 apps/users/manager_permissions.py:210
+msgid "Order Items"
+msgstr "عناصر الطلب"
+
+#: apps/users/manager_permissions.py:204
+msgid "List order items"
+msgstr "عرض عناصر الطلب"
+
+#: apps/users/manager_permissions.py:205
+msgid "View seller order items."
+msgstr "عرض عناصر طلبات البائع."
+
+#: apps/users/manager_permissions.py:211
+msgid "View order item details"
+msgstr "عرض تفاصيل عنصر الطلب"
+
+#: apps/users/manager_permissions.py:212
+msgid "Open one seller order item."
+msgstr "فتح عنصر طلب بائع واحد."
+
+#: apps/users/manager_permissions.py:217 apps/users/manager_permissions.py:224
+msgid "Payments"
+msgstr "المدفوعات"
+
+#: apps/users/manager_permissions.py:218
+msgid "List payment requests"
+msgstr "عرض طلبات الدفع"
+
+#: apps/users/manager_permissions.py:219
+msgid "View manual payment requests."
+msgstr "عرض طلبات الدفع اليدوية."
+
+#: apps/users/manager_permissions.py:225
+msgid "View payment details"
+msgstr "عرض تفاصيل الدفع"
+
+#: apps/users/manager_permissions.py:226
+msgid "Open one manual payment request."
+msgstr "فتح طلب دفع يدوي واحد."
+
+#: apps/users/manager_permissions.py:231 apps/users/manager_permissions.py:238
+#: apps/users/manager_permissions.py:245 apps/users/manager_permissions.py:252
+#: apps/users/manager_permissions.py:259 apps/users/manager_permissions.py:266
+msgid "Complaints"
+msgstr "الشكاوى"
+
+#: apps/users/manager_permissions.py:232
+msgid "List complaints"
+msgstr "عرض الشكاوى"
+
+#: apps/users/manager_permissions.py:233
+msgid "View complaint records."
+msgstr "عرض سجلات الشكاوى."
+
+#: apps/users/manager_permissions.py:239
+msgid "View complaint details"
+msgstr "عرض تفاصيل الشكوى"
+
+#: apps/users/manager_permissions.py:240
+msgid "Open one complaint record."
+msgstr "فتح سجل شكوى واحد."
+
+#: apps/users/manager_permissions.py:246
+msgid "Mark in review"
+msgstr "تمييز قيد المراجعة"
+
+#: apps/users/manager_permissions.py:247
+msgid "Move a complaint into review."
+msgstr "نقل شكوى إلى المراجعة."
+
+#: apps/users/manager_permissions.py:253
+msgid "Resolve complaints"
+msgstr "حل الشكاوى"
+
+#: apps/users/manager_permissions.py:254
+msgid "Resolve an open or in-review complaint."
+msgstr "حل شكوى مفتوحة أو قيد المراجعة."
+
+#: apps/users/manager_permissions.py:260
+msgid "Reject complaints"
+msgstr "رفض الشكاوى"
+
+#: apps/users/manager_permissions.py:261
+msgid "Reject an open or in-review complaint."
+msgstr "رفض شكوى مفتوحة أو قيد المراجعة."
+
+#: apps/users/manager_permissions.py:267
+msgid "Reopen complaints"
+msgstr "إعادة فتح الشكاوى"
+
+#: apps/users/manager_permissions.py:268
+msgid "Reopen a resolved or rejected complaint."
+msgstr "إعادة فتح شكوى محلولة أو مرفوضة."
+
+#: apps/users/manager_permissions.py:273 apps/users/manager_permissions.py:280
+#: apps/users/manager_permissions.py:287 apps/users/manager_permissions.py:294
+#: apps/users/manager_permissions.py:301
+msgid "Packages"
+msgstr "الباقات"
+
+#: apps/users/manager_permissions.py:274
+msgid "List packages"
+msgstr "عرض الباقات"
+
+#: apps/users/manager_permissions.py:275
+msgid "View package plans."
+msgstr "عرض خطط الباقات."
+
+#: apps/users/manager_permissions.py:281
+msgid "View package details"
+msgstr "عرض تفاصيل الباقة"
+
+#: apps/users/manager_permissions.py:282
+msgid "Open one package plan."
+msgstr "فتح خطة باقة واحدة."
+
+#: apps/users/manager_permissions.py:288
+msgid "Create packages"
+msgstr "إنشاء الباقات"
+
+#: apps/users/manager_permissions.py:289
+msgid "Create package plans."
+msgstr "إنشاء خطط الباقات."
+
+#: apps/users/manager_permissions.py:295
+msgid "Update packages"
+msgstr "تحديث الباقات"
+
+#: apps/users/manager_permissions.py:296
+msgid "Edit package plans."
+msgstr "تعديل خطط الباقات."
+
+#: apps/users/manager_permissions.py:302
+msgid "Delete packages"
+msgstr "حذف الباقات"
+
+#: apps/users/manager_permissions.py:303
+msgid "Delete package plans."
+msgstr "حذف خطط الباقات."
+
+#: apps/users/manager_permissions.py:308 apps/users/manager_permissions.py:315
+#: apps/users/manager_permissions.py:322 apps/users/manager_permissions.py:329
+msgid "Seller Packages"
+msgstr "باقات البائع"
+
+#: apps/users/manager_permissions.py:309
+msgid "List seller packages"
+msgstr "عرض باقات البائع"
+
+#: apps/users/manager_permissions.py:310
+msgid "View seller package requests."
+msgstr "عرض طلبات باقات البائع."
+
+#: apps/users/manager_permissions.py:316
+msgid "View seller package details"
+msgstr "عرض تفاصيل باقة البائع"
+
+#: apps/users/manager_permissions.py:317
+msgid "Open one seller package request."
+msgstr "فتح طلب باقة بائع واحد."
+
+#: apps/users/manager_permissions.py:323
+msgid "Activate seller packages"
+msgstr "تفعيل باقات البائع"
+
+#: apps/users/manager_permissions.py:324
+msgid "Activate a seller package request."
+msgstr "تفعيل طلب باقة بائع."
+
+#: apps/users/manager_permissions.py:330
+msgid "Cancel seller packages"
+msgstr "إلغاء باقات البائع"
+
+#: apps/users/manager_permissions.py:331
+msgid "Cancel a seller package request."
+msgstr "إلغاء طلب باقة بائع."
+
+#: apps/users/manager_permissions.py:336 apps/users/manager_permissions.py:343
+#: apps/users/manager_permissions.py:350 apps/users/manager_permissions.py:357
+msgid "Discount Offers"
+msgstr "عروض الخصم"
+
+#: apps/users/manager_permissions.py:337
+msgid "List discount offers"
+msgstr "عرض عروض الخصم"
+
+#: apps/users/manager_permissions.py:338
+msgid "View admin discount offers."
+msgstr "عرض عروض الخصم الإدارية."
+
+#: apps/users/manager_permissions.py:344
+msgid "Create discount offers"
+msgstr "إنشاء عروض الخصم"
+
+#: apps/users/manager_permissions.py:345
+msgid "Create admin discount offers."
+msgstr "إنشاء عروض خصم إدارية."
+
+#: apps/users/manager_permissions.py:351
+msgid "Activate discount offers"
+msgstr "تفعيل عروض الخصم"
+
+#: apps/users/manager_permissions.py:352
+msgid "Activate a discount offer."
+msgstr "تفعيل عرض خصم."
+
+#: apps/users/manager_permissions.py:358
+msgid "Deactivate discount offers"
+msgstr "إلغاء تفعيل عروض الخصم"
+
+#: apps/users/manager_permissions.py:359
+msgid "Deactivate a discount offer."
+msgstr "إلغاء تفعيل عرض خصم."
+
+#: apps/users/manager_permissions.py:364 apps/users/manager_permissions.py:371
+#: apps/users/manager_permissions.py:378 apps/users/manager_permissions.py:385
+msgid "Cashback Offers"
+msgstr "عروض الكاش باك"
+
+#: apps/users/manager_permissions.py:365
+msgid "List cashback offers"
+msgstr "عرض عروض الكاش باك"
+
+#: apps/users/manager_permissions.py:366
+msgid "View admin cashback offers."
+msgstr "عرض عروض الكاش باك الإدارية."
+
+#: apps/users/manager_permissions.py:372
+msgid "Create cashback offers"
+msgstr "إنشاء عروض كاش باك"
+
+#: apps/users/manager_permissions.py:373
+msgid "Create admin cashback offers."
+msgstr "إنشاء عروض كاش باك إدارية."
+
+#: apps/users/manager_permissions.py:379
+msgid "Activate cashback offers"
+msgstr "تفعيل عروض الكاش باك"
+
+#: apps/users/manager_permissions.py:380
+msgid "Activate a cashback offer."
+msgstr "تفعيل عرض كاش باك."
+
+#: apps/users/manager_permissions.py:386
+msgid "Deactivate cashback offers"
+msgstr "إلغاء تفعيل عروض الكاش باك"
+
+#: apps/users/manager_permissions.py:387
+msgid "Deactivate a cashback offer."
+msgstr "إلغاء تفعيل عرض كاش باك."
+
+#: apps/users/manager_permissions.py:392
+msgid "Cashback Transactions"
+msgstr "معاملات الكاش باك"
+
+#: apps/users/manager_permissions.py:393
+msgid "List cashback transactions"
+msgstr "عرض معاملات الكاش باك"
+
+#: apps/users/manager_permissions.py:394
+msgid "View customer cashback transactions."
+msgstr "عرض معاملات كاش باك العميل."
+
+#: apps/users/manager_permissions.py:400
+msgid "View cashback balance"
+msgstr "عرض رصيد الكاش باك"
+
+#: apps/users/manager_permissions.py:401
+msgid "View a customer's cashback balance."
+msgstr "عرض رصيد كاش باك لعميل."
+
+#: apps/users/manager_permissions.py:406
+msgid "Cashback Adjustments"
+msgstr "تعديلات الكاش باك"
+
+#: apps/users/manager_permissions.py:407
+msgid "Create cashback adjustments"
+msgstr "إنشاء تعديلات كاش باك"
+
+#: apps/users/manager_permissions.py:408
+msgid "Create manual cashback adjustments."
+msgstr "إنشاء تعديلات كاش باك يدوية."
+
+#: apps/users/manager_permissions.py:413
+msgid "Profile Balances"
+msgstr "أرصدة الملفات الشخصية"
+
+#: apps/users/manager_permissions.py:414
+msgid "Adjust profile balances"
+msgstr "تعديل أرصدة الملفات الشخصية"
+
+#: apps/users/manager_permissions.py:415
+msgid "Create ledger-backed customer or seller balance adjustments."
+msgstr "إنشاء تعديلات رصيد للعميل أو البائع مدعومة بدفتر القيود."
+
+#: apps/users/manager_permissions.py:420 apps/users/manager_permissions.py:427
+#: apps/users/manager_permissions.py:434
+msgid "Lucky Wheel Prizes"
+msgstr "جوائز عجلة الحظ"
+
+#: apps/users/manager_permissions.py:421
+msgid "List prizes"
+msgstr "عرض الجوائز"
+
+#: apps/users/manager_permissions.py:422
+msgid "View lucky wheel prize configuration."
+msgstr "عرض إعدادات جوائز عجلة الحظ."
+
+#: apps/users/manager_permissions.py:428
+msgid "Create prizes"
+msgstr "إنشاء الجوائز"
+
+#: apps/users/manager_permissions.py:429
+msgid "Create lucky wheel prize configuration."
+msgstr "إنشاء إعدادات جوائز عجلة الحظ."
+
+#: apps/users/manager_permissions.py:435
+msgid "Update prizes"
+msgstr "تحديث الجوائز"
+
+#: apps/users/manager_permissions.py:436
+msgid "Update lucky wheel prize configuration."
+msgstr "تحديث إعدادات جوائز عجلة الحظ."
+
+#: apps/users/manager_permissions.py:441
+msgid "Lucky Wheel Spins"
+msgstr "لفات عجلة الحظ"
+
+#: apps/users/manager_permissions.py:442
+msgid "List spins"
+msgstr "عرض اللفات"
+
+#: apps/users/manager_permissions.py:443
+msgid "View lucky wheel spin history."
+msgstr "عرض سجل لفات عجلة الحظ."
+
+#: apps/users/manager_permissions.py:448 apps/users/manager_permissions.py:455
+#: apps/users/manager_permissions.py:462 apps/users/manager_permissions.py:469
+#: apps/users/manager_permissions.py:476
+msgid "Seasons"
+msgstr "المواسم"
+
+#: apps/users/manager_permissions.py:449
+msgid "List seasons"
+msgstr "عرض المواسم"
+
+#: apps/users/manager_permissions.py:450
+msgid "View reward seasons."
+msgstr "عرض مواسم المكافآت."
+
+#: apps/users/manager_permissions.py:456
+msgid "Create seasons"
+msgstr "إنشاء المواسم"
+
+#: apps/users/manager_permissions.py:457
+msgid "Create reward seasons."
+msgstr "إنشاء مواسم مكافآت."
+
+#: apps/users/manager_permissions.py:463
+msgid "Update seasons"
+msgstr "تحديث المواسم"
+
+#: apps/users/manager_permissions.py:464
+msgid "Update reward season configuration."
+msgstr "تحديث إعدادات موسم المكافآت."
+
+#: apps/users/manager_permissions.py:470
+msgid "Calculate winners"
+msgstr "حساب الفائزين"
+
+#: apps/users/manager_permissions.py:471
+msgid "Calculate season seller insights and winner rewards."
+msgstr "حساب رؤى بائعي الموسم ومكافآت الفائزين."
+
+#: apps/users/manager_permissions.py:477
+msgid "Finalize seasons"
+msgstr "إنهاء المواسم"
+
+#: apps/users/manager_permissions.py:478
+msgid "Finalize a calculated reward season without recalculating rewards."
+msgstr "إنهاء موسم مكافآت محسوب دون إعادة حساب المكافآت."
+
+#: apps/users/manager_permissions.py:483
+msgid "Season Insights"
+msgstr "رؤى الموسم"
+
+#: apps/users/manager_permissions.py:484
+msgid "List seller insights"
+msgstr "عرض رؤى البائعين"
+
+#: apps/users/manager_permissions.py:485
+msgid "View season seller insight snapshots."
+msgstr "عرض لقطات رؤى بائعي الموسم."
+
+#: apps/users/manager_permissions.py:490 apps/users/manager_permissions.py:497
+#: apps/users/manager_permissions.py:504 apps/users/manager_permissions.py:511
+#: apps/users/manager_permissions.py:518
+msgid "Races"
+msgstr "السباقات"
+
+#: apps/users/manager_permissions.py:491
+msgid "List races"
+msgstr "عرض السباقات"
+
+#: apps/users/manager_permissions.py:492
+msgid "View races."
+msgstr "عرض السباقات."
+
+#: apps/users/manager_permissions.py:498
+msgid "View race details"
+msgstr "عرض تفاصيل السباق"
+
+#: apps/users/manager_permissions.py:499
+msgid "Open one race."
+msgstr "فتح سباق واحد."
+
+#: apps/users/manager_permissions.py:505
+msgid "Create races"
+msgstr "إنشاء السباقات"
+
+#: apps/users/manager_permissions.py:506
+msgid "Create race records."
+msgstr "إنشاء سجلات السباقات."
+
+#: apps/users/manager_permissions.py:512
+msgid "Update races"
+msgstr "تحديث السباقات"
+
+#: apps/users/manager_permissions.py:513
+msgid "Edit race records."
+msgstr "تعديل سجلات السباقات."
+
+#: apps/users/manager_permissions.py:519
+msgid "Delete races"
+msgstr "حذف السباقات"
+
+#: apps/users/manager_permissions.py:520
+msgid "Delete race records."
+msgstr "حذف سجلات السباقات."
+
+#: apps/users/manager_permissions.py:525 apps/users/manager_permissions.py:532
+#: apps/users/manager_permissions.py:539 apps/users/manager_permissions.py:546
+#: apps/users/manager_permissions.py:553
+msgid "Race Results"
+msgstr "نتائج السباقات"
+
+#: apps/users/manager_permissions.py:526
+msgid "List race results"
+msgstr "عرض نتائج السباقات"
+
+#: apps/users/manager_permissions.py:527
+msgid "View race results."
+msgstr "عرض نتائج السباقات."
+
+#: apps/users/manager_permissions.py:533
+msgid "View race result details"
+msgstr "عرض تفاصيل نتيجة السباق"
+
+#: apps/users/manager_permissions.py:534
+msgid "Open one race result."
+msgstr "فتح نتيجة سباق واحدة."
+
+#: apps/users/manager_permissions.py:540
+msgid "Create race results"
+msgstr "إنشاء نتائج السباقات"
+
+#: apps/users/manager_permissions.py:541
+msgid "Create race result records."
+msgstr "إنشاء سجلات نتائج السباقات."
+
+#: apps/users/manager_permissions.py:547
+msgid "Update race results"
+msgstr "تحديث نتائج السباقات"
+
+#: apps/users/manager_permissions.py:548
+msgid "Edit race result records."
+msgstr "تعديل سجلات نتائج السباقات."
+
+#: apps/users/manager_permissions.py:554
+msgid "Delete race results"
+msgstr "حذف نتائج السباقات"
+
+#: apps/users/manager_permissions.py:555
+msgid "Delete race result records."
+msgstr "حذف سجلات نتائج السباقات."
+
+#: apps/users/manager_permissions.py:560 apps/users/manager_permissions.py:567
+#: apps/users/manager_permissions.py:574
+msgid "Pedigree Documents"
+msgstr "مستندات النسب"
+
+#: apps/users/manager_permissions.py:561
+msgid "List pedigree documents"
+msgstr "عرض مستندات النسب"
+
+#: apps/users/manager_permissions.py:562
+msgid "View pedigree OCR documents."
+msgstr "عرض مستندات OCR للنسب."
+
+#: apps/users/manager_permissions.py:568
+msgid "View pedigree documents"
+msgstr "عرض مستندات النسب"
+
+#: apps/users/manager_permissions.py:569
+msgid "Open one pedigree OCR document."
+msgstr "فتح مستند OCR للنسب واحد."
+
+#: apps/users/manager_permissions.py:575
+msgid "Review pedigree documents"
+msgstr "مراجعة مستندات النسب"
+
+#: apps/users/manager_permissions.py:576
+msgid "Review corrected OCR extraction fields."
+msgstr "مراجعة حقول استخراج OCR المصححة."
+
+#: apps/users/manager_permissions.py:581 apps/users/manager_permissions.py:588
+msgid "Feed Blocks"
+msgstr "حظورات الخلاصة"
+
+#: apps/users/manager_permissions.py:582
+msgid "List feed blocks"
+msgstr "عرض حظورات الخلاصة"
+
+#: apps/users/manager_permissions.py:583
+msgid "View seller/customer block records exposed by moderation endpoints."
+msgstr "عرض سجلات حظر البائع/العميل المتاحة عبر نقاط المراجعة."
+
+#: apps/users/manager_permissions.py:589
+msgid "Remove feed blocks"
+msgstr "إزالة حظورات الخلاصة"
+
+#: apps/users/manager_permissions.py:590
+msgid "Remove seller/customer block records exposed by moderation endpoints."
+msgstr "إزالة سجلات حظر البائع/العميل المتاحة عبر نقاط المراجعة."
+
+#: apps/users/manager_permissions.py:595
+msgid "Feed Sellers"
+msgstr "بائعو الخلاصة"
+
+#: apps/users/manager_permissions.py:596
+msgid "List feed sellers"
+msgstr "عرض بائعي الخلاصة"
+
+#: apps/users/manager_permissions.py:597
+msgid "View seller feed entries."
+msgstr "عرض عناصر خلاصة البائع."
+
+#: apps/users/manager_permissions.py:602
+msgid "Feed Auctions"
+msgstr "مزادات الخلاصة"
+
+#: apps/users/manager_permissions.py:603
+msgid "List auction feed"
+msgstr "عرض خلاصة المزادات"
+
+#: apps/users/manager_permissions.py:604
+msgid "View auction feed entries."
+msgstr "عرض عناصر خلاصة المزادات."
+
+#: apps/users/manager_permissions.py:609
+msgid "Feed Market"
+msgstr "سوق الخلاصة"
+
+#: apps/users/manager_permissions.py:610
+msgid "List market feed"
+msgstr "عرض خلاصة السوق"
+
+#: apps/users/manager_permissions.py:611
+msgid "View market feed entries."
+msgstr "عرض عناصر خلاصة السوق."
+
+#: apps/users/manager_permissions.py:616 apps/users/manager_permissions.py:623
+#: apps/users/manager_permissions.py:630
+msgid "Ratings"
+msgstr "التقييمات"
+
+#: apps/users/manager_permissions.py:617
+msgid "List ratings"
+msgstr "عرض التقييمات"
+
+#: apps/users/manager_permissions.py:618
+msgid "View ratings and comments."
+msgstr "عرض التقييمات والتعليقات."
+
+#: apps/users/manager_permissions.py:624
+msgid "View rating details"
+msgstr "عرض تفاصيل التقييم"
+
+#: apps/users/manager_permissions.py:625
+msgid "Open one rating or comment record."
+msgstr "فتح سجل تقييم أو تعليق واحد."
+
+#: apps/users/manager_permissions.py:631
+msgid "Delete ratings"
+msgstr "حذف التقييمات"
+
+#: apps/users/manager_permissions.py:632
+msgid "Delete rating or comment records."
+msgstr "حذف سجلات التقييم أو التعليق."
+
+#: apps/users/manager_permissions.py:637 apps/users/manager_permissions.py:644
+#: apps/users/manager_permissions.py:651
+msgid "Comments"
+msgstr "التعليقات"
+
+#: apps/users/manager_permissions.py:638
+msgid "List comments"
+msgstr "عرض التعليقات"
+
+#: apps/users/manager_permissions.py:639
+msgid "View comment records."
+msgstr "عرض سجلات التعليقات."
+
+#: apps/users/manager_permissions.py:645
+msgid "View comment details"
+msgstr "عرض تفاصيل التعليق"
+
+#: apps/users/manager_permissions.py:646
+msgid "Open one comment record."
+msgstr "فتح سجل تعليق واحد."
+
+#: apps/users/manager_permissions.py:652
+msgid "Delete comments"
+msgstr "حذف التعليقات"
+
+#: apps/users/manager_permissions.py:653
+msgid "Delete comment records."
+msgstr "حذف سجلات التعليقات."
+
+#: apps/users/manager_permissions.py:658 apps/users/manager_permissions.py:665
+#: apps/users/manager_permissions.py:672
+msgid "Notifications"
+msgstr "الإشعارات"
+
+#: apps/users/manager_permissions.py:659
+msgid "List notifications"
+msgstr "عرض الإشعارات"
+
+#: apps/users/manager_permissions.py:660
+msgid "View notification records for the active profile."
+msgstr "عرض سجلات الإشعارات للملف الشخصي النشط."
+
+#: apps/users/manager_permissions.py:666
+msgid "Create notifications"
+msgstr "إنشاء الإشعارات"
+
+#: apps/users/manager_permissions.py:667
+msgid "Create one manual in-app notification for a selected profile."
+msgstr "إنشاء إشعار يدوي داخل التطبيق لملف شخصي محدد."
+
+#: apps/users/manager_permissions.py:673
+msgid "View notification details"
+msgstr "عرض تفاصيل الإشعار"
+
+#: apps/users/manager_permissions.py:674
+msgid "Open one notification record."
+msgstr "فتح سجل إشعار واحد."
+
+#: apps/users/manager_permissions.py:679
+msgid "Seller Insights"
+msgstr "رؤى البائع"
+
+#: apps/users/manager_permissions.py:680
+msgid "View seller home insights"
+msgstr "عرض رؤى الصفحة الرئيسية للبائع"
+
+#: apps/users/manager_permissions.py:681
+msgid "View seller home insight summaries when exposed by manager endpoints."
+msgstr ""
+"عرض ملخصات رؤى الصفحة الرئيسية للبائع عندما تكون متاحة عبر نقاط المدير."
+
+#: apps/users/manager_permissions.py:705 apps/users/manager_permissions.py:790
+#, python-format
+msgid "Invalid permission code: %(permission)s"
+msgstr "رمز الصلاحية غير صالح: %(permission)s"
+
+#: apps/users/manager_permissions.py:774
+msgid "Permissions must be a list."
+msgstr "يجب أن تكون الصلاحيات قائمة."
+
+#: apps/users/manager_permissions.py:781
+msgid "Each permission must be a string."
+msgstr "يجب أن تكون كل صلاحية نصًا."
+
+#: apps/users/models.py:26
+msgid "Only updated to True by admin once the profile created"
+msgstr "يتم تحديثه إلى True بواسطة المدير فقط بعد إنشاء الملف الشخصي"
+
+#: apps/users/models.py:29
+msgid "Indecate which profile is the main now"
+msgstr "يحدد أي ملف شخصي هو الرئيسي الآن"
+
+#: apps/users/models.py:33
+msgid "will be \"False\" if profile is under punishment"
+msgstr "سيكون \"False\" إذا كان الملف الشخصي تحت عقوبة"
+
+#: apps/users/models.py:82
+msgid "Manager accounts cannot coexist with customer or seller profiles."
+msgstr "لا يمكن أن تتعايش حسابات المديرين مع ملفات العملاء أو البائعين."
+
+#: apps/users/models.py:93
+msgid "Customer or seller profiles cannot be created for a manager account."
+msgstr "لا يمكن إنشاء ملفات عملاء أو بائعين لحساب مدير."
+
+#: apps/users/models.py:146
+msgid "System Credit"
+msgstr "رصيد نظام"
+
+#: apps/users/models.py:147
+msgid "System Debit"
+msgstr "خصم نظام"
+
+#: apps/users/serializers.py:317
+msgid "user account with this phone number already exists."
+msgstr "يوجد بالفعل حساب مستخدم برقم الهاتف هذا."
+
+#: apps/users/services.py:42
+msgid "Only manager profiles can adjust balances."
+msgstr "يمكن لـ المدير الملفات الشخصية فقط adjust الأرصدة."
+
+#: apps/users/services.py:68
+msgid "Only customer and seller balances are adjustable."
+msgstr "يمكن تعديل أرصدة العملاء والبائعين فقط."
+
+#: apps/users/services.py:74
+msgid "Adjustment would make profile balance negative."
+msgstr "Adjustment would make الملف الشخصي الرصيد negative."
+
+#: apps/users/services.py:151
+msgid "Authentication credentials were not provided."
+msgstr "Authentication credentials were not provided."
+
+#: apps/users/services.py:163
+msgid "Only an active manager profile can use manager permissions."
+msgstr "يمكن لـ نشط المدير الملف الشخصي فقط use المدير permissions."
+
+#: apps/users/services.py:168
+#, python-format
+msgid "Missing required manager permission: %(permission)s"
+msgstr "Missing مطلوب المدير permission: %(permission)s"
+
+#: apps/users/views.py:80
+msgid "Only superusers can create managers."
+msgstr "يمكن لـ superusers فقط create المديرين."
+
+#: apps/users/views.py:95
+msgid "Only superusers can update managers."
+msgstr "يمكن لـ superusers فقط update المديرين."
+
+#: apps/users/views.py:112
+msgid "Only superusers can delete managers."
+msgstr "يمكن لـ superusers فقط delete المديرين."
+
+#: apps/users/views.py:189
+msgid "Manager accounts cannot create seller profiles"
+msgstr "المدير accounts cannot create البائع الملفات الشخصية"
+
+#: apps/users/views.py:194
+msgid "Profile already exists"
+msgstr "الملف الشخصي بالفعل exists"
+
+#: apps/users/views.py:219
+msgid "Seller profile created successfully"
+msgstr "البائع الملف الشخصي created successfully"
+
+#: apps/users/views.py:260
+msgid "Manager accounts cannot create customer profiles"
+msgstr "المدير accounts cannot create العميل الملفات الشخصية"
+
+#~ msgid "SECRET_KEY is not set"
+#~ msgstr "لم يتم ضبط SECRET_KEY"
+
+#~ msgid "ALLOWED_HOSTS is not set"
+#~ msgstr "لم يتم ضبط ALLOWED_HOSTS"

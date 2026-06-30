@@ -5,6 +5,7 @@ from celery import shared_task
 from apps.chat.models import Message
 from apps.notifications.models import NotificationType
 from apps.notifications.services import NotificationService
+from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def send_chat_message_notification(message_id):
         recipient_profile=message.receiver,
         actor_profile=message.sender,
         notification_type=NotificationType.CHAT_MESSAGE_RECEIVED,
-        title="New message received",
+        title=_("New message received"),
         body=message.body,
         object_type="message",
         object_id=message.pk,

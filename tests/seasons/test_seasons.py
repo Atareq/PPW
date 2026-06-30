@@ -16,7 +16,10 @@ pytestmark = pytest.mark.django_db
 def authenticated_client(user):
     client = APIClient()
     refresh = build_token_for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}",
+        HTTP_ACCEPT_LANGUAGE="en",
+    )
     return client
 
 

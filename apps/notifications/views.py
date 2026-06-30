@@ -1,6 +1,7 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -63,7 +64,7 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         else:
             actor_profile = active_profile(request)
             if actor_profile.type != ProfileType.MANAGER:
-                raise PermissionDenied("Only managers can create manual notifications.")
+                raise PermissionDenied(_("Only managers can create manual notifications."))
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

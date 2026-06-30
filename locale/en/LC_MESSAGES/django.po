@@ -1,0 +1,2856 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PPW\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-30 18:49+0300\n"
+"PO-Revision-Date: 2026-06-30 18:35+0300\n"
+"Last-Translator: PPW Backend <dev@local>\n"
+"Language-Team: PPW Backend <dev@local>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+
+#: apps/assets/models.py:12
+msgid "Bird"
+msgstr "Bird"
+
+#: apps/assets/models.py:13
+msgid "Supply"
+msgstr "Supply"
+
+#: apps/assets/models.py:14
+msgid "Accessory"
+msgstr "Accessory"
+
+#: apps/assets/models.py:15
+msgid "Feed"
+msgstr "Feed"
+
+#: apps/assets/models.py:16
+msgid "Supplement"
+msgstr "Supplement"
+
+#: apps/assets/models.py:20
+msgid "Available"
+msgstr "Available"
+
+#: apps/assets/models.py:21 apps/auctions/models.py:28
+msgid "Sold"
+msgstr "Sold"
+
+#: apps/assets/models.py:22
+msgid "Inactive"
+msgstr "Inactive"
+
+#: apps/assets/models.py:26
+msgid "Seller Market"
+msgstr "Seller Market"
+
+#: apps/assets/models.py:27
+msgid "Platform"
+msgstr "Platform"
+
+#: apps/assets/models.py:114
+msgid "Male"
+msgstr "Male"
+
+#: apps/assets/models.py:115
+msgid "Female"
+msgstr "Female"
+
+#: apps/assets/models.py:116
+msgid "Young"
+msgstr "Young"
+
+#: apps/assets/models.py:146
+msgid "Excellent"
+msgstr "Excellent"
+
+#: apps/assets/models.py:147
+msgid "VeryGood"
+msgstr "VeryGood"
+
+#: apps/assets/models.py:148
+msgid "Good"
+msgstr "Good"
+
+#: apps/assets/serializer.py:27
+msgid "images is no longer supported. Use media instead."
+msgstr "images is no longer supported. Use media instead."
+
+#: apps/assets/serializer.py:34
+msgid "thumbnail_url is no longer supported. Use media instead."
+msgstr "thumbnail_url is no longer supported. Use media instead."
+
+#: apps/assets/serializer.py:78
+msgid "Owner profile is required."
+msgstr "Owner profile is required."
+
+#: apps/assets/services.py:128
+msgid "Only seller profiles can create product assets."
+msgstr "Only seller profiles can create product assets."
+
+#: apps/assets/services.py:164
+msgid ""
+"Supply products are platform-controlled and cannot be created by sellers."
+msgstr ""
+"Supply products are platform-controlled and cannot be created by sellers."
+
+#: apps/auctions/models.py:17
+msgid "Single Bird"
+msgstr "Single Bird"
+
+#: apps/auctions/models.py:18
+msgid "Multi-Bird Independent"
+msgstr "Multi-Bird Independent"
+
+#: apps/auctions/models.py:19
+msgid "Pair (Male + Female)"
+msgstr "Pair (Male + Female)"
+
+#: apps/auctions/models.py:20
+msgid "Breeding/Squab Pair"
+msgstr "Breeding/Squab Pair"
+
+#: apps/auctions/models.py:21
+msgid "Racing/Loft Group"
+msgstr "Racing/Loft Group"
+
+#: apps/auctions/models.py:27 apps/auctions/models.py:37
+#: apps/orders/models.py:13 apps/packages/models.py:16
+#: apps/promotions/models.py:46
+msgid "Active"
+msgstr "Active"
+
+#: apps/auctions/models.py:29
+msgid "Unsold"
+msgstr "Unsold"
+
+#: apps/auctions/models.py:30
+msgid "Withdrawn"
+msgstr "Withdrawn"
+
+#: apps/auctions/models.py:31 apps/auctions/models.py:39
+#: apps/complaints/models.py:18 apps/orders/models.py:22
+#: apps/orders/models.py:36 apps/packages/models.py:18
+#: apps/payments/models.py:12 apps/promotions/models.py:49
+msgid "Cancelled"
+msgstr "Cancelled"
+
+#: apps/auctions/models.py:38
+msgid "Ended"
+msgstr "Ended"
+
+#: apps/auctions/models.py:40
+msgid "Closed"
+msgstr "Closed"
+
+#: apps/auctions/models.py:77
+msgid "Minutes to extend auction if bid placed in final window"
+msgstr "Minutes to extend auction if bid placed in final window"
+
+#: apps/auctions/models.py:92
+msgid "Days after auction end to complete payment"
+msgstr "Days after auction end to complete payment"
+
+#: apps/auctions/models.py:101
+msgid "Minimum amount next bid must exceed current"
+msgstr "Minimum amount next bid must exceed current"
+
+#: apps/auctions/models.py:111
+msgid "Instant buy price for this item"
+msgstr "Instant buy price for this item"
+
+#: apps/auctions/models.py:116
+msgid "Whether this auction is visible to the public"
+msgstr "Whether this auction is visible to the public"
+
+#: apps/auctions/models.py:203
+msgid "Minimum starting price for bids"
+msgstr "Minimum starting price for bids"
+
+#: apps/auctions/models.py:319 apps/packages/models.py:22
+msgid "Auction Created"
+msgstr "Auction Created"
+
+#: apps/auctions/models.py:320
+msgid "Auction Published"
+msgstr "Auction Published"
+
+#: apps/auctions/models.py:321
+msgid "Auction Started"
+msgstr "Auction Started"
+
+#: apps/auctions/models.py:322
+msgid "Bid Placed"
+msgstr "Bid Placed"
+
+#: apps/auctions/models.py:323
+msgid "Auto-Extended"
+msgstr "Auto-Extended"
+
+#: apps/auctions/models.py:324
+msgid "Buy Now Triggered"
+msgstr "Buy Now Triggered"
+
+#: apps/auctions/models.py:325
+msgid "Item Sold"
+msgstr "Item Sold"
+
+#: apps/auctions/models.py:326
+msgid "Auction Ended"
+msgstr "Auction Ended"
+
+#: apps/auctions/models.py:327
+msgid "Auction Cancelled"
+msgstr "Auction Cancelled"
+
+#: apps/auctions/serializers.py:477
+msgid "Start time must be before end time"
+msgstr "Start time must be before end time"
+
+#: apps/auctions/serializers.py:482
+msgid "Start time must be in the future"
+msgstr "Start time must be in the future"
+
+#: apps/auctions/serializers.py:489
+msgid "Required when auto_extend_enabled=True"
+msgstr "Required when auto_extend_enabled=True"
+
+#: apps/auctions/serializers.py:496
+msgid "Required when deposit_required=True"
+msgstr "Required when deposit_required=True"
+
+#: apps/auctions/serializers.py:502
+msgid "Required when buy_now_enabled=True"
+msgstr "Required when buy_now_enabled=True"
+
+#: apps/auctions/serializers.py:513
+msgid "Required for pair and breeding auctions."
+msgstr "Required for pair and breeding auctions."
+
+#: apps/auctions/serializers.py:560 apps/auctions/serializers.py:583
+msgid "Invalid request context"
+msgstr "Invalid request context"
+
+#: apps/auctions/services.py:110
+msgid "Duplicate bird_id found in items."
+msgstr "Duplicate bird_id found in items."
+
+#: apps/auctions/services.py:128
+msgid "A bird or more is not found."
+msgstr "A bird or more is not found."
+
+#: apps/auctions/services.py:136
+msgid "A bird or more is already placed in an active auction."
+msgstr "A bird or more is already placed in an active auction."
+
+#: apps/auctions/services.py:151
+#, python-format
+msgid "Sellers can auction only birds they own. Invalid bird ids: %(ids)s."
+msgstr "Sellers can auction only birds they own. Invalid bird ids: %(ids)s."
+
+#: apps/auctions/services.py:430 apps/auctions/services.py:519
+msgid "Auction is already cancelled"
+msgstr "Auction is already cancelled"
+
+#: apps/auctions/services.py:434
+msgid "Cannot cancel ended auction. Use settlement for dispute resolution."
+msgstr "Cannot cancel ended auction. Use settlement for dispute resolution."
+
+#: apps/auctions/services.py:559
+msgid "Only active auctions can be updated."
+msgstr "Only active auctions can be updated."
+
+#: apps/auctions/services.py:562
+msgid "Auction cannot be updated after it starts."
+msgstr "Auction cannot be updated after it starts."
+
+#: apps/auctions/services.py:565
+msgid "Auction cannot be updated after it receives bids."
+msgstr "Auction cannot be updated after it receives bids."
+
+#: apps/auctions/services.py:649
+msgid "Auction is not currently active"
+msgstr "Auction is not currently active"
+
+#: apps/auctions/services.py:652
+#, python-format
+msgid "Item is not accepting bids. Current status: %(status)s"
+msgstr "Item is not accepting bids. Current status: %(status)s"
+
+#: apps/auctions/services.py:660
+msgid "Only customers can place bids"
+msgstr "Only customers can place bids"
+
+#: apps/auctions/services.py:668
+#, python-format
+msgid "Bid must be at least %(amount)s (starting price)"
+msgstr "Bid must be at least %(amount)s (starting price)"
+
+#: apps/auctions/services.py:680
+#, python-format
+msgid ""
+"Bid must be at least %(amount)s (current %(current)s + increment "
+"%(increment)s)"
+msgstr ""
+"Bid must be at least %(amount)s (current %(current)s + increment "
+"%(increment)s)"
+
+#: apps/auctions/services.py:817
+msgid "New auction bid"
+msgstr "New auction bid"
+
+#: apps/auctions/services.py:818
+msgid "A customer placed a bid on your auction item."
+msgstr "A customer placed a bid on your auction item."
+
+#: apps/auctions/services.py:906
+msgid "Buy now not enabled for this auction"
+msgstr "Buy now not enabled for this auction"
+
+#: apps/auctions/services.py:909
+msgid "Buy now price not set"
+msgstr "Buy now price not set"
+
+#: apps/auctions/services.py:912
+msgid "Item is not available for buy now"
+msgstr "Item is not available for buy now"
+
+#: apps/auctions/services.py:915
+msgid "Auction owner cannot buy own auction"
+msgstr "Auction owner cannot buy own auction"
+
+#: apps/auctions/services.py:955
+msgid "Auction won"
+msgstr "Auction won"
+
+#: apps/auctions/services.py:956
+msgid "You won the auction item."
+msgstr "You won the auction item."
+
+#: apps/auctions/services.py:978
+msgid "Buy now completed"
+msgstr "Buy now completed"
+
+#: apps/auctions/services.py:979
+msgid "Your buy-now purchase was confirmed."
+msgstr "Your buy-now purchase was confirmed."
+
+#: apps/auctions/views.py:230
+msgid "Failed to create auction"
+msgstr "Failed to create auction"
+
+#: apps/authentication/authentication.py:19
+msgid "Token profile claim is required."
+msgstr "Token profile claim is required."
+
+#: apps/authentication/mixins.py:23
+msgid "Phone number is required."
+msgstr "Phone number is required."
+
+#: apps/authentication/mixins.py:26 apps/authentication/mixins.py:49
+msgid "Region is required."
+msgstr "Region is required."
+
+#: apps/authentication/mixins.py:34
+msgid "Invalid phone number format."
+msgstr "Invalid phone number format."
+
+#: apps/authentication/mixins.py:37
+msgid "Phone number is not possible."
+msgstr "Phone number is not possible."
+
+#: apps/authentication/mixins.py:40
+msgid "Phone number is not valid."
+msgstr "Phone number is not valid."
+
+#: apps/authentication/models.py:32
+msgid "No active profile found for this user."
+msgstr "No active profile found for this user."
+
+#: apps/authentication/views.py:77 apps/authentication/views.py:104
+msgid "User created successfully"
+msgstr "User created successfully"
+
+#: apps/authentication/views.py:144
+msgid "Failed to switch profile. Profile not found."
+msgstr "Failed to switch profile. Profile not found."
+
+#: apps/chat/models.py:64
+msgid "Customer and seller must belong to different users."
+msgstr "Customer and seller must belong to different users."
+
+#: apps/chat/models.py:109
+msgid "Sender must be a conversation participant."
+msgstr "Sender must be a conversation participant."
+
+#: apps/chat/models.py:113
+msgid "Receiver must be a conversation participant."
+msgstr "Receiver must be a conversation participant."
+
+#: apps/chat/models.py:117
+msgid "Receiver must be the other participant."
+msgstr "Receiver must be the other participant."
+
+#: apps/chat/services.py:65
+msgid "Cannot create a conversation with yourself."
+msgstr "Cannot create a conversation with yourself."
+
+#: apps/chat/services.py:72
+msgid "Cannot create a conversation with another profile on your account."
+msgstr "Cannot create a conversation with another profile on your account."
+
+#: apps/chat/services.py:85
+msgid "Cannot create a conversation while a block is active."
+msgstr "Cannot create a conversation while a block is active."
+
+#: apps/chat/services.py:107
+msgid "You must follow this seller before starting a conversation."
+msgstr "You must follow this seller before starting a conversation."
+
+#: apps/chat/services.py:133
+msgid "Conversation is not active."
+msgstr "Conversation is not active."
+
+#: apps/chat/services.py:140
+msgid "Cannot send messages while a block is active."
+msgstr "Cannot send messages while a block is active."
+
+#: apps/chat/services.py:185 apps/chat/services.py:240
+#: apps/chat/services.py:248
+msgid "Conversation was not found."
+msgstr "Conversation was not found."
+
+#: apps/chat/services.py:203 apps/feed/services.py:217
+#: apps/loyalty/serializers.py:121 apps/loyalty/validators.py:14
+#: apps/notifications/services.py:148 apps/users/serializers.py:390
+msgid "Profile was not found."
+msgstr "Profile was not found."
+
+#: apps/chat/services.py:213
+msgid "Profile is not active."
+msgstr "Profile is not active."
+
+#: apps/chat/services.py:222
+msgid "Conversations must be between one customer and one seller."
+msgstr "Conversations must be between one customer and one seller."
+
+#: apps/chat/services.py:263
+msgid ""
+"Sharing contact details or external links is not allowed in chat messages."
+msgstr ""
+"Sharing contact details or external links is not allowed in chat messages."
+
+#: apps/chat/tasks.py:36
+msgid "New message received"
+msgstr "New message received"
+
+#: apps/complaints/models.py:8
+msgid "Post Sale"
+msgstr "Post Sale"
+
+#: apps/complaints/models.py:9
+msgid "Payment Rejected"
+msgstr "Payment Rejected"
+
+#: apps/complaints/models.py:10
+msgid "Other"
+msgstr "Other"
+
+#: apps/complaints/models.py:14
+msgid "Open"
+msgstr "Open"
+
+#: apps/complaints/models.py:15
+msgid "In Review"
+msgstr "In Review"
+
+#: apps/complaints/models.py:16
+msgid "Resolved"
+msgstr "Resolved"
+
+#: apps/complaints/models.py:17 apps/orders/models.py:29
+#: apps/payments/models.py:11
+msgid "Rejected"
+msgstr "Rejected"
+
+#: apps/complaints/models.py:22 apps/notifications/models.py:43
+msgid "Complaint Created"
+msgstr "Complaint Created"
+
+#: apps/complaints/models.py:23
+msgid "Complaint In Review"
+msgstr "Complaint In Review"
+
+#: apps/complaints/models.py:24
+msgid "Complaint Resolved"
+msgstr "Complaint Resolved"
+
+#: apps/complaints/models.py:25
+msgid "Complaint Rejected"
+msgstr "Complaint Rejected"
+
+#: apps/complaints/models.py:26
+msgid "Complaint Reopened"
+msgstr "Complaint Reopened"
+
+#: apps/complaints/models.py:27
+msgid "Complaint Cancelled"
+msgstr "Complaint Cancelled"
+
+#: apps/complaints/services.py:59 apps/complaints/services.py:280
+#: apps/payments/services.py:185 apps/payments/services.py:229
+#: apps/payments/services.py:278
+msgid "Payment request was not found."
+msgstr "Payment request was not found."
+
+#: apps/complaints/services.py:66
+msgid ""
+"Complaints can only be created for approved or rejected payment requests."
+msgstr ""
+"Complaints can only be created for approved or rejected payment requests."
+
+#: apps/complaints/services.py:98
+msgid "Only open complaints can move to review."
+msgstr "Only open complaints can move to review."
+
+#: apps/complaints/services.py:120
+msgid "Complaint in review"
+msgstr "Complaint in review"
+
+#: apps/complaints/services.py:121
+msgid "Your complaint is now in review."
+msgstr "Your complaint is now in review."
+
+#: apps/complaints/services.py:133
+msgid "Only open or in-review complaints can be resolved."
+msgstr "Only open or in-review complaints can be resolved."
+
+#: apps/complaints/services.py:158
+msgid "Complaint resolved"
+msgstr "Complaint resolved"
+
+#: apps/complaints/services.py:159
+msgid "A manager resolved the complaint tied to your payment request."
+msgstr "A manager resolved the complaint tied to your payment request."
+
+#: apps/complaints/services.py:171
+msgid "Only open or in-review complaints can be rejected."
+msgstr "Only open or in-review complaints can be rejected."
+
+#: apps/complaints/services.py:195
+msgid "Complaint rejected"
+msgstr "Complaint rejected"
+
+#: apps/complaints/services.py:196
+msgid "A manager rejected the complaint tied to your payment request."
+msgstr "A manager rejected the complaint tied to your payment request."
+
+#: apps/complaints/services.py:212
+msgid "Only resolved or rejected complaints can be reopened."
+msgstr "Only resolved or rejected complaints can be reopened."
+
+#: apps/complaints/services.py:234
+msgid "Complaint reopened"
+msgstr "Complaint reopened"
+
+#: apps/complaints/services.py:235
+msgid "A manager reopened the complaint tied to your payment request."
+msgstr "A manager reopened the complaint tied to your payment request."
+
+#: apps/complaints/services.py:246 apps/complaints/services.py:287
+msgid "Complaint was not found."
+msgstr "Complaint was not found."
+
+#: apps/complaints/services.py:249
+msgid "Only open complaints can be cancelled."
+msgstr "Only open complaints can be cancelled."
+
+#: apps/complaints/services.py:296
+msgid "An active complaint already exists for this payment request."
+msgstr "An active complaint already exists for this payment request."
+
+#: apps/complaints/services.py:310
+msgid "Only manager profiles can review complaints."
+msgstr "Only manager profiles can review complaints."
+
+#: apps/complaints/views.py:85
+msgid "Only managers can list all complaints."
+msgstr "Only managers can list all complaints."
+
+#: apps/feed/models.py:52 apps/feed/services.py:363
+msgid "Customers cannot follow their own seller profile."
+msgstr "Customers cannot follow their own seller profile."
+
+#: apps/feed/models.py:97 apps/feed/services.py:470
+msgid "Customers cannot follow their own seller package."
+msgstr "Customers cannot follow their own seller package."
+
+#: apps/feed/services.py:91
+msgid "Active block was not found."
+msgstr "Active block was not found."
+
+#: apps/feed/services.py:95
+msgid "Only the profile that created the block can unblock."
+msgstr "Only the profile that created the block can unblock."
+
+#: apps/feed/services.py:168
+msgid "Blocks are supported only between customers and sellers."
+msgstr "Blocks are supported only between customers and sellers."
+
+#: apps/feed/services.py:174
+msgid "Blocks must be between one customer and one seller."
+msgstr "Blocks must be between one customer and one seller."
+
+#: apps/feed/services.py:180
+msgid "Cannot block another customer or seller profile on your account."
+msgstr "Cannot block another customer or seller profile on your account."
+
+#: apps/feed/services.py:199
+msgid "Only customer and seller profiles can use blocks."
+msgstr "Only customer and seller profiles can use blocks."
+
+#: apps/feed/services.py:206 apps/orders/validators.py:15
+#: apps/orders/validators.py:32 apps/packages/validators.py:46
+msgid "Active profile is required."
+msgstr "Active profile is required."
+
+#: apps/feed/services.py:225 apps/orders/validators.py:26
+#: apps/promotions/serializers.py:169 apps/promotions/views.py:251
+msgid "Customer profile was not found."
+msgstr "Customer profile was not found."
+
+#: apps/feed/services.py:234 apps/orders/validators.py:42
+#: apps/packages/validators.py:56 apps/ratings/validators.py:37
+msgid "Seller profile was not found."
+msgstr "Seller profile was not found."
+
+#: apps/feed/services.py:247
+msgid "Cannot follow this seller while a block is active."
+msgstr "Cannot follow this seller while a block is active."
+
+#: apps/feed/services.py:278 apps/feed/services.py:347
+#: apps/feed/services.py:357
+msgid "Seller was not found."
+msgstr "Seller was not found."
+
+#: apps/feed/services.py:339
+msgid "Active profile must be a customer."
+msgstr "Active profile must be a customer."
+
+#: apps/feed/services.py:412 apps/feed/services.py:462
+#: apps/packages/services.py:120
+msgid "Seller package was not found."
+msgstr "Seller package was not found."
+
+#: apps/feed/services.py:478
+msgid "Cannot follow this seller package while a block is active."
+msgstr "Cannot follow this seller package while a block is active."
+
+#: apps/feed/services.py:496
+msgid "Seller package is not followable."
+msgstr "Seller package is not followable."
+
+#: apps/feed/services.py:515 apps/feed/services.py:549
+#: apps/feed/services.py:552 apps/feed/services.py:554
+msgid "Invalid cursor."
+msgstr "Invalid cursor."
+
+#: apps/feed/services.py:583 apps/feed/services.py:595
+msgid "Limit must be an integer."
+msgstr "Limit must be an integer."
+
+#: apps/feed/services.py:585 apps/feed/services.py:597
+msgid "Limit must be at least 1."
+msgstr "Limit must be at least 1."
+
+#: apps/general/models.py:25
+msgid "Image"
+msgstr "Image"
+
+#: apps/general/models.py:26
+msgid "Video"
+msgstr "Video"
+
+#: apps/general/serializers.py:23
+msgid "Media ids are not accepted for nested asset media writes."
+msgstr "Media ids are not accepted for nested asset media writes."
+
+#: apps/insights/models.py:8
+msgid "Seller Profile View"
+msgstr "Seller Profile View"
+
+#: apps/insights/models.py:9
+msgid "Auction View"
+msgstr "Auction View"
+
+#: apps/insights/models.py:10
+msgid "Market Item View"
+msgstr "Market Item View"
+
+#: apps/insights/models.py:14
+msgid "Seller Profile"
+msgstr "Seller Profile"
+
+#: apps/insights/models.py:15 apps/payments/models.py:16
+msgid "Auction"
+msgstr "Auction"
+
+#: apps/insights/models.py:16
+msgid "Market Item"
+msgstr "Market Item"
+
+#: apps/insights/services.py:62
+msgid "Invalid seller insight event type."
+msgstr "Invalid seller insight event type."
+
+#: apps/insights/services.py:64
+msgid "Invalid seller insight object type."
+msgstr "Invalid seller insight object type."
+
+#: apps/insights/views.py:33
+msgid "Active profile must be a seller."
+msgstr "Active profile must be a seller."
+
+#: apps/loyalty/constants.py:8
+msgid "Earn"
+msgstr "Earn"
+
+#: apps/loyalty/constants.py:9
+msgid "Spend"
+msgstr "Spend"
+
+#: apps/loyalty/constants.py:10
+msgid "Expire"
+msgstr "Expire"
+
+#: apps/loyalty/constants.py:14 apps/lucky_wheel/models.py:13
+#: apps/promotions/models.py:15
+msgid "Onboarding"
+msgstr "Onboarding"
+
+#: apps/loyalty/constants.py:15 apps/promotions/models.py:14
+msgid "Lucky Wheel"
+msgstr "Lucky Wheel"
+
+#: apps/loyalty/constants.py:16 apps/lucky_wheel/models.py:14
+msgid "Auction Completed"
+msgstr "Auction Completed"
+
+#: apps/loyalty/constants.py:17
+msgid "Order Completed Amount"
+msgstr "Order Completed Amount"
+
+#: apps/loyalty/constants.py:18
+msgid "Order Completed Bonus"
+msgstr "Order Completed Bonus"
+
+#: apps/loyalty/constants.py:19
+msgid "Auction Posted"
+msgstr "Auction Posted"
+
+#: apps/loyalty/constants.py:20
+msgid "Rating Received"
+msgstr "Rating Received"
+
+#: apps/loyalty/constants.py:21
+msgid "Referral Accepted"
+msgstr "Referral Accepted"
+
+#: apps/loyalty/constants.py:22
+msgid "First Bid Completed"
+msgstr "First Bid Completed"
+
+#: apps/loyalty/constants.py:23
+msgid "Season Winner"
+msgstr "Season Winner"
+
+#: apps/loyalty/constants.py:26
+msgid "Cashback Points Purchase"
+msgstr "Cashback Points Purchase"
+
+#: apps/loyalty/constants.py:28 apps/users/models.py:145
+msgid "Manager Adjustment"
+msgstr "Manager Adjustment"
+
+#: apps/loyalty/constants.py:32
+msgid "First Order"
+msgstr "First Order"
+
+#: apps/loyalty/constants.py:33
+msgid "Points Starter"
+msgstr "Points Starter"
+
+#: apps/loyalty/constants.py:34
+msgid "Seller Starter"
+msgstr "Seller Starter"
+
+#: apps/loyalty/constants.py:35
+msgid "Welcome Buyer"
+msgstr "Welcome Buyer"
+
+#: apps/loyalty/constants.py:36
+msgid "Welcome Seller"
+msgstr "Welcome Seller"
+
+#: apps/loyalty/constants.py:37
+msgid "First Bidder"
+msgstr "First Bidder"
+
+#: apps/loyalty/constants.py:38
+msgid "Last Minute Fighter"
+msgstr "Last Minute Fighter"
+
+#: apps/loyalty/constants.py:41
+msgid "Auction Purchase Confirmed"
+msgstr "Auction Purchase Confirmed"
+
+#: apps/loyalty/constants.py:45
+msgid "Market Purchase Confirmed"
+msgstr "Market Purchase Confirmed"
+
+#: apps/loyalty/constants.py:47
+msgid "Reviewer Buyer"
+msgstr "Reviewer Buyer"
+
+#: apps/loyalty/constants.py:48
+msgid "Loyal Follower"
+msgstr "Loyal Follower"
+
+#: apps/loyalty/constants.py:51
+msgid "First Auction Published"
+msgstr "First Auction Published"
+
+#: apps/loyalty/constants.py:55
+msgid "First Market Item Listed"
+msgstr "First Market Item Listed"
+
+#: apps/loyalty/constants.py:59
+msgid "First Auction Sale Confirmed"
+msgstr "First Auction Sale Confirmed"
+
+#: apps/loyalty/constants.py:63
+msgid "First Market Sale Confirmed"
+msgstr "First Market Sale Confirmed"
+
+#: apps/loyalty/constants.py:65
+msgid "Trusted Buyer"
+msgstr "Trusted Buyer"
+
+#: apps/loyalty/constants.py:66
+msgid "Trusted Seller"
+msgstr "Trusted Seller"
+
+#: apps/loyalty/serializers.py:142
+msgid "Only customer profiles can buy points with cashback."
+msgstr "Only customer profiles can buy points with cashback."
+
+#: apps/loyalty/services.py:25
+msgid "Legendary"
+msgstr "Legendary"
+
+#: apps/loyalty/services.py:26
+msgid "Elite"
+msgstr "Elite"
+
+#: apps/loyalty/services.py:27
+msgid "Golden"
+msgstr "Golden"
+
+#: apps/loyalty/services.py:28
+msgid "Reliable"
+msgstr "Reliable"
+
+#: apps/loyalty/services.py:29
+msgid "Verified"
+msgstr "Verified"
+
+#: apps/loyalty/services.py:31
+msgid "Basic"
+msgstr "Basic"
+
+#: apps/loyalty/services.py:207
+msgid "Insufficient point balance for this action."
+msgstr "Insufficient point balance for this action."
+
+#: apps/loyalty/services.py:216
+msgid "Unsupported type."
+msgstr "Unsupported type."
+
+#: apps/loyalty/services.py:263
+msgid "Idempotency key was already used for a different transaction."
+msgstr "Idempotency key was already used for a different transaction."
+
+#: apps/loyalty/services.py:382
+msgid "Badge awarded"
+msgstr "Badge awarded"
+
+#: apps/loyalty/validators.py:17
+msgid "Profile must belong to the user."
+msgstr "Profile must belong to the user."
+
+#: apps/loyalty/validators.py:24
+msgid "Points must be greater than 0."
+msgstr "Points must be greater than 0."
+
+#: apps/loyalty/validators.py:30
+msgid "Reason is required."
+msgstr "Reason is required."
+
+#: apps/loyalty/validators.py:41
+msgid "Badge is not eligible for this profile type."
+msgstr "Badge is not eligible for this profile type."
+
+#: apps/loyalty/views.py:135
+msgid "Only manager profiles can list badge awards by profile."
+msgstr "Only manager profiles can list badge awards by profile."
+
+#: apps/loyalty/views.py:154
+msgid "Only manager profiles can award badges."
+msgstr "Only manager profiles can award badges."
+
+#: apps/lucky_wheel/models.py:15 apps/promotions/models.py:16
+msgid "Referral"
+msgstr "Referral"
+
+#: apps/lucky_wheel/models.py:16 apps/promotions/models.py:18
+msgid "Manager Grant"
+msgstr "Manager Grant"
+
+#: apps/lucky_wheel/models.py:17 apps/promotions/models.py:17
+msgid "Season"
+msgstr "Season"
+
+#: apps/lucky_wheel/models.py:21
+msgid "PP Coins"
+msgstr "PP Coins"
+
+#: apps/lucky_wheel/models.py:22
+msgid "Discount Offer"
+msgstr "Discount Offer"
+
+#: apps/lucky_wheel/models.py:23
+msgid "Cashback Offer"
+msgstr "Cashback Offer"
+
+#: apps/lucky_wheel/models.py:24
+msgid "Badge"
+msgstr "Badge"
+
+#: apps/lucky_wheel/models.py:25 apps/lucky_wheel/models.py:30
+msgid "No Prize"
+msgstr "No Prize"
+
+#: apps/lucky_wheel/models.py:29
+msgid "Awarded"
+msgstr "Awarded"
+
+#: apps/lucky_wheel/models.py:31 apps/pedigrees/models.py:12
+msgid "Failed"
+msgstr "Failed"
+
+#: apps/lucky_wheel/services.py:71
+msgid "Attempts must be greater than 0."
+msgstr "Attempts must be greater than 0."
+
+#: apps/lucky_wheel/services.py:131 apps/packages/services.py:110
+#: apps/promotions/services.py:384 apps/referrals/services.py:49
+#: apps/users/services.py:45
+msgid "This field is required."
+msgstr "This field is required."
+
+#: apps/lucky_wheel/services.py:147
+msgid "No lucky wheel attempts are available."
+msgstr "No lucky wheel attempts are available."
+
+#: apps/lucky_wheel/services.py:187
+msgid "No lucky wheel prizes are configured."
+msgstr "No lucky wheel prizes are configured."
+
+#: apps/lucky_wheel/services.py:204
+msgid "Selected prize is no longer available."
+msgstr "Selected prize is no longer available."
+
+#: apps/lucky_wheel/services.py:255
+msgid "Unsupported prize type."
+msgstr "Unsupported prize type."
+
+#: apps/notifications/models.py:9
+msgid "Chat Message Received"
+msgstr "Chat Message Received"
+
+#: apps/notifications/models.py:12
+msgid "Manual Manager Notification"
+msgstr "Manual Manager Notification"
+
+#: apps/notifications/models.py:14
+msgid "Auction Bid Placed"
+msgstr "Auction Bid Placed"
+
+#: apps/notifications/models.py:17
+msgid "Auction Buy Now Success"
+msgstr "Auction Buy Now Success"
+
+#: apps/notifications/models.py:21 apps/payments/models.py:21
+msgid "Payment Request Created"
+msgstr "Payment Request Created"
+
+#: apps/notifications/models.py:25 apps/payments/models.py:23
+msgid "Payment Request Approved"
+msgstr "Payment Request Approved"
+
+#: apps/notifications/models.py:29 apps/payments/models.py:24
+msgid "Payment Request Rejected"
+msgstr "Payment Request Rejected"
+
+#: apps/notifications/models.py:31
+msgid "Order Item Approved"
+msgstr "Order Item Approved"
+
+#: apps/notifications/models.py:32
+msgid "Order Item Rejected"
+msgstr "Order Item Rejected"
+
+#: apps/notifications/models.py:35
+msgid "Order Item Pending Seller"
+msgstr "Order Item Pending Seller"
+
+#: apps/notifications/models.py:39
+msgid "Order Item Auto Cancelled"
+msgstr "Order Item Auto Cancelled"
+
+#: apps/notifications/models.py:41
+msgid "Auction Won"
+msgstr "Auction Won"
+
+#: apps/notifications/models.py:42
+msgid "Auction Outbid"
+msgstr "Auction Outbid"
+
+#: apps/notifications/models.py:46
+msgid "Complaint Status Updated"
+msgstr "Complaint Status Updated"
+
+#: apps/notifications/models.py:48
+msgid "Cashback Earned"
+msgstr "Cashback Earned"
+
+#: apps/notifications/models.py:49
+msgid "Badge Awarded"
+msgstr "Badge Awarded"
+
+#: apps/notifications/models.py:52
+msgid "Package Expiring Soon"
+msgstr "Package Expiring Soon"
+
+#: apps/notifications/serializers.py:90
+msgid "Recipient profile was not found."
+msgstr "Recipient profile was not found."
+
+#: apps/notifications/services.py:50
+msgid "Title is required."
+msgstr "Title is required."
+
+#: apps/notifications/services.py:52
+msgid "Body is required."
+msgstr "Body is required."
+
+#: apps/notifications/services.py:104
+msgid "Notification was not found."
+msgstr "Notification was not found."
+
+#: apps/notifications/views.py:67
+msgid "Only managers can create manual notifications."
+msgstr "Only managers can create manual notifications."
+
+#: apps/orders/models.py:14
+msgid "Converted"
+msgstr "Converted"
+
+#: apps/orders/models.py:15
+msgid "Abandoned"
+msgstr "Abandoned"
+
+#: apps/orders/models.py:19 apps/packages/models.py:15
+#: apps/payments/models.py:9
+msgid "Pending"
+msgstr "Pending"
+
+#: apps/orders/models.py:20
+msgid "Processing"
+msgstr "Processing"
+
+#: apps/orders/models.py:21 apps/orders/models.py:35
+msgid "Completed"
+msgstr "Completed"
+
+#: apps/orders/models.py:23
+msgid "Partial Rejected"
+msgstr "Partial Rejected"
+
+#: apps/orders/models.py:27
+msgid "Pending Seller"
+msgstr "Pending Seller"
+
+#: apps/orders/models.py:28 apps/payments/models.py:10
+msgid "Approved"
+msgstr "Approved"
+
+#: apps/orders/models.py:32
+msgid "Awaiting Payment Review"
+msgstr "Awaiting Payment Review"
+
+#: apps/orders/models.py:34
+msgid "Ready Handoff"
+msgstr "Ready Handoff"
+
+#: apps/orders/models.py:40
+msgid "Order Created"
+msgstr "Order Created"
+
+#: apps/orders/models.py:41
+msgid "Seller Pending Item"
+msgstr "Seller Pending Item"
+
+#: apps/orders/models.py:42
+msgid "Seller Approved"
+msgstr "Seller Approved"
+
+#: apps/orders/models.py:45
+msgid "Seller Auto Cancelled"
+msgstr "Seller Auto Cancelled"
+
+#: apps/orders/services.py:148 apps/orders/services.py:180
+msgid "Cart item was not found."
+msgstr "Cart item was not found."
+
+#: apps/orders/services.py:272 apps/orders/validators.py:264
+msgid "Cart is empty."
+msgstr "Cart is empty."
+
+#: apps/orders/services.py:395 apps/orders/validators.py:141
+#: apps/payments/services.py:445
+msgid "Insufficient stock"
+msgstr "Insufficient stock"
+
+#: apps/orders/services.py:404
+msgid "Order created."
+msgstr "Order created."
+
+#: apps/orders/services.py:413
+msgid "Seller notified of pending item."
+msgstr "Seller notified of pending item."
+
+#: apps/orders/services.py:431
+msgid "New order item"
+msgstr "New order item"
+
+#: apps/orders/services.py:432
+msgid "A customer placed an order item for your review."
+msgstr "A customer placed an order item for your review."
+
+#: apps/orders/services.py:493
+msgid "Only pending order items can be approved."
+msgstr "Only pending order items can be approved."
+
+#: apps/orders/services.py:503
+msgid "Order item approved"
+msgstr "Order item approved"
+
+#: apps/orders/services.py:505
+msgid ""
+"The seller approved your order item. You can now create a payment request."
+msgstr ""
+"The seller approved your order item. You can now create a payment request."
+
+#: apps/orders/services.py:526
+msgid "Only pending order items can be rejected."
+msgstr "Only pending order items can be rejected."
+
+#: apps/orders/services.py:534
+msgid "Order item rejected"
+msgstr "Order item rejected"
+
+#: apps/orders/services.py:535
+msgid "The seller rejected your order item."
+msgstr "The seller rejected your order item."
+
+#: apps/orders/services.py:581
+msgid "Order item was not found."
+msgstr "Order item was not found."
+
+#: apps/orders/services.py:590
+msgid "Seller approved your order you need to complete the payment."
+msgstr "Seller approved your order you need to complete the payment."
+
+#: apps/orders/services.py:601
+msgid "Order item was cancelled because the seller did not act."
+msgstr "Order item was cancelled because the seller did not act."
+
+#: apps/orders/services.py:648
+msgid "Order item cancelled"
+msgstr "Order item cancelled"
+
+#: apps/orders/services.py:649
+msgid "An order item was cancelled because the seller did not act."
+msgstr "An order item was cancelled because the seller did not act."
+
+#: apps/orders/validators.py:19
+msgid "Only customer profiles can checkout orders."
+msgstr "Only customer profiles can checkout orders."
+
+#: apps/orders/validators.py:36 apps/orders/views.py:260
+msgid "Only seller profiles can manage order items."
+msgstr "Only seller profiles can manage order items."
+
+#: apps/orders/validators.py:53 apps/ratings/validators.py:30
+msgid "Asset was not found."
+msgstr "Asset was not found."
+
+#: apps/orders/validators.py:62 apps/orders/validators.py:237
+#: apps/orders/validators.py:291
+#, python-format
+msgid "Seller for asset #%(asset_id)s was not found."
+msgstr "Seller for asset #%(asset_id)s was not found."
+
+#: apps/orders/validators.py:80
+#, python-format
+msgid "Asset #%(asset_id)s is no longer available."
+msgstr "Asset #%(asset_id)s is no longer available."
+
+#: apps/orders/validators.py:90
+#, python-format
+msgid "Asset #%(asset_id)s is not available."
+msgstr "Asset #%(asset_id)s is not available."
+
+#: apps/orders/validators.py:98
+#, python-format
+msgid "Asset #%(asset_id)s is not listed for market."
+msgstr "Asset #%(asset_id)s is not listed for market."
+
+#: apps/orders/validators.py:115
+#, python-format
+msgid "Asset #%(asset_id)s is not owned by a valid seller."
+msgstr "Asset #%(asset_id)s is not owned by a valid seller."
+
+#: apps/orders/validators.py:124
+msgid "Customers cannot order their own seller assets."
+msgstr "Customers cannot order their own seller assets."
+
+#: apps/orders/validators.py:130
+msgid "Quantity must be greater than 0."
+msgstr "Quantity must be greater than 0."
+
+#: apps/orders/validators.py:135
+#, python-format
+msgid "Bird asset #%(asset_id)s quantity must be 1."
+msgstr "Bird asset #%(asset_id)s quantity must be 1."
+
+#: apps/orders/validators.py:199
+msgid "Duplicate asset_id entries are not allowed."
+msgstr "Duplicate asset_id entries are not allowed."
+
+#: apps/orders/validators.py:213
+msgid "One or more assets were not found."
+msgstr "One or more assets were not found."
+
+#: apps/orders/validators.py:279
+msgid "One or more cart assets were not found."
+msgstr "One or more cart assets were not found."
+
+#: apps/packages/models.py:17
+msgid "Exhausted"
+msgstr "Exhausted"
+
+#: apps/packages/models.py:23
+msgid "Product Created"
+msgstr "Product Created"
+
+#: apps/packages/models.py:24
+msgid "Pedigree Created"
+msgstr "Pedigree Created"
+
+#: apps/packages/services.py:49 apps/packages/services.py:87
+msgid "Active package has expired."
+msgstr "Active package has expired."
+
+#: apps/packages/services.py:58 apps/packages/services.py:151
+msgid "Insufficient package points for this action."
+msgstr "Insufficient package points for this action."
+
+#: apps/packages/services.py:105 apps/packages/services.py:181
+msgid "Unsupported package usage type."
+msgstr "Unsupported package usage type."
+
+#: apps/packages/services.py:125
+msgid "Seller package does not belong to this seller."
+msgstr "Seller package does not belong to this seller."
+
+#: apps/packages/services.py:133
+msgid "Seller package is not active."
+msgstr "Seller package is not active."
+
+#: apps/packages/services.py:240
+msgid "Package was not found."
+msgstr "Package was not found."
+
+#: apps/packages/services.py:243
+msgid "Package is not currently available."
+msgstr "Package is not currently available."
+
+#: apps/packages/services.py:251
+msgid "A pending request for this package already exists."
+msgstr "A pending request for this package already exists."
+
+#: apps/packages/services.py:283 apps/packages/services.py:287
+msgid "Active seller package was not found."
+msgstr "Active seller package was not found."
+
+#: apps/packages/services.py:306
+msgid "Only pending seller packages can be activated."
+msgstr "Only pending seller packages can be activated."
+
+#: apps/packages/services.py:310
+msgid "Seller package is already activated."
+msgstr "Seller package is already activated."
+
+#: apps/packages/services.py:314
+msgid "Referenced package is not currently available."
+msgstr "Referenced package is not currently available."
+
+#: apps/packages/services.py:337
+msgid "Seller already has an active package."
+msgstr "Seller already has an active package."
+
+#: apps/packages/services.py:355
+msgid "Only pending seller packages can be cancelled."
+msgstr "Only pending seller packages can be cancelled."
+
+#: apps/packages/validators.py:50
+msgid "Only seller profiles can request packages."
+msgstr "Only seller profiles can request packages."
+
+#: apps/packages/views.py:181
+msgid "Only manager profiles can update seller packages."
+msgstr "Only manager profiles can update seller packages."
+
+#: apps/payments/models.py:17
+msgid "Market"
+msgstr "Market"
+
+#: apps/payments/models.py:22
+msgid "Payment Request Updated"
+msgstr "Payment Request Updated"
+
+#: apps/payments/services.py:79
+msgid "Auction item must be sold."
+msgstr "Auction item must be sold."
+
+#: apps/payments/services.py:82
+msgid "Only the winning buyer can create this request."
+msgstr "Only the winning buyer can create this request."
+
+#: apps/payments/services.py:86
+msgid "Auction must be owned by a seller."
+msgstr "Auction must be owned by a seller."
+
+#: apps/payments/services.py:115 apps/payments/services.py:170
+msgid "New payment request"
+msgstr "New payment request"
+
+#: apps/payments/services.py:116
+msgid "A buyer created a payment request for your auction item."
+msgstr "A buyer created a payment request for your auction item."
+
+#: apps/payments/services.py:139
+msgid "Only the order owner can create this request."
+msgstr "Only the order owner can create this request."
+
+#: apps/payments/services.py:142
+msgid "Order item must be approved."
+msgstr "Order item must be approved."
+
+#: apps/payments/services.py:171
+msgid "A buyer created a payment request for your order item."
+msgstr "A buyer created a payment request for your order item."
+
+#: apps/payments/services.py:188
+msgid "Only pending or rejected requests can be updated."
+msgstr "Only pending or rejected requests can be updated."
+
+#: apps/payments/services.py:232
+msgid "Only pending requests can be approved."
+msgstr "Only pending requests can be approved."
+
+#: apps/payments/services.py:239
+msgid "Unsupported payment request type."
+msgstr "Unsupported payment request type."
+
+#: apps/payments/services.py:262
+msgid "Payment request approved"
+msgstr "Payment request approved"
+
+#: apps/payments/services.py:263
+msgid "The seller approved your payment request."
+msgstr "The seller approved your payment request."
+
+#: apps/payments/services.py:281
+msgid "Only pending requests can be rejected."
+msgstr "Only pending requests can be rejected."
+
+#: apps/payments/services.py:308
+msgid "Payment request rejected"
+msgstr "Payment request rejected"
+
+#: apps/payments/services.py:309
+msgid "The seller rejected your payment request."
+msgstr "The seller rejected your payment request."
+
+#: apps/payments/services.py:334
+msgid "An active payment request already exists for this asset."
+msgstr "An active payment request already exists for this asset."
+
+#: apps/payments/services.py:341
+msgid "Payment requests are not allowed while a block is active."
+msgstr "Payment requests are not allowed while a block is active."
+
+#: apps/payments/services.py:360
+msgid "Order item must still be approved."
+msgstr "Order item must still be approved."
+
+#: apps/payments/services.py:363
+msgid "Payment request buyer does not match the order."
+msgstr "Payment request buyer does not match the order."
+
+#: apps/payments/services.py:366
+msgid "Payment request seller does not match the item."
+msgstr "Payment request seller does not match the item."
+
+#: apps/payments/services.py:369 apps/payments/services.py:416
+msgid "Payment request asset does not match the item."
+msgstr "Payment request asset does not match the item."
+
+#: apps/payments/services.py:407
+msgid "Auction item must still be sold."
+msgstr "Auction item must still be sold."
+
+#: apps/payments/services.py:410
+msgid "Payment request buyer does not match the winner."
+msgstr "Payment request buyer does not match the winner."
+
+#: apps/payments/services.py:413
+msgid "Payment request seller does not match the auction."
+msgstr "Payment request seller does not match the auction."
+
+#: apps/payments/services.py:438
+msgid "Asset is no longer available."
+msgstr "Asset is no longer available."
+
+#: apps/payments/services.py:464
+msgid "Seller does not currently own this asset."
+msgstr "Seller does not currently own this asset."
+
+#: apps/payments/validators.py:11
+msgid "Only customer profiles can create payment requests."
+msgstr "Only customer profiles can create payment requests."
+
+#: apps/payments/validators.py:16
+msgid "Only seller profiles can manage payment requests."
+msgstr "Only seller profiles can manage payment requests."
+
+#: apps/payments/views.py:30
+msgid "Active profile is not allowed for this action."
+msgstr "Active profile is not allowed for this action."
+
+#: apps/pedigrees/models.py:9
+msgid "Uploaded"
+msgstr "Uploaded"
+
+#: apps/pedigrees/models.py:10
+msgid "Processed"
+msgstr "Processed"
+
+#: apps/pedigrees/models.py:11
+msgid "Reviewed"
+msgstr "Reviewed"
+
+#: apps/pedigrees/services.py:133
+msgid "Bird was not found."
+msgstr "Bird was not found."
+
+#: apps/pedigrees/services.py:144
+msgid "Pedigree document was not found."
+msgstr "Pedigree document was not found."
+
+#: apps/promotions/models.py:13
+msgid "Global"
+msgstr "Global"
+
+#: apps/promotions/models.py:22
+msgid "Percentage"
+msgstr "Percentage"
+
+#: apps/promotions/models.py:23
+msgid "Fixed Amount"
+msgstr "Fixed Amount"
+
+#: apps/promotions/models.py:27
+msgid "All"
+msgstr "All"
+
+#: apps/promotions/models.py:28
+msgid "Category"
+msgstr "Category"
+
+#: apps/promotions/models.py:29
+msgid "Asset"
+msgstr "Asset"
+
+#: apps/promotions/models.py:33
+msgid "Earned"
+msgstr "Earned"
+
+#: apps/promotions/models.py:34 apps/promotions/models.py:47
+msgid "Redeemed"
+msgstr "Redeemed"
+
+#: apps/promotions/models.py:35
+msgid "Refunded"
+msgstr "Refunded"
+
+#: apps/promotions/models.py:36
+msgid "Admin Adjustment"
+msgstr "Admin Adjustment"
+
+#: apps/promotions/models.py:37
+msgid "Points Purchase"
+msgstr "Points Purchase"
+
+#: apps/promotions/models.py:41
+msgid "Discount"
+msgstr "Discount"
+
+#: apps/promotions/models.py:42 apps/users/manager_permissions.py:399
+msgid "Cashback"
+msgstr "Cashback"
+
+#: apps/promotions/models.py:48
+msgid "Expired"
+msgstr "Expired"
+
+#: apps/promotions/models.py:312
+msgid "Allowed redemption amount cannot be negative."
+msgstr "Allowed redemption amount cannot be negative."
+
+#: apps/promotions/services.py:321
+msgid "Only manager profiles can adjust cashback balances."
+msgstr "Only manager profiles can adjust cashback balances."
+
+#: apps/promotions/services.py:326 apps/users/services.py:49
+msgid "Adjustment amount cannot be zero."
+msgstr "Adjustment amount cannot be zero."
+
+#: apps/promotions/services.py:351
+msgid "Adjustment would make cashback balance negative."
+msgstr "Adjustment would make cashback balance negative."
+
+#: apps/promotions/services.py:380
+msgid "Cashback amount must be greater than zero."
+msgstr "Cashback amount must be greater than zero."
+
+#: apps/promotions/services.py:407
+msgid "Insufficient cashback balance."
+msgstr "Insufficient cashback balance."
+
+#: apps/promotions/services.py:498
+msgid "Idempotency key was already used for a different cashback transaction."
+msgstr "Idempotency key was already used for a different cashback transaction."
+
+#: apps/promotions/services.py:640
+msgid "Idempotency key is required."
+msgstr "Idempotency key is required."
+
+#: apps/promotions/views.py:225
+msgid "Only customer profiles can view cashback transactions."
+msgstr "Only customer profiles can view cashback transactions."
+
+#: apps/promotions/views.py:246
+msgid "Only manager profiles can look up customer cashback balance."
+msgstr "Only manager profiles can look up customer cashback balance."
+
+#: apps/promotions/views.py:255
+msgid "Only customer profiles can view cashback balance."
+msgstr "Only customer profiles can view cashback balance."
+
+#: apps/races/serializers.py:121
+msgid "Arrival datetime must be after race release datetime."
+msgstr "Arrival datetime must be after race release datetime."
+
+#: apps/races/serializers.py:138
+msgid "This bird ring number already exists in this race."
+msgstr "This bird ring number already exists in this race."
+
+#: apps/races/serializers.py:256
+msgid "Duplicate bird_ring_number entries are not allowed."
+msgstr "Duplicate bird_ring_number entries are not allowed."
+
+#: apps/races/serializers.py:267
+msgid "bird_ring_number already exists in this race."
+msgstr "bird_ring_number already exists in this race."
+
+#: apps/ratings/serializers.py:67
+msgid "Rating comments must be created inline."
+msgstr "Rating comments must be created inline."
+
+#: apps/ratings/validators.py:21
+msgid "Only customer profiles can create ratings."
+msgstr "Only customer profiles can create ratings."
+
+#: apps/ratings/validators.py:48
+msgid "A completed order item is required to rate this asset."
+msgstr "A completed order item is required to rate this asset."
+
+#: apps/ratings/validators.py:62
+msgid "A completed order item is required to rate this seller."
+msgstr "A completed order item is required to rate this seller."
+
+#: apps/ratings/validators.py:73
+msgid "You have already rated this asset."
+msgstr "You have already rated this asset."
+
+#: apps/ratings/validators.py:81
+msgid "You have already rated this seller."
+msgstr "You have already rated this seller."
+
+#: apps/ratings/validators.py:97
+msgid "You must wait before commenting again on this target."
+msgstr "You must wait before commenting again on this target."
+
+#: apps/referrals/services.py:40
+msgid "Could not create a unique referral code."
+msgstr "Could not create a unique referral code."
+
+#: apps/referrals/services.py:55
+msgid "Referral code is only valid for new accounts."
+msgstr "Referral code is only valid for new accounts."
+
+#: apps/referrals/services.py:65
+msgid "Referral code was not found."
+msgstr "Referral code was not found."
+
+#: apps/referrals/services.py:68
+msgid "Referral code was already used."
+msgstr "Referral code was already used."
+
+#: apps/referrals/services.py:70
+msgid "Referral code has expired."
+msgstr "Referral code has expired."
+
+#: apps/referrals/services.py:75
+msgid "Cannot redeem your own referral code."
+msgstr "Cannot redeem your own referral code."
+
+#: apps/seasons/models.py:10
+msgid "Draft"
+msgstr "Draft"
+
+#: apps/seasons/models.py:11
+msgid "Calculated"
+msgstr "Calculated"
+
+#: apps/seasons/models.py:12
+msgid "Finalized"
+msgstr "Finalized"
+
+#: apps/seasons/models.py:40
+msgid "Season end must be after start."
+msgstr "Season end must be after start."
+
+#: apps/seasons/views.py:74
+msgid "Only calculated seasons can be finalized."
+msgstr "Only calculated seasons can be finalized."
+
+#: apps/users/constants.py:6
+msgid "Seller"
+msgstr "Seller"
+
+#: apps/users/constants.py:7
+msgid "Customer"
+msgstr "Customer"
+
+#: apps/users/constants.py:8
+msgid "Manager"
+msgstr "Manager"
+
+#: apps/users/constants.py:12
+msgid "Egypt"
+msgstr "Egypt"
+
+#: apps/users/constants.py:13
+msgid "United Arab Emirates"
+msgstr "United Arab Emirates"
+
+#: apps/users/constants.py:14
+msgid "Saudi Arabia"
+msgstr "Saudi Arabia"
+
+#: apps/users/constants.py:15
+msgid "Kuwait"
+msgstr "Kuwait"
+
+#: apps/users/constants.py:16
+msgid "Qatar"
+msgstr "Qatar"
+
+#: apps/users/constants.py:17
+msgid "Bahrain"
+msgstr "Bahrain"
+
+#: apps/users/constants.py:18
+msgid "Oman"
+msgstr "Oman"
+
+#: apps/users/constants.py:19
+msgid "Jordan"
+msgstr "Jordan"
+
+#: apps/users/constants.py:20
+msgid "Lebanon"
+msgstr "Lebanon"
+
+#: apps/users/constants.py:21
+msgid "Iraq"
+msgstr "Iraq"
+
+#: apps/users/constants.py:22
+msgid "Palestine"
+msgstr "Palestine"
+
+#: apps/users/constants.py:23
+msgid "Morocco"
+msgstr "Morocco"
+
+#: apps/users/constants.py:24
+msgid "Tunisia"
+msgstr "Tunisia"
+
+#: apps/users/constants.py:25
+msgid "Algeria"
+msgstr "Algeria"
+
+#: apps/users/constants.py:26
+msgid "Libya"
+msgstr "Libya"
+
+#: apps/users/constants.py:27
+msgid "Sudan"
+msgstr "Sudan"
+
+#: apps/users/constants.py:28
+msgid "Yemen"
+msgstr "Yemen"
+
+#: apps/users/constants.py:29
+msgid "Syria"
+msgstr "Syria"
+
+#: apps/users/constants.py:30
+msgid "United States"
+msgstr "United States"
+
+#: apps/users/constants.py:31
+msgid "European Union"
+msgstr "European Union"
+
+#: apps/users/constants.py:35
+msgid "Egyptian Pound"
+msgstr "Egyptian Pound"
+
+#: apps/users/constants.py:36
+msgid "UAE Dirham"
+msgstr "UAE Dirham"
+
+#: apps/users/constants.py:37
+msgid "Saudi Riyal"
+msgstr "Saudi Riyal"
+
+#: apps/users/constants.py:38
+msgid "Kuwaiti Dinar"
+msgstr "Kuwaiti Dinar"
+
+#: apps/users/constants.py:39
+msgid "Qatari Riyal"
+msgstr "Qatari Riyal"
+
+#: apps/users/constants.py:40
+msgid "Bahraini Dinar"
+msgstr "Bahraini Dinar"
+
+#: apps/users/constants.py:41
+msgid "Omani Rial"
+msgstr "Omani Rial"
+
+#: apps/users/constants.py:42
+msgid "Jordanian Dinar"
+msgstr "Jordanian Dinar"
+
+#: apps/users/constants.py:43
+msgid "Lebanese Pound"
+msgstr "Lebanese Pound"
+
+#: apps/users/constants.py:44
+msgid "Iraqi Dinar"
+msgstr "Iraqi Dinar"
+
+#: apps/users/constants.py:45
+msgid "Israeli Shekel"
+msgstr "Israeli Shekel"
+
+#: apps/users/constants.py:46
+msgid "Moroccan Dirham"
+msgstr "Moroccan Dirham"
+
+#: apps/users/constants.py:47
+msgid "Tunisian Dinar"
+msgstr "Tunisian Dinar"
+
+#: apps/users/constants.py:48
+msgid "Algerian Dinar"
+msgstr "Algerian Dinar"
+
+#: apps/users/constants.py:49
+msgid "Libyan Dinar"
+msgstr "Libyan Dinar"
+
+#: apps/users/constants.py:50
+msgid "Sudanese Pound"
+msgstr "Sudanese Pound"
+
+#: apps/users/constants.py:51
+msgid "Yemeni Rial"
+msgstr "Yemeni Rial"
+
+#: apps/users/constants.py:52
+msgid "Syrian Pound"
+msgstr "Syrian Pound"
+
+#: apps/users/constants.py:53
+msgid "US Dollar"
+msgstr "US Dollar"
+
+#: apps/users/constants.py:54
+msgid "Euro"
+msgstr "Euro"
+
+#: apps/users/manager_permissions.py:28 apps/users/manager_permissions.py:35
+#: apps/users/manager_permissions.py:42
+msgid "Seller Profiles"
+msgstr "Seller Profiles"
+
+#: apps/users/manager_permissions.py:29
+msgid "List sellers"
+msgstr "List sellers"
+
+#: apps/users/manager_permissions.py:30
+msgid "View the seller profile directory."
+msgstr "View the seller profile directory."
+
+#: apps/users/manager_permissions.py:36
+msgid "View seller details"
+msgstr "View seller details"
+
+#: apps/users/manager_permissions.py:37
+msgid "Open one seller profile record."
+msgstr "Open one seller profile record."
+
+#: apps/users/manager_permissions.py:43
+msgid "Update sellers"
+msgstr "Update sellers"
+
+#: apps/users/manager_permissions.py:44
+msgid "Edit seller profile moderation and correction fields."
+msgstr "Edit seller profile moderation and correction fields."
+
+#: apps/users/manager_permissions.py:49 apps/users/manager_permissions.py:56
+#: apps/users/manager_permissions.py:63
+msgid "Customer Profiles"
+msgstr "Customer Profiles"
+
+#: apps/users/manager_permissions.py:50
+msgid "List customers"
+msgstr "List customers"
+
+#: apps/users/manager_permissions.py:51
+msgid "View the customer profile directory."
+msgstr "View the customer profile directory."
+
+#: apps/users/manager_permissions.py:57
+msgid "View customer details"
+msgstr "View customer details"
+
+#: apps/users/manager_permissions.py:58
+msgid "Open one customer profile record."
+msgstr "Open one customer profile record."
+
+#: apps/users/manager_permissions.py:64
+msgid "Update customers"
+msgstr "Update customers"
+
+#: apps/users/manager_permissions.py:65
+msgid "Edit customer profile moderation and correction fields."
+msgstr "Edit customer profile moderation and correction fields."
+
+#: apps/users/manager_permissions.py:70 apps/users/manager_permissions.py:77
+msgid "Managers"
+msgstr "Managers"
+
+#: apps/users/manager_permissions.py:71
+msgid "List managers"
+msgstr "List managers"
+
+#: apps/users/manager_permissions.py:72
+msgid "View manager accounts."
+msgstr "View manager accounts."
+
+#: apps/users/manager_permissions.py:78
+msgid "View manager details"
+msgstr "View manager details"
+
+#: apps/users/manager_permissions.py:79
+msgid "Open one manager account."
+msgstr "Open one manager account."
+
+#: apps/users/manager_permissions.py:84 apps/users/manager_permissions.py:91
+#: apps/users/manager_permissions.py:98 apps/users/manager_permissions.py:105
+#: apps/users/manager_permissions.py:112 apps/users/manager_permissions.py:119
+msgid "Assets"
+msgstr "Assets"
+
+#: apps/users/manager_permissions.py:85
+msgid "List assets"
+msgstr "List assets"
+
+#: apps/users/manager_permissions.py:86
+msgid "View birds and market products."
+msgstr "View birds and market products."
+
+#: apps/users/manager_permissions.py:92
+msgid "View asset details"
+msgstr "View asset details"
+
+#: apps/users/manager_permissions.py:93
+msgid "Open one bird or product record."
+msgstr "Open one bird or product record."
+
+#: apps/users/manager_permissions.py:99
+msgid "Create assets"
+msgstr "Create assets"
+
+#: apps/users/manager_permissions.py:100
+msgid "Create product or bird asset records."
+msgstr "Create product or bird asset records."
+
+#: apps/users/manager_permissions.py:106
+msgid "Update assets"
+msgstr "Update assets"
+
+#: apps/users/manager_permissions.py:107
+msgid "Edit product or bird asset records."
+msgstr "Edit product or bird asset records."
+
+#: apps/users/manager_permissions.py:113
+msgid "Delete assets"
+msgstr "Delete assets"
+
+#: apps/users/manager_permissions.py:114
+msgid "Delete product or bird asset records."
+msgstr "Delete product or bird asset records."
+
+#: apps/users/manager_permissions.py:120
+msgid "Moderate assets"
+msgstr "Moderate assets"
+
+#: apps/users/manager_permissions.py:121
+msgid "Perform asset moderation actions exposed by admin endpoints."
+msgstr "Perform asset moderation actions exposed by admin endpoints."
+
+#: apps/users/manager_permissions.py:126 apps/users/manager_permissions.py:133
+#: apps/users/manager_permissions.py:140 apps/users/manager_permissions.py:147
+#: apps/users/manager_permissions.py:154
+msgid "Platform Products"
+msgstr "Platform Products"
+
+#: apps/users/manager_permissions.py:127
+msgid "List platform products"
+msgstr "List platform products"
+
+#: apps/users/manager_permissions.py:128
+msgid "View platform-owned supply products."
+msgstr "View platform-owned supply products."
+
+#: apps/users/manager_permissions.py:134
+msgid "View platform product details"
+msgstr "View platform product details"
+
+#: apps/users/manager_permissions.py:135
+msgid "Open one platform-owned supply product."
+msgstr "Open one platform-owned supply product."
+
+#: apps/users/manager_permissions.py:141
+msgid "Create platform products"
+msgstr "Create platform products"
+
+#: apps/users/manager_permissions.py:142
+msgid "Can create platform-owned supply products."
+msgstr "Can create platform-owned supply products."
+
+#: apps/users/manager_permissions.py:148
+msgid "Update platform products"
+msgstr "Update platform products"
+
+#: apps/users/manager_permissions.py:149
+msgid "Edit platform-owned supply products."
+msgstr "Edit platform-owned supply products."
+
+#: apps/users/manager_permissions.py:155
+msgid "Delete platform products"
+msgstr "Delete platform products"
+
+#: apps/users/manager_permissions.py:156
+msgid "Delete or deactivate platform-owned supply products."
+msgstr "Delete or deactivate platform-owned supply products."
+
+#: apps/users/manager_permissions.py:161 apps/users/manager_permissions.py:168
+#: apps/users/manager_permissions.py:175 apps/users/manager_permissions.py:182
+msgid "Auctions"
+msgstr "Auctions"
+
+#: apps/users/manager_permissions.py:162
+msgid "List auctions"
+msgstr "List auctions"
+
+#: apps/users/manager_permissions.py:163
+msgid "View auction listings."
+msgstr "View auction listings."
+
+#: apps/users/manager_permissions.py:169
+msgid "View auction details"
+msgstr "View auction details"
+
+#: apps/users/manager_permissions.py:170
+msgid "Open one auction record."
+msgstr "Open one auction record."
+
+#: apps/users/manager_permissions.py:176
+msgid "Cancel auctions"
+msgstr "Cancel auctions"
+
+#: apps/users/manager_permissions.py:177
+msgid "Cancel an active auction through the manager flow."
+msgstr "Cancel an active auction through the manager flow."
+
+#: apps/users/manager_permissions.py:183
+msgid "Close auctions"
+msgstr "Close auctions"
+
+#: apps/users/manager_permissions.py:184
+msgid "Manually close an auction and resolve winners."
+msgstr "Manually close an auction and resolve winners."
+
+#: apps/users/manager_permissions.py:189 apps/users/manager_permissions.py:196
+msgid "Orders"
+msgstr "Orders"
+
+#: apps/users/manager_permissions.py:190
+msgid "List orders"
+msgstr "List orders"
+
+#: apps/users/manager_permissions.py:191
+msgid "View marketplace orders."
+msgstr "View marketplace orders."
+
+#: apps/users/manager_permissions.py:197
+msgid "View order details"
+msgstr "View order details"
+
+#: apps/users/manager_permissions.py:198
+msgid "Open one marketplace order."
+msgstr "Open one marketplace order."
+
+#: apps/users/manager_permissions.py:203 apps/users/manager_permissions.py:210
+msgid "Order Items"
+msgstr "Order Items"
+
+#: apps/users/manager_permissions.py:204
+msgid "List order items"
+msgstr "List order items"
+
+#: apps/users/manager_permissions.py:205
+msgid "View seller order items."
+msgstr "View seller order items."
+
+#: apps/users/manager_permissions.py:211
+msgid "View order item details"
+msgstr "View order item details"
+
+#: apps/users/manager_permissions.py:212
+msgid "Open one seller order item."
+msgstr "Open one seller order item."
+
+#: apps/users/manager_permissions.py:217 apps/users/manager_permissions.py:224
+msgid "Payments"
+msgstr "Payments"
+
+#: apps/users/manager_permissions.py:218
+msgid "List payment requests"
+msgstr "List payment requests"
+
+#: apps/users/manager_permissions.py:219
+msgid "View manual payment requests."
+msgstr "View manual payment requests."
+
+#: apps/users/manager_permissions.py:225
+msgid "View payment details"
+msgstr "View payment details"
+
+#: apps/users/manager_permissions.py:226
+msgid "Open one manual payment request."
+msgstr "Open one manual payment request."
+
+#: apps/users/manager_permissions.py:231 apps/users/manager_permissions.py:238
+#: apps/users/manager_permissions.py:245 apps/users/manager_permissions.py:252
+#: apps/users/manager_permissions.py:259 apps/users/manager_permissions.py:266
+msgid "Complaints"
+msgstr "Complaints"
+
+#: apps/users/manager_permissions.py:232
+msgid "List complaints"
+msgstr "List complaints"
+
+#: apps/users/manager_permissions.py:233
+msgid "View complaint records."
+msgstr "View complaint records."
+
+#: apps/users/manager_permissions.py:239
+msgid "View complaint details"
+msgstr "View complaint details"
+
+#: apps/users/manager_permissions.py:240
+msgid "Open one complaint record."
+msgstr "Open one complaint record."
+
+#: apps/users/manager_permissions.py:246
+msgid "Mark in review"
+msgstr "Mark in review"
+
+#: apps/users/manager_permissions.py:247
+msgid "Move a complaint into review."
+msgstr "Move a complaint into review."
+
+#: apps/users/manager_permissions.py:253
+msgid "Resolve complaints"
+msgstr "Resolve complaints"
+
+#: apps/users/manager_permissions.py:254
+msgid "Resolve an open or in-review complaint."
+msgstr "Resolve an open or in-review complaint."
+
+#: apps/users/manager_permissions.py:260
+msgid "Reject complaints"
+msgstr "Reject complaints"
+
+#: apps/users/manager_permissions.py:261
+msgid "Reject an open or in-review complaint."
+msgstr "Reject an open or in-review complaint."
+
+#: apps/users/manager_permissions.py:267
+msgid "Reopen complaints"
+msgstr "Reopen complaints"
+
+#: apps/users/manager_permissions.py:268
+msgid "Reopen a resolved or rejected complaint."
+msgstr "Reopen a resolved or rejected complaint."
+
+#: apps/users/manager_permissions.py:273 apps/users/manager_permissions.py:280
+#: apps/users/manager_permissions.py:287 apps/users/manager_permissions.py:294
+#: apps/users/manager_permissions.py:301
+msgid "Packages"
+msgstr "Packages"
+
+#: apps/users/manager_permissions.py:274
+msgid "List packages"
+msgstr "List packages"
+
+#: apps/users/manager_permissions.py:275
+msgid "View package plans."
+msgstr "View package plans."
+
+#: apps/users/manager_permissions.py:281
+msgid "View package details"
+msgstr "View package details"
+
+#: apps/users/manager_permissions.py:282
+msgid "Open one package plan."
+msgstr "Open one package plan."
+
+#: apps/users/manager_permissions.py:288
+msgid "Create packages"
+msgstr "Create packages"
+
+#: apps/users/manager_permissions.py:289
+msgid "Create package plans."
+msgstr "Create package plans."
+
+#: apps/users/manager_permissions.py:295
+msgid "Update packages"
+msgstr "Update packages"
+
+#: apps/users/manager_permissions.py:296
+msgid "Edit package plans."
+msgstr "Edit package plans."
+
+#: apps/users/manager_permissions.py:302
+msgid "Delete packages"
+msgstr "Delete packages"
+
+#: apps/users/manager_permissions.py:303
+msgid "Delete package plans."
+msgstr "Delete package plans."
+
+#: apps/users/manager_permissions.py:308 apps/users/manager_permissions.py:315
+#: apps/users/manager_permissions.py:322 apps/users/manager_permissions.py:329
+msgid "Seller Packages"
+msgstr "Seller Packages"
+
+#: apps/users/manager_permissions.py:309
+msgid "List seller packages"
+msgstr "List seller packages"
+
+#: apps/users/manager_permissions.py:310
+msgid "View seller package requests."
+msgstr "View seller package requests."
+
+#: apps/users/manager_permissions.py:316
+msgid "View seller package details"
+msgstr "View seller package details"
+
+#: apps/users/manager_permissions.py:317
+msgid "Open one seller package request."
+msgstr "Open one seller package request."
+
+#: apps/users/manager_permissions.py:323
+msgid "Activate seller packages"
+msgstr "Activate seller packages"
+
+#: apps/users/manager_permissions.py:324
+msgid "Activate a seller package request."
+msgstr "Activate a seller package request."
+
+#: apps/users/manager_permissions.py:330
+msgid "Cancel seller packages"
+msgstr "Cancel seller packages"
+
+#: apps/users/manager_permissions.py:331
+msgid "Cancel a seller package request."
+msgstr "Cancel a seller package request."
+
+#: apps/users/manager_permissions.py:336 apps/users/manager_permissions.py:343
+#: apps/users/manager_permissions.py:350 apps/users/manager_permissions.py:357
+msgid "Discount Offers"
+msgstr "Discount Offers"
+
+#: apps/users/manager_permissions.py:337
+msgid "List discount offers"
+msgstr "List discount offers"
+
+#: apps/users/manager_permissions.py:338
+msgid "View admin discount offers."
+msgstr "View admin discount offers."
+
+#: apps/users/manager_permissions.py:344
+msgid "Create discount offers"
+msgstr "Create discount offers"
+
+#: apps/users/manager_permissions.py:345
+msgid "Create admin discount offers."
+msgstr "Create admin discount offers."
+
+#: apps/users/manager_permissions.py:351
+msgid "Activate discount offers"
+msgstr "Activate discount offers"
+
+#: apps/users/manager_permissions.py:352
+msgid "Activate a discount offer."
+msgstr "Activate a discount offer."
+
+#: apps/users/manager_permissions.py:358
+msgid "Deactivate discount offers"
+msgstr "Deactivate discount offers"
+
+#: apps/users/manager_permissions.py:359
+msgid "Deactivate a discount offer."
+msgstr "Deactivate a discount offer."
+
+#: apps/users/manager_permissions.py:364 apps/users/manager_permissions.py:371
+#: apps/users/manager_permissions.py:378 apps/users/manager_permissions.py:385
+msgid "Cashback Offers"
+msgstr "Cashback Offers"
+
+#: apps/users/manager_permissions.py:365
+msgid "List cashback offers"
+msgstr "List cashback offers"
+
+#: apps/users/manager_permissions.py:366
+msgid "View admin cashback offers."
+msgstr "View admin cashback offers."
+
+#: apps/users/manager_permissions.py:372
+msgid "Create cashback offers"
+msgstr "Create cashback offers"
+
+#: apps/users/manager_permissions.py:373
+msgid "Create admin cashback offers."
+msgstr "Create admin cashback offers."
+
+#: apps/users/manager_permissions.py:379
+msgid "Activate cashback offers"
+msgstr "Activate cashback offers"
+
+#: apps/users/manager_permissions.py:380
+msgid "Activate a cashback offer."
+msgstr "Activate a cashback offer."
+
+#: apps/users/manager_permissions.py:386
+msgid "Deactivate cashback offers"
+msgstr "Deactivate cashback offers"
+
+#: apps/users/manager_permissions.py:387
+msgid "Deactivate a cashback offer."
+msgstr "Deactivate a cashback offer."
+
+#: apps/users/manager_permissions.py:392
+msgid "Cashback Transactions"
+msgstr "Cashback Transactions"
+
+#: apps/users/manager_permissions.py:393
+msgid "List cashback transactions"
+msgstr "List cashback transactions"
+
+#: apps/users/manager_permissions.py:394
+msgid "View customer cashback transactions."
+msgstr "View customer cashback transactions."
+
+#: apps/users/manager_permissions.py:400
+msgid "View cashback balance"
+msgstr "View cashback balance"
+
+#: apps/users/manager_permissions.py:401
+msgid "View a customer's cashback balance."
+msgstr "View a customer's cashback balance."
+
+#: apps/users/manager_permissions.py:406
+msgid "Cashback Adjustments"
+msgstr "Cashback Adjustments"
+
+#: apps/users/manager_permissions.py:407
+msgid "Create cashback adjustments"
+msgstr "Create cashback adjustments"
+
+#: apps/users/manager_permissions.py:408
+msgid "Create manual cashback adjustments."
+msgstr "Create manual cashback adjustments."
+
+#: apps/users/manager_permissions.py:413
+msgid "Profile Balances"
+msgstr "Profile Balances"
+
+#: apps/users/manager_permissions.py:414
+msgid "Adjust profile balances"
+msgstr "Adjust profile balances"
+
+#: apps/users/manager_permissions.py:415
+msgid "Create ledger-backed customer or seller balance adjustments."
+msgstr "Create ledger-backed customer or seller balance adjustments."
+
+#: apps/users/manager_permissions.py:420 apps/users/manager_permissions.py:427
+#: apps/users/manager_permissions.py:434
+msgid "Lucky Wheel Prizes"
+msgstr "Lucky Wheel Prizes"
+
+#: apps/users/manager_permissions.py:421
+msgid "List prizes"
+msgstr "List prizes"
+
+#: apps/users/manager_permissions.py:422
+msgid "View lucky wheel prize configuration."
+msgstr "View lucky wheel prize configuration."
+
+#: apps/users/manager_permissions.py:428
+msgid "Create prizes"
+msgstr "Create prizes"
+
+#: apps/users/manager_permissions.py:429
+msgid "Create lucky wheel prize configuration."
+msgstr "Create lucky wheel prize configuration."
+
+#: apps/users/manager_permissions.py:435
+msgid "Update prizes"
+msgstr "Update prizes"
+
+#: apps/users/manager_permissions.py:436
+msgid "Update lucky wheel prize configuration."
+msgstr "Update lucky wheel prize configuration."
+
+#: apps/users/manager_permissions.py:441
+msgid "Lucky Wheel Spins"
+msgstr "Lucky Wheel Spins"
+
+#: apps/users/manager_permissions.py:442
+msgid "List spins"
+msgstr "List spins"
+
+#: apps/users/manager_permissions.py:443
+msgid "View lucky wheel spin history."
+msgstr "View lucky wheel spin history."
+
+#: apps/users/manager_permissions.py:448 apps/users/manager_permissions.py:455
+#: apps/users/manager_permissions.py:462 apps/users/manager_permissions.py:469
+#: apps/users/manager_permissions.py:476
+msgid "Seasons"
+msgstr "Seasons"
+
+#: apps/users/manager_permissions.py:449
+msgid "List seasons"
+msgstr "List seasons"
+
+#: apps/users/manager_permissions.py:450
+msgid "View reward seasons."
+msgstr "View reward seasons."
+
+#: apps/users/manager_permissions.py:456
+msgid "Create seasons"
+msgstr "Create seasons"
+
+#: apps/users/manager_permissions.py:457
+msgid "Create reward seasons."
+msgstr "Create reward seasons."
+
+#: apps/users/manager_permissions.py:463
+msgid "Update seasons"
+msgstr "Update seasons"
+
+#: apps/users/manager_permissions.py:464
+msgid "Update reward season configuration."
+msgstr "Update reward season configuration."
+
+#: apps/users/manager_permissions.py:470
+msgid "Calculate winners"
+msgstr "Calculate winners"
+
+#: apps/users/manager_permissions.py:471
+msgid "Calculate season seller insights and winner rewards."
+msgstr "Calculate season seller insights and winner rewards."
+
+#: apps/users/manager_permissions.py:477
+msgid "Finalize seasons"
+msgstr "Finalize seasons"
+
+#: apps/users/manager_permissions.py:478
+msgid "Finalize a calculated reward season without recalculating rewards."
+msgstr "Finalize a calculated reward season without recalculating rewards."
+
+#: apps/users/manager_permissions.py:483
+msgid "Season Insights"
+msgstr "Season Insights"
+
+#: apps/users/manager_permissions.py:484
+msgid "List seller insights"
+msgstr "List seller insights"
+
+#: apps/users/manager_permissions.py:485
+msgid "View season seller insight snapshots."
+msgstr "View season seller insight snapshots."
+
+#: apps/users/manager_permissions.py:490 apps/users/manager_permissions.py:497
+#: apps/users/manager_permissions.py:504 apps/users/manager_permissions.py:511
+#: apps/users/manager_permissions.py:518
+msgid "Races"
+msgstr "Races"
+
+#: apps/users/manager_permissions.py:491
+msgid "List races"
+msgstr "List races"
+
+#: apps/users/manager_permissions.py:492
+msgid "View races."
+msgstr "View races."
+
+#: apps/users/manager_permissions.py:498
+msgid "View race details"
+msgstr "View race details"
+
+#: apps/users/manager_permissions.py:499
+msgid "Open one race."
+msgstr "Open one race."
+
+#: apps/users/manager_permissions.py:505
+msgid "Create races"
+msgstr "Create races"
+
+#: apps/users/manager_permissions.py:506
+msgid "Create race records."
+msgstr "Create race records."
+
+#: apps/users/manager_permissions.py:512
+msgid "Update races"
+msgstr "Update races"
+
+#: apps/users/manager_permissions.py:513
+msgid "Edit race records."
+msgstr "Edit race records."
+
+#: apps/users/manager_permissions.py:519
+msgid "Delete races"
+msgstr "Delete races"
+
+#: apps/users/manager_permissions.py:520
+msgid "Delete race records."
+msgstr "Delete race records."
+
+#: apps/users/manager_permissions.py:525 apps/users/manager_permissions.py:532
+#: apps/users/manager_permissions.py:539 apps/users/manager_permissions.py:546
+#: apps/users/manager_permissions.py:553
+msgid "Race Results"
+msgstr "Race Results"
+
+#: apps/users/manager_permissions.py:526
+msgid "List race results"
+msgstr "List race results"
+
+#: apps/users/manager_permissions.py:527
+msgid "View race results."
+msgstr "View race results."
+
+#: apps/users/manager_permissions.py:533
+msgid "View race result details"
+msgstr "View race result details"
+
+#: apps/users/manager_permissions.py:534
+msgid "Open one race result."
+msgstr "Open one race result."
+
+#: apps/users/manager_permissions.py:540
+msgid "Create race results"
+msgstr "Create race results"
+
+#: apps/users/manager_permissions.py:541
+msgid "Create race result records."
+msgstr "Create race result records."
+
+#: apps/users/manager_permissions.py:547
+msgid "Update race results"
+msgstr "Update race results"
+
+#: apps/users/manager_permissions.py:548
+msgid "Edit race result records."
+msgstr "Edit race result records."
+
+#: apps/users/manager_permissions.py:554
+msgid "Delete race results"
+msgstr "Delete race results"
+
+#: apps/users/manager_permissions.py:555
+msgid "Delete race result records."
+msgstr "Delete race result records."
+
+#: apps/users/manager_permissions.py:560 apps/users/manager_permissions.py:567
+#: apps/users/manager_permissions.py:574
+msgid "Pedigree Documents"
+msgstr "Pedigree Documents"
+
+#: apps/users/manager_permissions.py:561
+msgid "List pedigree documents"
+msgstr "List pedigree documents"
+
+#: apps/users/manager_permissions.py:562
+msgid "View pedigree OCR documents."
+msgstr "View pedigree OCR documents."
+
+#: apps/users/manager_permissions.py:568
+msgid "View pedigree documents"
+msgstr "View pedigree documents"
+
+#: apps/users/manager_permissions.py:569
+msgid "Open one pedigree OCR document."
+msgstr "Open one pedigree OCR document."
+
+#: apps/users/manager_permissions.py:575
+msgid "Review pedigree documents"
+msgstr "Review pedigree documents"
+
+#: apps/users/manager_permissions.py:576
+msgid "Review corrected OCR extraction fields."
+msgstr "Review corrected OCR extraction fields."
+
+#: apps/users/manager_permissions.py:581 apps/users/manager_permissions.py:588
+msgid "Feed Blocks"
+msgstr "Feed Blocks"
+
+#: apps/users/manager_permissions.py:582
+msgid "List feed blocks"
+msgstr "List feed blocks"
+
+#: apps/users/manager_permissions.py:583
+msgid "View seller/customer block records exposed by moderation endpoints."
+msgstr "View seller/customer block records exposed by moderation endpoints."
+
+#: apps/users/manager_permissions.py:589
+msgid "Remove feed blocks"
+msgstr "Remove feed blocks"
+
+#: apps/users/manager_permissions.py:590
+msgid "Remove seller/customer block records exposed by moderation endpoints."
+msgstr "Remove seller/customer block records exposed by moderation endpoints."
+
+#: apps/users/manager_permissions.py:595
+msgid "Feed Sellers"
+msgstr "Feed Sellers"
+
+#: apps/users/manager_permissions.py:596
+msgid "List feed sellers"
+msgstr "List feed sellers"
+
+#: apps/users/manager_permissions.py:597
+msgid "View seller feed entries."
+msgstr "View seller feed entries."
+
+#: apps/users/manager_permissions.py:602
+msgid "Feed Auctions"
+msgstr "Feed Auctions"
+
+#: apps/users/manager_permissions.py:603
+msgid "List auction feed"
+msgstr "List auction feed"
+
+#: apps/users/manager_permissions.py:604
+msgid "View auction feed entries."
+msgstr "View auction feed entries."
+
+#: apps/users/manager_permissions.py:609
+msgid "Feed Market"
+msgstr "Feed Market"
+
+#: apps/users/manager_permissions.py:610
+msgid "List market feed"
+msgstr "List market feed"
+
+#: apps/users/manager_permissions.py:611
+msgid "View market feed entries."
+msgstr "View market feed entries."
+
+#: apps/users/manager_permissions.py:616 apps/users/manager_permissions.py:623
+#: apps/users/manager_permissions.py:630
+msgid "Ratings"
+msgstr "Ratings"
+
+#: apps/users/manager_permissions.py:617
+msgid "List ratings"
+msgstr "List ratings"
+
+#: apps/users/manager_permissions.py:618
+msgid "View ratings and comments."
+msgstr "View ratings and comments."
+
+#: apps/users/manager_permissions.py:624
+msgid "View rating details"
+msgstr "View rating details"
+
+#: apps/users/manager_permissions.py:625
+msgid "Open one rating or comment record."
+msgstr "Open one rating or comment record."
+
+#: apps/users/manager_permissions.py:631
+msgid "Delete ratings"
+msgstr "Delete ratings"
+
+#: apps/users/manager_permissions.py:632
+msgid "Delete rating or comment records."
+msgstr "Delete rating or comment records."
+
+#: apps/users/manager_permissions.py:637 apps/users/manager_permissions.py:644
+#: apps/users/manager_permissions.py:651
+msgid "Comments"
+msgstr "Comments"
+
+#: apps/users/manager_permissions.py:638
+msgid "List comments"
+msgstr "List comments"
+
+#: apps/users/manager_permissions.py:639
+msgid "View comment records."
+msgstr "View comment records."
+
+#: apps/users/manager_permissions.py:645
+msgid "View comment details"
+msgstr "View comment details"
+
+#: apps/users/manager_permissions.py:646
+msgid "Open one comment record."
+msgstr "Open one comment record."
+
+#: apps/users/manager_permissions.py:652
+msgid "Delete comments"
+msgstr "Delete comments"
+
+#: apps/users/manager_permissions.py:653
+msgid "Delete comment records."
+msgstr "Delete comment records."
+
+#: apps/users/manager_permissions.py:658 apps/users/manager_permissions.py:665
+#: apps/users/manager_permissions.py:672
+msgid "Notifications"
+msgstr "Notifications"
+
+#: apps/users/manager_permissions.py:659
+msgid "List notifications"
+msgstr "List notifications"
+
+#: apps/users/manager_permissions.py:660
+msgid "View notification records for the active profile."
+msgstr "View notification records for the active profile."
+
+#: apps/users/manager_permissions.py:666
+msgid "Create notifications"
+msgstr "Create notifications"
+
+#: apps/users/manager_permissions.py:667
+msgid "Create one manual in-app notification for a selected profile."
+msgstr "Create one manual in-app notification for a selected profile."
+
+#: apps/users/manager_permissions.py:673
+msgid "View notification details"
+msgstr "View notification details"
+
+#: apps/users/manager_permissions.py:674
+msgid "Open one notification record."
+msgstr "Open one notification record."
+
+#: apps/users/manager_permissions.py:679
+msgid "Seller Insights"
+msgstr "Seller Insights"
+
+#: apps/users/manager_permissions.py:680
+msgid "View seller home insights"
+msgstr "View seller home insights"
+
+#: apps/users/manager_permissions.py:681
+msgid "View seller home insight summaries when exposed by manager endpoints."
+msgstr "View seller home insight summaries when exposed by manager endpoints."
+
+#: apps/users/manager_permissions.py:705 apps/users/manager_permissions.py:790
+#, python-format
+msgid "Invalid permission code: %(permission)s"
+msgstr "Invalid permission code: %(permission)s"
+
+#: apps/users/manager_permissions.py:774
+msgid "Permissions must be a list."
+msgstr "Permissions must be a list."
+
+#: apps/users/manager_permissions.py:781
+msgid "Each permission must be a string."
+msgstr "Each permission must be a string."
+
+#: apps/users/models.py:26
+msgid "Only updated to True by admin once the profile created"
+msgstr "Only updated to True by admin once the profile created"
+
+#: apps/users/models.py:29
+msgid "Indecate which profile is the main now"
+msgstr "Indecate which profile is the main now"
+
+#: apps/users/models.py:33
+msgid "will be \"False\" if profile is under punishment"
+msgstr "will be \"False\" if profile is under punishment"
+
+#: apps/users/models.py:82
+msgid "Manager accounts cannot coexist with customer or seller profiles."
+msgstr "Manager accounts cannot coexist with customer or seller profiles."
+
+#: apps/users/models.py:93
+msgid "Customer or seller profiles cannot be created for a manager account."
+msgstr "Customer or seller profiles cannot be created for a manager account."
+
+#: apps/users/models.py:146
+msgid "System Credit"
+msgstr "System Credit"
+
+#: apps/users/models.py:147
+msgid "System Debit"
+msgstr "System Debit"
+
+#: apps/users/serializers.py:317
+msgid "user account with this phone number already exists."
+msgstr "user account with this phone number already exists."
+
+#: apps/users/services.py:42
+msgid "Only manager profiles can adjust balances."
+msgstr "Only manager profiles can adjust balances."
+
+#: apps/users/services.py:68
+msgid "Only customer and seller balances are adjustable."
+msgstr "Only customer and seller balances are adjustable."
+
+#: apps/users/services.py:74
+msgid "Adjustment would make profile balance negative."
+msgstr "Adjustment would make profile balance negative."
+
+#: apps/users/services.py:151
+msgid "Authentication credentials were not provided."
+msgstr "Authentication credentials were not provided."
+
+#: apps/users/services.py:163
+msgid "Only an active manager profile can use manager permissions."
+msgstr "Only an active manager profile can use manager permissions."
+
+#: apps/users/services.py:168
+#, python-format
+msgid "Missing required manager permission: %(permission)s"
+msgstr "Missing required manager permission: %(permission)s"
+
+#: apps/users/views.py:80
+msgid "Only superusers can create managers."
+msgstr "Only superusers can create managers."
+
+#: apps/users/views.py:95
+msgid "Only superusers can update managers."
+msgstr "Only superusers can update managers."
+
+#: apps/users/views.py:112
+msgid "Only superusers can delete managers."
+msgstr "Only superusers can delete managers."
+
+#: apps/users/views.py:189
+msgid "Manager accounts cannot create seller profiles"
+msgstr "Manager accounts cannot create seller profiles"
+
+#: apps/users/views.py:194
+msgid "Profile already exists"
+msgstr "Profile already exists"
+
+#: apps/users/views.py:219
+msgid "Seller profile created successfully"
+msgstr "Seller profile created successfully"
+
+#: apps/users/views.py:260
+msgid "Manager accounts cannot create customer profiles"
+msgstr "Manager accounts cannot create customer profiles"
+
+#~ msgid "SECRET_KEY is not set"
+#~ msgstr "SECRET_KEY is not set"
+
+#~ msgid "ALLOWED_HOSTS is not set"
+#~ msgstr "ALLOWED_HOSTS is not set"

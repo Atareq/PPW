@@ -2,6 +2,7 @@ import logging
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.notifications.models import Notification
@@ -46,9 +47,9 @@ class NotificationService:
         title = str(title).strip()
         body = str(body).strip()
         if not title:
-            raise ValidationError({"title": "Title is required."})
+            raise ValidationError({"title": _("Title is required.")})
         if not body:
-            raise ValidationError({"body": "Body is required."})
+            raise ValidationError({"body": _("Body is required.")})
 
         idempotency_key = normalize_optional_string(idempotency_key)
         if idempotency_key is not None:
@@ -100,7 +101,7 @@ class NotificationService:
                 recipient_profile_id=recipient.pk,
             )
         except Notification.DoesNotExist as exc:
-            raise NotFound("Notification was not found.") from exc
+            raise NotFound(_("Notification was not found.")) from exc
 
         if instance.is_read:
             return NotificationService.get_notification(instance.pk)
@@ -144,7 +145,7 @@ class NotificationService:
         try:
             return Profile.objects.get(pk=profile_id)
         except Profile.DoesNotExist as exc:
-            raise ValidationError({"profile": "Profile was not found."}) from exc
+            raise ValidationError({"profile": _("Profile was not found.")}) from exc
 
     @staticmethod
     def _resolve_optional_profile(profile_or_id):

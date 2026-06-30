@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.packages.models import (
@@ -45,7 +46,7 @@ class PackageService:
             if seller_package.expires_at and seller_package.expires_at <= now:
                 PackageService._mark_exhausted(seller_package, now)
                 expired_error = ValidationError(
-                    {"package": "Active package has expired."}
+                    {"package": _("Active package has expired.")}
                 )
             else:
                 required_cost = PackageService._required_cost(
@@ -54,7 +55,7 @@ class PackageService:
                 )
                 if seller_package.remaining_points < required_cost:
                     raise ValidationError(
-                        {"package": ("Insufficient package points for this action.")}
+                        {"package": (_("Insufficient package points for this action."))}
                     )
                 return seller_package
 
@@ -83,7 +84,7 @@ class PackageService:
             if seller_package.expires_at and seller_package.expires_at <= now:
                 PackageService._mark_exhausted(seller_package, now)
                 expired_error = ValidationError(
-                    {"package": "Active package has expired."}
+                    {"package": _("Active package has expired.")}
                 )
             else:
                 return PackageService._consume_locked_package(
@@ -101,12 +102,12 @@ class PackageService:
             PackageUsageType.AUCTION_CREATED,
             PackageUsageType.PRODUCT_CREATED,
         }:
-            raise ValidationError({"usage_type": "Unsupported package usage type."})
+            raise ValidationError({"usage_type": _("Unsupported package usage type.")})
 
     @staticmethod
     def _get_locked_selected_package(seller, seller_package_id):
         if not seller_package_id:
-            raise ValidationError({"seller_package_id": "This field is required."})
+            raise ValidationError({"seller_package_id": _("This field is required.")})
 
         try:
             seller_package = (
@@ -116,12 +117,12 @@ class PackageService:
             )
         except SellerPackage.DoesNotExist as exc:
             raise ValidationError(
-                {"seller_package_id": "Seller package was not found."}
+                {"seller_package_id": _("Seller package was not found.")}
             ) from exc
 
         if seller_package.owner_id != seller.pk:
             raise ValidationError(
-                {"seller_package_id": "Seller package does not belong to this seller."}
+                {"seller_package_id": _("Seller package does not belong to this seller.")}
             )
 
         if (
@@ -129,7 +130,7 @@ class PackageService:
             or not seller_package.activated
         ):
             raise ValidationError(
-                {"seller_package_id": "Seller package is not active."}
+                {"seller_package_id": _("Seller package is not active.")}
             )
 
         return seller_package
@@ -147,7 +148,7 @@ class PackageService:
         )
         if seller_package.remaining_points < required_cost:
             raise ValidationError(
-                {"package": "Insufficient package points for this action."}
+                {"package": _("Insufficient package points for this action.")}
             )
 
         seller_package.remaining_points -= required_cost
@@ -177,7 +178,7 @@ class PackageService:
             return seller_package.package.auction_cost
         if usage_type == PackageUsageType.PRODUCT_CREATED:
             return seller_package.package.product_cost
-        raise ValidationError({"usage_type": "Unsupported package usage type."})
+        raise ValidationError({"usage_type": _("Unsupported package usage type.")})
 
     @staticmethod
     def _is_unusable(seller_package):
@@ -236,10 +237,10 @@ class SellerPackageService:
         try:
             package = Package.objects.get(pk=package_id)
         except Package.DoesNotExist as exc:
-            raise ValidationError({"package_id": "Package was not found."}) from exc
+            raise ValidationError({"package_id": _("Package was not found.")}) from exc
 
         if not package.is_available:
-            raise ValidationError({"package_id": "Package is not currently available."})
+            raise ValidationError({"package_id": _("Package is not currently available.")})
 
         if SellerPackage.objects.filter(
             owner=seller,
@@ -247,7 +248,7 @@ class SellerPackageService:
             status=SellerPackageStatus.PENDING,
         ).exists():
             raise ValidationError(
-                {"package_id": ("A pending request for this package already exists.")}
+                {"package_id": (_("A pending request for this package already exists."))}
             )
 
         return AssetSellerPackage.objects.create(
@@ -279,11 +280,11 @@ class SellerPackageService:
                 .first()
             )
             if package is None:
-                raise NotFound("Active seller package was not found.")
+                raise NotFound(_("Active seller package was not found."))
             now = timezone.now()
             if package.expires_at and package.expires_at <= now:
                 PackageService._mark_exhausted(package, now)
-                expired_error = NotFound("Active seller package was not found.")
+                expired_error = NotFound(_("Active seller package was not found."))
             else:
                 return package
 
@@ -302,15 +303,15 @@ class SellerPackageService:
 
         if locked_package.status != SellerPackageStatus.PENDING:
             raise ValidationError(
-                {"status": "Only pending seller packages can be activated."}
+                {"status": _("Only pending seller packages can be activated.")}
             )
 
         if locked_package.activated:
-            raise ValidationError({"activated": "Seller package is already activated."})
+            raise ValidationError({"activated": _("Seller package is already activated.")})
 
         if not locked_package.package.is_available:
             raise ValidationError(
-                {"package": "Referenced package is not currently available."}
+                {"package": _("Referenced package is not currently available.")}
             )
 
         now = timezone.now()
@@ -333,7 +334,7 @@ class SellerPackageService:
             )
         except IntegrityError as exc:
             raise ValidationError(
-                {"owner": "Seller already has an active package."}
+                {"owner": _("Seller already has an active package.")}
             ) from exc
 
         return seller_package_queryset().get(pk=locked_package.pk)
@@ -351,7 +352,7 @@ class SellerPackageService:
 
         if locked_package.status != SellerPackageStatus.PENDING:
             raise ValidationError(
-                {"status": "Only pending seller packages can be cancelled."}
+                {"status": _("Only pending seller packages can be cancelled.")}
             )
 
         locked_package.status = SellerPackageStatus.CANCELLED

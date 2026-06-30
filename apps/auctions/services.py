@@ -26,6 +26,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
 from apps.assets.models import Bird
@@ -106,7 +107,7 @@ class AuctionBusinessValidator:
                 item_data["bird_id"] in bird_ids
                 or item_data.get("paired_bird_id") in bird_ids
             ):
-                raise ValidationError("Duplicate bird_id found in items.")
+                raise ValidationError(_("Duplicate bird_id found in items."))
             if paired_bird_id:
                 bird_counter += 1
                 bird_ids.add(paired_bird_id)
@@ -124,7 +125,7 @@ class AuctionBusinessValidator:
         }
 
         if not len(self.bird_map) == bird_counter:
-            raise ValidationError("A bird or more is not found.")
+            raise ValidationError(_("A bird or more is not found."))
 
         if AuctionItem.objects.filter(
             Q(bird_id__in=bird_ids) | Q(paired_bird_id__in=bird_ids),
@@ -132,7 +133,7 @@ class AuctionBusinessValidator:
             auction__end_time__gt=timezone.now(),
         ).exists():
             raise ValidationError(
-                "A bird or more is already placed in an active auction."
+                _("A bird or more is already placed in an active auction.")
             )
 
     def _validate_seller_owns_submitted_birds(self):
@@ -146,10 +147,10 @@ class AuctionBusinessValidator:
         if invalid_bird_ids:
             raise ValidationError(
                 {
-                    "items": (
-                        "Sellers can auction only birds they own. "
-                        f"Invalid bird ids: {invalid_bird_ids}."
+                    "items": _(
+                        "Sellers can auction only birds they own. Invalid bird ids: %(ids)s."
                     )
+                    % {"ids": invalid_bird_ids}
                 }
             )
 
@@ -426,11 +427,11 @@ class AuctionService:
             Updated Auction
         """
         if auction.status == AuctionStatus.CANCELLED:
-            raise ValidationError("Auction is already cancelled")
+            raise ValidationError(_("Auction is already cancelled"))
 
         if auction.status == AuctionStatus.ENDED:
             raise ValidationError(
-                "Cannot cancel ended auction. Use settlement for dispute resolution."
+                _("Cannot cancel ended auction. Use settlement for dispute resolution.")
             )
 
         # if auction.items.filter(bids__isnull=False).exists():
@@ -515,7 +516,7 @@ class AuctionService:
             return locked_auction
 
         if locked_auction.status == AuctionStatus.CANCELLED:
-            raise ValidationError("Auction is already cancelled")
+            raise ValidationError(_("Auction is already cancelled"))
 
         # if locked_auction.end_time > now:
         #     raise ValidationError("Auction cannot be closed before end time.")
@@ -555,13 +556,13 @@ class AuctionService:
     def _validate_auction_editable(auction: Auction) -> None:
         """Block edits after the auction starts or receives bids."""
         if auction.status != AuctionStatus.ACTIVE:
-            raise ValidationError("Only active auctions can be updated.")
+            raise ValidationError(_("Only active auctions can be updated."))
 
         if auction.start_time <= timezone.now():
-            raise ValidationError("Auction cannot be updated after it starts.")
+            raise ValidationError(_("Auction cannot be updated after it starts."))
 
         if auction.items.filter(bids__isnull=False).exists():
-            raise ValidationError("Auction cannot be updated after it receives bids.")
+            raise ValidationError(_("Auction cannot be updated after it receives bids."))
 
     @staticmethod
     def _log_event(
@@ -645,17 +646,18 @@ class BidBusinessValidator:
     def _validate_item_is_active(self) -> None:
         """Validate item is active and accepting bids"""
         if not self.auction.is_active():
-            raise ValidationError("Auction is not currently active")
+            raise ValidationError(_("Auction is not currently active"))
         if not self.item.is_active():
             raise ValidationError(
-                f"Item is not accepting bids. Current status: {self.item.status}"
+                _("Item is not accepting bids. Current status: %(status)s")
+                % {"status": self.item.status}
             )
 
     def _validate_bidder(self) -> None:
         """Validate bidder is not a Seller"""
 
         if self.bidder.type != ProfileType.CUSTOMER:
-            raise ValidationError("Only customers can place bids")
+            raise ValidationError(_("Only customers can place bids"))
 
     def _validate_bid_amount(self) -> None:
         """Validate bid amount meets all requirements"""
@@ -663,7 +665,8 @@ class BidBusinessValidator:
         # Must meet starting price
         if self.amount < self.item.starting_price:
             raise ValidationError(
-                f"Bid must be at least {self.item.starting_price} " f"(starting price)"
+                _("Bid must be at least %(amount)s (starting price)")
+                % {"amount": self.item.starting_price}
             )
 
         current_highest = self.item.current_highest_bid_amount()
@@ -673,9 +676,14 @@ class BidBusinessValidator:
 
         if self.amount < min_required:
             raise ValidationError(
-                f"Bid must be at least {min_required} "
-                f"(current {self.item.current_price} "
-                f"+ increment {self.auction.min_bid_increment})"
+                _(
+                    "Bid must be at least %(amount)s (current %(current)s + increment %(increment)s)"
+                )
+                % {
+                    "amount": min_required,
+                    "current": self.item.current_price,
+                    "increment": self.auction.min_bid_increment,
+                }
             )
 
 
@@ -806,8 +814,8 @@ class BiddingService:
                 recipient_profile=auction.owner,
                 actor_profile=bid.bidder,
                 notification_type=NotificationType.AUCTION_BID_PLACED,
-                title="New auction bid",
-                body="A customer placed a bid on your auction item.",
+                title=_("New auction bid"),
+                body=_("A customer placed a bid on your auction item."),
                 object_type="bid",
                 object_id=bid.pk,
                 metadata={
@@ -895,16 +903,16 @@ class SettlementService:
         auction = item.auction
 
         if not auction.buy_now_enabled:
-            raise ValidationError("Buy now not enabled for this auction")
+            raise ValidationError(_("Buy now not enabled for this auction"))
 
         if not auction.buy_now_price:
-            raise ValidationError("Buy now price not set")
+            raise ValidationError(_("Buy now price not set"))
 
         if not item.is_active():
-            raise ValidationError("Item is not available for buy now")
+            raise ValidationError(_("Item is not available for buy now"))
 
         if buyer == auction.owner:
-            raise ValidationError("Auction owner cannot buy own auction")
+            raise ValidationError(_("Auction owner cannot buy own auction"))
 
         # Create winning bid
         with transaction.atomic():
@@ -944,8 +952,8 @@ class SettlementService:
                 recipient_profile=item.winner,
                 actor_profile=item.auction.owner,
                 notification_type="auction_won",
-                title="Auction won",
-                body="You won the auction item.",
+                title=_("Auction won"),
+                body=_("You won the auction item."),
                 object_type="auction_item",
                 object_id=item.pk,
                 metadata={
@@ -967,8 +975,8 @@ class SettlementService:
                 recipient_profile=item.winner,
                 actor_profile=item.auction.owner,
                 notification_type=NotificationType.AUCTION_BUY_NOW_SUCCESS,
-                title="Buy now completed",
-                body="Your buy-now purchase was confirmed.",
+                title=_("Buy now completed"),
+                body=_("Your buy-now purchase was confirmed."),
                 object_type="auction_item",
                 object_id=item.pk,
                 metadata={

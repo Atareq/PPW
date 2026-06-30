@@ -4,6 +4,7 @@ import re
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.chat.models import Conversation, Message
@@ -61,15 +62,15 @@ class ChatService:
 
         if sender.pk == receiver.pk:
             raise ValidationError(
-                {"receiver_profile_id": ("Cannot create a conversation with yourself.")}
+                {"receiver_profile_id": (_("Cannot create a conversation with yourself."))}
             )
 
         if sender.user_id == receiver.user_id:
             raise ValidationError(
                 {
                     "receiver_profile_id": (
-                        "Cannot create a conversation with another profile "
-                        "on your account."
+                        _("Cannot create a conversation with another profile "
+                        "on your account.")
                     )
                 }
             )
@@ -81,7 +82,7 @@ class ChatService:
             raise ValidationError(
                 {
                     "receiver_profile_id": (
-                        "Cannot create a conversation while a block is active."
+                        _("Cannot create a conversation while a block is active.")
                     )
                 }
             )
@@ -103,7 +104,7 @@ class ChatService:
             raise ValidationError(
                 {
                     "receiver_profile_id": (
-                        "You must follow this seller before starting a conversation."
+                        _("You must follow this seller before starting a conversation.")
                     )
                 }
             )
@@ -129,14 +130,14 @@ class ChatService:
         conversation = ChatService._get_locked_conversation(conversation_id)
 
         if not conversation.is_active:
-            raise ValidationError("Conversation is not active.")
+            raise ValidationError(_("Conversation is not active."))
 
         ChatService._ensure_participant(conversation, sender)
         if BlockService.is_blocked_between(
             conversation.customer,
             conversation.seller,
         ):
-            raise ValidationError("Cannot send messages while a block is active.")
+            raise ValidationError(_("Cannot send messages while a block is active."))
         receiver = ChatService._other_participant(conversation, sender)
         ChatService._validate_no_contact_sharing(body)
 
@@ -181,7 +182,7 @@ class ChatService:
                 pk=conversation_id,
             )
         except Conversation.DoesNotExist as exc:
-            raise NotFound("Conversation was not found.") from exc
+            raise NotFound(_("Conversation was not found.")) from exc
 
     @staticmethod
     def get_message(message_id):
@@ -199,7 +200,7 @@ class ChatService:
         try:
             return Profile.objects.get(pk=profile_id)
         except Profile.DoesNotExist as exc:
-            raise ValidationError({"profile": "Profile was not found."}) from exc
+            raise ValidationError({"profile": _("Profile was not found.")}) from exc
 
     @staticmethod
     def _ensure_active_profile(profile):
@@ -209,7 +210,7 @@ class ChatService:
             or not profile.is_valid
             or getattr(profile, "deleted", None) is not None
         ):
-            raise ValidationError({"profile": "Profile is not active."})
+            raise ValidationError({"profile": _("Profile is not active.")})
 
     @staticmethod
     def _resolve_customer_seller(profile_a, profile_b):
@@ -218,7 +219,7 @@ class ChatService:
             raise ValidationError(
                 {
                     "receiver_profile_id": (
-                        "Conversations must be between one customer and one " "seller."
+                        _("Conversations must be between one customer and one " "seller.")
                     )
                 }
             )
@@ -236,7 +237,7 @@ class ChatService:
                 .get(pk=conversation_id)
             )
         except Conversation.DoesNotExist as exc:
-            raise NotFound("Conversation was not found.") from exc
+            raise NotFound(_("Conversation was not found.")) from exc
 
     @staticmethod
     def _ensure_participant(conversation, profile):
@@ -244,7 +245,7 @@ class ChatService:
             conversation.customer_id,
             conversation.seller_id,
         }:
-            raise NotFound("Conversation was not found.")
+            raise NotFound(_("Conversation was not found."))
 
     @staticmethod
     def _other_participant(conversation, profile):
@@ -259,8 +260,8 @@ class ChatService:
                 raise ValidationError(
                     {
                         "body": (
-                            "Sharing contact details or external links is not "
-                            "allowed in chat messages."
+                            _("Sharing contact details or external links is not "
+                            "allowed in chat messages.")
                         )
                     }
                 )

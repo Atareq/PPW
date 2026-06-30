@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.assets.models import AssetSaleChannel, Supply
@@ -124,7 +125,7 @@ class ProductAssetCreationService:
 
         if owner.type != ProfileType.SELLER:
             raise serializers.ValidationError(
-                "Only seller profiles can create product assets."
+                _("Only seller profiles can create product assets.")
             )
 
         PackageService.validate_can_consume(
@@ -160,7 +161,7 @@ class ProductAssetCreationService:
     ):
         if actor_profile and actor_profile.type not in {ProfileType.MANAGER}:
             raise serializers.ValidationError(
-                "Supply products are platform-controlled and cannot be created by sellers."
+                _("Supply products are platform-controlled and cannot be created by sellers.")
             )
 
         platform_seller = ProductAssetCreationService.get_platform_seller_profile()

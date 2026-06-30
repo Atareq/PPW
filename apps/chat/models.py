@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
@@ -60,7 +61,7 @@ class Conversation(BaseModel):
             and self.customer.user_id == self.seller.user_id
         ):
             raise ValidationError(
-                {"seller": "Customer and seller must belong to different users."}
+                {"seller": _("Customer and seller must belong to different users.")}
             )
 
     def __str__(self):
@@ -105,15 +106,15 @@ class Message(BaseModel):
         }
         if self.sender_id not in participant_ids:
             raise ValidationError(
-                {"sender": "Sender must be a conversation participant."}
+                {"sender": _("Sender must be a conversation participant.")}
             )
         if self.receiver_id not in participant_ids:
             raise ValidationError(
-                {"receiver": "Receiver must be a conversation participant."}
+                {"receiver": _("Receiver must be a conversation participant.")}
             )
         if self.sender_id == self.receiver_id:
             raise ValidationError(
-                {"receiver": "Receiver must be the other participant."}
+                {"receiver": _("Receiver must be the other participant.")}
             )
 
     def __str__(self):

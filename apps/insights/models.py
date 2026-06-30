@@ -1,18 +1,19 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
 
 class SellerInsightEventType(models.TextChoices):
-    SELLER_PROFILE_VIEW = "seller_profile_view", "Seller Profile View"
-    AUCTION_VIEW = "auction_view", "Auction View"
-    MARKET_ITEM_VIEW = "market_item_view", "Market Item View"
+    SELLER_PROFILE_VIEW = "seller_profile_view", _("Seller Profile View")
+    AUCTION_VIEW = "auction_view", _("Auction View")
+    MARKET_ITEM_VIEW = "market_item_view", _("Market Item View")
 
 
 class SellerInsightObjectType(models.TextChoices):
-    SELLER_PROFILE = "seller_profile", "Seller Profile"
-    AUCTION = "auction", "Auction"
-    MARKET_ITEM = "market_item", "Market Item"
+    SELLER_PROFILE = "seller_profile", _("Seller Profile")
+    AUCTION = "auction", _("Auction")
+    MARKET_ITEM = "market_item", _("Market Item")
 
 
 class SellerInsightEvent(BaseModel):

@@ -2,6 +2,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.authentication.services import switch_user_profile
+from django.utils.translation import gettext_lazy as _
 
 
 class ProfileSyncJWTAuthentication(JWTAuthentication):
@@ -15,7 +16,7 @@ class ProfileSyncJWTAuthentication(JWTAuthentication):
 
         if not token_profile:
             raise AuthenticationFailed(
-                "Token profile claim is required.",
+                _("Token profile claim is required."),
                 code="token_profile_missing",
             )
         if user.role != token_profile:

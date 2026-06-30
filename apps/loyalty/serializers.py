@@ -7,6 +7,7 @@ from apps.promotions.services import CashbackService
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 from apps.users.models import Profile
+from django.utils.translation import gettext_lazy as _
 
 
 class PointBalanceSerializer(serializers.Serializer):
@@ -117,7 +118,7 @@ class BadgeAwardCreateSerializer(serializers.Serializer):
         try:
             return Profile.objects.get(pk=value)
         except Profile.DoesNotExist as exc:
-            raise serializers.ValidationError("Profile was not found.") from exc
+            raise serializers.ValidationError(_("Profile was not found.")) from exc
 
     def create(self, validated_data):
         return BadgeService.award_badge(
@@ -138,7 +139,7 @@ class BuyPointsWithCashbackSerializer(serializers.Serializer):
         profile = self.context["request"].user.active_profile
         if profile.type != ProfileType.CUSTOMER:
             raise serializers.ValidationError(
-                "Only customer profiles can buy points with cashback."
+                _("Only customer profiles can buy points with cashback.")
             )
         attrs["customer_profile"] = CustomerProfile.objects.get(pk=profile.pk)
         return attrs

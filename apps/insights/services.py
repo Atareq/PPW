@@ -2,6 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import (
@@ -58,9 +59,9 @@ class SellerInsightEventService:
             if object_type is None:
                 object_type = SellerInsightEventService._default_object_type(event_type)
             if event_type not in SellerInsightEventType.values:
-                raise ValueError("Invalid seller insight event type.")
+                raise ValueError(_("Invalid seller insight event type."))
             if object_type not in SellerInsightObjectType.values:
-                raise ValueError("Invalid seller insight object type.")
+                raise ValueError(_("Invalid seller insight object type."))
 
             return SellerInsightEvent.objects.create(
                 seller=seller_profile,

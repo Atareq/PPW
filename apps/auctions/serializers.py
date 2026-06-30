@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.assets.models import Bird
@@ -473,32 +474,32 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
         # ===== TIME VALIDATION =====
         if start_time >= end_time:
             raise serializers.ValidationError(
-                {"start_time": "Start time must be before end time"}
+                {"start_time": _("Start time must be before end time")}
             )
 
         if start_time <= now:
             raise serializers.ValidationError(
-                {"start_time": "Start time must be in the future"}
+                {"start_time": _("Start time must be in the future")}
             )
 
         # ===== AUTO-EXTEND VALIDATION =====
         if data.get("auto_extend_enabled"):
             if not data.get("auto_extend_minutes"):
                 raise serializers.ValidationError(
-                    {"auto_extend_minutes": "Required when auto_extend_enabled=True"}
+                    {"auto_extend_minutes": _("Required when auto_extend_enabled=True")}
                 )
 
         # ===== DEPOSIT VALIDATION =====
         if data.get("deposit_required"):
             if not data.get("payment_deadline_days"):
                 raise serializers.ValidationError(
-                    {"payment_deadline_days": "Required when deposit_required=True"}
+                    {"payment_deadline_days": _("Required when deposit_required=True")}
                 )
 
         if data.get("buy_now_enabled"):
             if not data.get("buy_now_price"):
                 raise serializers.ValidationError(
-                    {"buy_now_price": "Required when buy_now_enabled=True"}
+                    {"buy_now_price": _("Required when buy_now_enabled=True")}
                 )
 
         if data.get("auction_type") in ["pair", "breeding"]:
@@ -509,7 +510,7 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
                             "items": {
                                 index: {
                                     "paired_bird_id": (
-                                        "Required for pair and breeding auctions."
+                                        _("Required for pair and breeding auctions.")
                                     )
                                 }
                             }
@@ -556,7 +557,7 @@ class BuyNowSerializer(serializers.Serializer):
         item = self.context.get("item")
 
         if not request or not item:
-            raise serializers.ValidationError("Invalid request context")
+            raise serializers.ValidationError(_("Invalid request context"))
 
         buyer = request.user.active_profile
 
@@ -579,7 +580,7 @@ class CancelAuctionSerializer(serializers.Serializer):
         auction = self.context.get("auction")
 
         if not request or not auction:
-            raise serializers.ValidationError("Invalid request context")
+            raise serializers.ValidationError(_("Invalid request context"))
 
         try:
             auction = AuctionService.cancel_auction(auction)

@@ -3,27 +3,28 @@ import uuid
 
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import OwnerBaseModel
 
 
 class AssetCategory(models.TextChoices):
-    BIRD = "bird", "Bird"
-    SUPPLY = "supply", "Supply"
-    ACCESSORY = "accessory", "Accessory"
-    FEED = "feed", "Feed"
-    SUPPLEMENT = "supplement", "Supplement"
+    BIRD = "bird", _("Bird")
+    SUPPLY = "supply", _("Supply")
+    ACCESSORY = "accessory", _("Accessory")
+    FEED = "feed", _("Feed")
+    SUPPLEMENT = "supplement", _("Supplement")
 
 
 class AssetStatus(models.TextChoices):
-    AVAILABLE = "available", "Available"
-    SOLD = "sold", "Sold"
-    INACTIVE = "inactive", "Inactive"
+    AVAILABLE = "available", _("Available")
+    SOLD = "sold", _("Sold")
+    INACTIVE = "inactive", _("Inactive")
 
 
 class AssetSaleChannel(models.TextChoices):
-    SELLER_MARKET = "seller_market", "Seller Market"
-    PLATFORM = "platform", "Platform"
+    SELLER_MARKET = "seller_market", _("Seller Market")
+    PLATFORM = "platform", _("Platform")
 
 
 class Asset(OwnerBaseModel):
@@ -110,9 +111,9 @@ class Bird(AssetSubtype):
 
     # Bird-specific info
     GENDER_CHOICES = [
-        ("male", "Male"),
-        ("female", "Female"),
-        ("young", "Young"),
+        ("male", _("Male")),
+        ("female", _("Female")),
+        ("young", _("Young")),
     ]
     name = models.CharField(max_length=70)
     ring_number = models.CharField(max_length=100, unique=True)
@@ -142,9 +143,9 @@ class Bird(AssetSubtype):
         max_digits=6, decimal_places=2, blank=True, null=True
     )
     STAMINA_CHOICES = [
-        ("excellent", "Excellent"),
-        ("verygood", "VeryGood"),
-        ("good", "Good"),
+        ("excellent", _("Excellent")),
+        ("verygood", _("VeryGood")),
+        ("good", _("Good")),
     ]
     stamina_ability = models.CharField(max_length=10, choices=STAMINA_CHOICES)
 

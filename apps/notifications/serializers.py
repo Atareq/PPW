@@ -1,3 +1,4 @@
+from django.utils.translation import gettext as _
 from rest_framework import serializers
 
 from apps.notifications.models import Notification
@@ -25,6 +26,8 @@ class NotificationActorProfileSerializer(serializers.Serializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     actor_profile = NotificationActorProfileSerializer(read_only=True)
+    title = serializers.SerializerMethodField()
+    body = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
@@ -43,6 +46,12 @@ class NotificationSerializer(serializers.ModelSerializer):
             "created",
         ]
         read_only_fields = fields
+
+    def get_title(self, obj):
+        return _(obj.title)
+
+    def get_body(self, obj):
+        return _(obj.body)
 
 
 class UnreadCountSerializer(serializers.Serializer):
@@ -78,5 +87,5 @@ class ManualNotificationCreateSerializer(serializers.Serializer):
             is_valid=True,
             deleted__isnull=True,
         ).exists():
-            raise serializers.ValidationError("Recipient profile was not found.")
+            raise serializers.ValidationError(_("Recipient profile was not found."))
         return value

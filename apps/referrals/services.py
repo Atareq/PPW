@@ -3,6 +3,7 @@ from uuid import uuid4
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
 from apps.loyalty.constants import RewardSourceType
@@ -36,7 +37,7 @@ class ReferralService:
                 return code
             except IntegrityError:
                 continue
-        raise ValidationError({"code": "Could not create a unique referral code."})
+        raise ValidationError({"code": _("Could not create a unique referral code.")})
 
     @staticmethod
     @transaction.atomic
@@ -45,13 +46,13 @@ class ReferralService:
 
         code_value = str(raw_code or "").strip()
         if not code_value:
-            raise ValidationError({"code": "This field is required."})
+            raise ValidationError({"code": _("This field is required.")})
 
         redeemer = Profile.objects.select_related("user").get(pk=active_profile.pk)
         account_age = timezone.now() - redeemer.user.date_joined
         if account_age > timezone.timedelta(hours=REFERRAL_NEW_ACCOUNT_WINDOW_HOURS):
             raise ValidationError(
-                {"code": "Referral code is only valid for new accounts."}
+                {"code": _("Referral code is only valid for new accounts.")}
             )
 
         try:
@@ -61,17 +62,17 @@ class ReferralService:
                 .get(code=code_value)
             )
         except LinkSharingCode.DoesNotExist as exc:
-            raise ValidationError({"code": "Referral code was not found."}) from exc
+            raise ValidationError({"code": _("Referral code was not found.")}) from exc
 
         if code.is_used:
-            raise ValidationError({"code": "Referral code was already used."})
+            raise ValidationError({"code": _("Referral code was already used.")})
         if code.expires_at <= timezone.now():
-            raise ValidationError({"code": "Referral code has expired."})
+            raise ValidationError({"code": _("Referral code has expired.")})
         if (
             code.owner_profile_id == redeemer.pk
             or code.owner_profile.user_id == redeemer.user_id
         ):
-            raise ValidationError({"code": "Cannot redeem your own referral code."})
+            raise ValidationError({"code": _("Cannot redeem your own referral code.")})
 
         code.is_used = True
         code.used_by_profile = redeemer

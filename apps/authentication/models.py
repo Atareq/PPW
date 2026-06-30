@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import PermissionDenied
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 from phonenumber_field.modelfields import PhoneNumberField
 
 from apps.general.models import BaseModel
@@ -28,7 +29,7 @@ class UserAccount(AbstractUser, BaseModel):
             deleted__isnull=True,
         ).first()
         if profile is None:
-            raise PermissionDenied("No active profile found for this user.")
+            raise PermissionDenied(_("No active profile found for this user."))
         from apps.users.constants import ProfileType
 
         if profile.type == ProfileType.MANAGER:

@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.complaints.models import (
@@ -55,14 +56,14 @@ class ComplaintService:
             payment_request.buyer_id,
             payment_request.seller_id,
         }:
-            raise NotFound("Payment request was not found.")
+            raise NotFound(_("Payment request was not found."))
 
         if payment_request.status not in {
             PaymentRequestStatus.APPROVED,
             PaymentRequestStatus.REJECTED,
         }:
             raise ValidationError(
-                "Complaints can only be created for approved or rejected payment requests."
+                _("Complaints can only be created for approved or rejected payment requests.")
             )
 
         ComplaintService._validate_no_active_complaint(payment_request.pk)
@@ -94,7 +95,7 @@ class ComplaintService:
         complaint = ComplaintService._get_locked_complaint(complaint_id)
 
         if complaint.status != ComplaintStatus.OPEN:
-            raise ValidationError("Only open complaints can move to review.")
+            raise ValidationError(_("Only open complaints can move to review."))
 
         now = timezone.now()
         complaint.status = ComplaintStatus.IN_REVIEW
@@ -116,8 +117,8 @@ class ComplaintService:
         ComplaintService._schedule_status_notifications(
             complaint,
             actor=manager_profile,
-            title="Complaint in review",
-            body="Your complaint is now in review.",
+            title=_("Complaint in review"),
+            body=_("Your complaint is now in review."),
             idempotency_suffix=complaint.status,
         )
         return ComplaintService.get_complaint(complaint.pk)
@@ -129,7 +130,7 @@ class ComplaintService:
         complaint = ComplaintService._get_locked_complaint(complaint_id)
 
         if complaint.status not in ComplaintService.REVIEWABLE_STATUSES:
-            raise ValidationError("Only open or in-review complaints can be resolved.")
+            raise ValidationError(_("Only open or in-review complaints can be resolved."))
 
         now = timezone.now()
         update_fields = ["status", "resolved_at", "modified"]
@@ -154,8 +155,8 @@ class ComplaintService:
         ComplaintService._schedule_status_notifications(
             complaint,
             actor=manager_profile,
-            title="Complaint resolved",
-            body="A manager resolved the complaint tied to your payment request.",
+            title=_("Complaint resolved"),
+            body=_("A manager resolved the complaint tied to your payment request."),
             idempotency_suffix=complaint.status,
         )
         return ComplaintService.get_complaint(complaint.pk)
@@ -167,7 +168,7 @@ class ComplaintService:
         complaint = ComplaintService._get_locked_complaint(complaint_id)
 
         if complaint.status not in ComplaintService.REVIEWABLE_STATUSES:
-            raise ValidationError("Only open or in-review complaints can be rejected.")
+            raise ValidationError(_("Only open or in-review complaints can be rejected."))
 
         now = timezone.now()
         update_fields = ["status", "modified"]
@@ -191,8 +192,8 @@ class ComplaintService:
         ComplaintService._schedule_status_notifications(
             complaint,
             actor=manager_profile,
-            title="Complaint rejected",
-            body="A manager rejected the complaint tied to your payment request.",
+            title=_("Complaint rejected"),
+            body=_("A manager rejected the complaint tied to your payment request."),
             idempotency_suffix=complaint.status,
         )
         return ComplaintService.get_complaint(complaint.pk)
@@ -208,7 +209,7 @@ class ComplaintService:
             ComplaintStatus.REJECTED,
         }:
             raise ValidationError(
-                "Only resolved or rejected complaints can be reopened."
+                _("Only resolved or rejected complaints can be reopened.")
             )
 
         complaint.status = ComplaintStatus.OPEN
@@ -230,8 +231,8 @@ class ComplaintService:
         ComplaintService._schedule_status_notifications(
             complaint,
             actor=manager_profile,
-            title="Complaint reopened",
-            body="A manager reopened the complaint tied to your payment request.",
+            title=_("Complaint reopened"),
+            body=_("A manager reopened the complaint tied to your payment request."),
             idempotency_suffix=f"reopened:{complaint.modified.isoformat()}",
         )
         return ComplaintService.get_complaint(complaint.pk)
@@ -242,10 +243,10 @@ class ComplaintService:
         complaint = ComplaintService._get_locked_complaint(complaint_id)
 
         if complaint.created_by_id != actor_profile.pk:
-            raise NotFound("Complaint was not found.")
+            raise NotFound(_("Complaint was not found."))
 
         if complaint.status != ComplaintStatus.OPEN:
-            raise ValidationError("Only open complaints can be cancelled.")
+            raise ValidationError(_("Only open complaints can be cancelled."))
 
         complaint.status = ComplaintStatus.CANCELLED
         complaint.cancelled_at = timezone.now()
@@ -276,14 +277,14 @@ class ComplaintService:
                 .get(pk=payment_request_id)
             )
         except PaymentRequest.DoesNotExist as exc:
-            raise NotFound("Payment request was not found.") from exc
+            raise NotFound(_("Payment request was not found.")) from exc
 
     @staticmethod
     def _get_locked_complaint(complaint_id):
         try:
             return Complaint.objects.select_for_update().get(pk=complaint_id)
         except Complaint.DoesNotExist as exc:
-            raise NotFound("Complaint was not found.") from exc
+            raise NotFound(_("Complaint was not found.")) from exc
 
     @staticmethod
     def _validate_no_active_complaint(payment_request_id):
@@ -292,7 +293,7 @@ class ComplaintService:
             status__in=Complaint.ACTIVE_STATUSES,
         ).exists():
             raise ValidationError(
-                "An active complaint already exists for this payment request."
+                _("An active complaint already exists for this payment request.")
             )
 
     @staticmethod
@@ -306,7 +307,7 @@ class ComplaintService:
     @staticmethod
     def _ensure_manager(profile):
         if getattr(profile, "type", None) != ProfileType.MANAGER:
-            raise PermissionDenied("Only manager profiles can review complaints.")
+            raise PermissionDenied(_("Only manager profiles can review complaints."))
 
     @staticmethod
     def _log_event(complaint, event_type, *, actor=None, metadata=None):

@@ -3,6 +3,7 @@ from rest_framework.exceptions import ValidationError
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, SellerProfile
+from django.utils.translation import gettext_lazy as _
 
 
 class PurchaseRuleValidator:
@@ -11,34 +12,34 @@ class PurchaseRuleValidator:
     @staticmethod
     def get_customer_profile(profile):
         if not profile:
-            raise ValidationError({"customer": "Active profile is required."})
+            raise ValidationError({"customer": _("Active profile is required.")})
 
         if profile.type != ProfileType.CUSTOMER:
             raise ValidationError(
-                {"customer": "Only customer profiles can checkout orders."}
+                {"customer": _("Only customer profiles can checkout orders.")}
             )
 
         try:
             return CustomerProfile.objects.get(pk=profile.pk)
         except CustomerProfile.DoesNotExist as exc:
             raise ValidationError(
-                {"customer": "Customer profile was not found."}
+                {"customer": _("Customer profile was not found.")}
             ) from exc
 
     @staticmethod
     def get_seller_profile(profile):
         if not profile:
-            raise ValidationError({"seller": "Active profile is required."})
+            raise ValidationError({"seller": _("Active profile is required.")})
 
         if profile.type != ProfileType.SELLER:
             raise ValidationError(
-                {"seller": "Only seller profiles can manage order items."}
+                {"seller": _("Only seller profiles can manage order items.")}
             )
 
         try:
             return SellerProfile.objects.get(pk=profile.pk)
         except SellerProfile.DoesNotExist as exc:
-            raise ValidationError({"seller": "Seller profile was not found."}) from exc
+            raise ValidationError({"seller": _("Seller profile was not found.")}) from exc
 
     @staticmethod
     def get_asset(asset_id, *, lock=False):
@@ -49,7 +50,7 @@ class PurchaseRuleValidator:
         try:
             return queryset.get(pk=asset_id)
         except Asset.DoesNotExist as exc:
-            raise ValidationError({"asset_id": "Asset was not found."}) from exc
+            raise ValidationError({"asset_id": _("Asset was not found.")}) from exc
 
     @staticmethod
     def get_seller_for_asset(asset):
@@ -57,7 +58,10 @@ class PurchaseRuleValidator:
             return SellerProfile.objects.get(pk=asset.owner_id)
         except SellerProfile.DoesNotExist as exc:
             raise ValidationError(
-                {"items": f"Seller for asset #{asset.pk} was not found."}
+                {
+                    "items": _("Seller for asset #%(asset_id)s was not found.")
+                    % {"asset_id": asset.pk}
+                }
             ) from exc
 
     @classmethod
@@ -72,17 +76,28 @@ class PurchaseRuleValidator:
     def validate_asset_not_deleted(asset):
         if getattr(asset, "deleted", None) is not None:
             raise ValidationError(
-                {"items": f"Asset #{asset.pk} is no longer available."}
+                {
+                    "items": _("Asset #%(asset_id)s is no longer available.")
+                    % {"asset_id": asset.pk}
+                }
             )
 
     @staticmethod
     def validate_asset_available(asset):
         if asset.status != AssetStatus.AVAILABLE:
-            raise ValidationError({"items": f"Asset #{asset.pk} is not available."})
+            raise ValidationError(
+                {
+                    "items": _("Asset #%(asset_id)s is not available.")
+                    % {"asset_id": asset.pk}
+                }
+            )
 
         if not asset.is_market_listed:
             raise ValidationError(
-                {"items": f"Asset #{asset.pk} is not listed for market."}
+                {
+                    "items": _("Asset #%(asset_id)s is not listed for market.")
+                    % {"asset_id": asset.pk}
+                }
             )
 
     @staticmethod
@@ -96,28 +111,34 @@ class PurchaseRuleValidator:
         )
         if seller_is_invalid:
             raise ValidationError(
-                {"items": f"Asset #{asset.pk} is not owned by a valid seller."}
+                {
+                    "items": _("Asset #%(asset_id)s is not owned by a valid seller.")
+                    % {"asset_id": asset.pk}
+                }
             )
 
     @staticmethod
     def validate_customer_is_not_owner(customer_profile, asset):
         if asset.owner.user_id == customer_profile.user_id:
             raise ValidationError(
-                {"items": "Customers cannot order their own seller assets."}
+                {"items": _("Customers cannot order their own seller assets.")}
             )
 
     @staticmethod
     def validate_quantity(asset, quantity):
         if quantity < 1:
-            raise ValidationError({"quantity": "Quantity must be greater than 0."})
+            raise ValidationError({"quantity": _("Quantity must be greater than 0.")})
 
         if asset.category == AssetCategory.BIRD and quantity != 1:
             raise ValidationError(
-                {"items": f"Bird asset #{asset.pk} quantity must be 1."}
+                {
+                    "items": _("Bird asset #%(asset_id)s quantity must be 1.")
+                    % {"asset_id": asset.pk}
+                }
             )
 
         if quantity > asset.count:
-            raise ValidationError({"detail": "Insufficient stock"})
+            raise ValidationError({"detail": _("Insufficient stock")})
 
 
 class CartItemValidator:
@@ -175,7 +196,7 @@ class OrderCreationValidator:
         asset_ids = [item["asset_id"] for item in self.items_payload]
         if len(asset_ids) != len(set(asset_ids)):
             raise ValidationError(
-                {"items": "Duplicate asset_id entries are not allowed."}
+                {"items": _("Duplicate asset_id entries are not allowed.")}
             )
 
     def _retrieve_assets(self):
@@ -189,7 +210,7 @@ class OrderCreationValidator:
 
         missing_ids = set(asset_ids) - set(self.asset_map)
         if missing_ids:
-            raise ValidationError({"items": "One or more assets were not found."})
+            raise ValidationError({"items": _("One or more assets were not found.")})
 
     def _retrieve_sellers(self):
         seller_ids = {
@@ -212,7 +233,10 @@ class OrderCreationValidator:
 
             if asset.owner_id not in self.seller_map:
                 raise ValidationError(
-                    {"items": (f"Seller for asset #{asset.pk} was not found.")}
+                    {
+                        "items": _("Seller for asset #%(asset_id)s was not found.")
+                        % {"asset_id": asset.pk}
+                    }
                 )
 
 
@@ -237,7 +261,7 @@ class OrderCheckoutValidator:
 
     def _validate_non_empty(self):
         if not self.cart_items:
-            raise ValidationError({"cart": "Cart is empty."})
+            raise ValidationError({"cart": _("Cart is empty.")})
 
     def _retrieve_sellers(self):
         seller_ids = {
@@ -252,7 +276,7 @@ class OrderCheckoutValidator:
             asset = self.asset_map.get(cart_item.asset_id)
             if asset is None:
                 raise ValidationError(
-                    {"items": "One or more cart assets were not found."}
+                    {"items": _("One or more cart assets were not found.")}
                 )
 
             PurchaseRuleValidator.validate_purchase_item(
@@ -263,5 +287,8 @@ class OrderCheckoutValidator:
 
             if asset.owner_id not in self.seller_map:
                 raise ValidationError(
-                    {"items": (f"Seller for asset #{asset.pk} was not found.")}
+                    {
+                        "items": _("Seller for asset #%(asset_id)s was not found.")
+                        % {"asset_id": asset.pk}
+                    }
                 )

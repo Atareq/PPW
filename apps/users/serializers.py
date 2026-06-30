@@ -1,5 +1,6 @@
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.authentication.models import UserAccount
@@ -313,7 +314,7 @@ class ManagerAdminUpdateSerializer(PhoneValidationMixin, serializers.Serializer)
             queryset = queryset.exclude(pk=instance.user_id)
         if queryset.exists():
             raise serializers.ValidationError(
-                "user account with this phone number already exists."
+                _("user account with this phone number already exists.")
             )
         return value
 
@@ -386,7 +387,7 @@ class ProfileBalanceAdjustmentSerializer(serializers.Serializer):
         try:
             return Profile.objects.get(pk=value)
         except Profile.DoesNotExist as exc:
-            raise serializers.ValidationError("Profile was not found.") from exc
+            raise serializers.ValidationError(_("Profile was not found.")) from exc
 
     def create(self, validated_data):
         return ProfileBalanceService.manager_adjust(

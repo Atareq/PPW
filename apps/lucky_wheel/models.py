@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 from apps.loyalty.constants import BadgeType
@@ -9,25 +10,25 @@ from apps.promotions.models import OfferTriggerType
 
 
 class LuckyWheelGrantSourceType(models.TextChoices):
-    ONBOARDING = "onboarding", "Onboarding"
-    AUCTION_COMPLETED = "auction_completed", "Auction Completed"
-    REFERRAL = "referral", "Referral"
-    MANAGER_GRANT = "manager_grant", "Manager Grant"
-    SEASON = "season", "Season"
+    ONBOARDING = "onboarding", _("Onboarding")
+    AUCTION_COMPLETED = "auction_completed", _("Auction Completed")
+    REFERRAL = "referral", _("Referral")
+    MANAGER_GRANT = "manager_grant", _("Manager Grant")
+    SEASON = "season", _("Season")
 
 
 class LuckyWheelPrizeType(models.TextChoices):
-    PP_COINS = "pp_coins", "PP Coins"
-    DISCOUNT_OFFER = "discount_offer", "Discount Offer"
-    CASHBACK_OFFER = "cashback_offer", "Cashback Offer"
-    BADGE = "badge", "Badge"
-    NO_PRIZE = "no_prize", "No Prize"
+    PP_COINS = "pp_coins", _("PP Coins")
+    DISCOUNT_OFFER = "discount_offer", _("Discount Offer")
+    CASHBACK_OFFER = "cashback_offer", _("Cashback Offer")
+    BADGE = "badge", _("Badge")
+    NO_PRIZE = "no_prize", _("No Prize")
 
 
 class LuckyWheelSpinStatus(models.TextChoices):
-    AWARDED = "awarded", "Awarded"
-    NO_PRIZE = "no_prize", "No Prize"
-    FAILED = "failed", "Failed"
+    AWARDED = "awarded", _("Awarded")
+    NO_PRIZE = "no_prize", _("No Prize")
+    FAILED = "failed", _("Failed")
 
 
 class LuckyWheelGrant(BaseModel):

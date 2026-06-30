@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.orders.models import OrderItem
@@ -317,12 +318,12 @@ class CashbackService:
 
         if admin_profile.type != ProfileType.MANAGER:
             raise PermissionDenied(
-                "Only manager profiles can adjust cashback balances."
+                _("Only manager profiles can adjust cashback balances.")
             )
 
         amount = quantize_money(amount)
         if amount == 0:
-            raise ValidationError({"amount": "Adjustment amount cannot be zero."})
+            raise ValidationError({"amount": _("Adjustment amount cannot be zero.")})
 
         idempotency_key = (
             str(idempotency_key).strip()
@@ -347,7 +348,7 @@ class CashbackService:
         next_balance = quantize_money(customer.cashback_balance + amount)
         if next_balance < 0:
             raise ValidationError(
-                {"amount": "Adjustment would make cashback balance negative."}
+                {"amount": _("Adjustment would make cashback balance negative.")}
             )
 
         customer.cashback_balance = next_balance
@@ -376,11 +377,11 @@ class CashbackService:
         amount = quantize_money(cashback_amount)
         if amount <= 0:
             raise ValidationError(
-                {"cashback_amount": "Cashback amount must be greater than zero."}
+                {"cashback_amount": _("Cashback amount must be greater than zero.")}
             )
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
-            raise ValidationError({"idempotency_key": "This field is required."})
+            raise ValidationError({"idempotency_key": _("This field is required.")})
 
         cashback_key = (
             f"cashback_points_purchase:{customer_profile.pk}:{idempotency_key}"
@@ -403,7 +404,7 @@ class CashbackService:
             pk=customer_profile.pk
         )
         if customer.cashback_balance < amount:
-            raise ValidationError({"cashback_amount": "Insufficient cashback balance."})
+            raise ValidationError({"cashback_amount": _("Insufficient cashback balance.")})
 
         customer.cashback_balance = quantize_money(customer.cashback_balance - amount)
         customer.save(update_fields=["cashback_balance", "modified"])
@@ -494,8 +495,8 @@ class CashbackService:
             raise ValidationError(
                 {
                     "idempotency_key": (
-                        "Idempotency key was already used for a different "
-                        "cashback transaction."
+                        _("Idempotency key was already used for a different "
+                        "cashback transaction.")
                     )
                 }
             )
@@ -636,7 +637,7 @@ class UserPromotionGrantService:
 
         idempotency_key = str(idempotency_key).strip()
         if not idempotency_key:
-            raise ValidationError({"idempotency_key": "Idempotency key is required."})
+            raise ValidationError({"idempotency_key": _("Idempotency key is required.")})
 
         existing = UserPromotionGrant.objects.filter(
             idempotency_key=idempotency_key

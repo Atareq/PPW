@@ -1,14 +1,15 @@
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
 
 class SeasonStatus(models.TextChoices):
-    DRAFT = "draft", "Draft"
-    CALCULATED = "calculated", "Calculated"
-    FINALIZED = "finalized", "Finalized"
+    DRAFT = "draft", _("Draft")
+    CALCULATED = "calculated", _("Calculated")
+    FINALIZED = "finalized", _("Finalized")
 
 
 class Season(BaseModel):
@@ -36,7 +37,7 @@ class Season(BaseModel):
     def clean(self):
         super().clean()
         if self.starts_at and self.ends_at and self.starts_at >= self.ends_at:
-            raise ValidationError({"ends_at": "Season end must be after start."})
+            raise ValidationError({"ends_at": _("Season end must be after start.")})
 
     def save(self, *args, **kwargs):
         self.full_clean()

@@ -1,26 +1,27 @@
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel
 
 
 class PaymentRequestStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    APPROVED = "approved", "Approved"
-    REJECTED = "rejected", "Rejected"
-    CANCELLED = "cancelled", "Cancelled"
+    PENDING = "pending", _("Pending")
+    APPROVED = "approved", _("Approved")
+    REJECTED = "rejected", _("Rejected")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class PaymentRequestType(models.TextChoices):
-    AUCTION = "auction", "Auction"
-    MARKET = "market", "Market"
+    AUCTION = "auction", _("Auction")
+    MARKET = "market", _("Market")
 
 
 class PaymentRequestEventType(models.TextChoices):
-    CREATED = "payment_request_created", "Payment Request Created"
-    UPDATED = "payment_request_updated", "Payment Request Updated"
-    APPROVED = "payment_request_approved", "Payment Request Approved"
-    REJECTED = "payment_request_rejected", "Payment Request Rejected"
+    CREATED = "payment_request_created", _("Payment Request Created")
+    UPDATED = "payment_request_updated", _("Payment Request Updated")
+    APPROVED = "payment_request_approved", _("Payment Request Approved")
+    REJECTED = "payment_request_rejected", _("Payment Request Rejected")
 
 
 class PaymentRequest(BaseModel):

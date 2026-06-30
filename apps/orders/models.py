@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.assets.models import Asset
 from apps.general.models import BaseModel, OwnerBaseModel
@@ -9,39 +10,39 @@ from apps.users.models import CustomerProfile, Profile, SellerProfile
 
 
 class CartStatus(models.TextChoices):
-    ACTIVE = "active", "Active"
-    CONVERTED = "converted", "Converted"
-    ABANDONED = "abandoned", "Abandoned"
+    ACTIVE = "active", _("Active")
+    CONVERTED = "converted", _("Converted")
+    ABANDONED = "abandoned", _("Abandoned")
 
 
 class OrderStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    PROCESSING = "processing", "Processing"
-    COMPLETED = "completed", "Completed"
-    CANCELLED = "cancelled", "Cancelled"
-    PARTIAL_REJECTED = "partial_rejected", "Partial Rejected"
+    PENDING = "pending", _("Pending")
+    PROCESSING = "processing", _("Processing")
+    COMPLETED = "completed", _("Completed")
+    CANCELLED = "cancelled", _("Cancelled")
+    PARTIAL_REJECTED = "partial_rejected", _("Partial Rejected")
 
 
 class OrderItemStatus(models.TextChoices):
-    PENDING_SELLER = "pending_seller", "Pending Seller"
-    APPROVED = "approved", "Approved"
-    REJECTED = "rejected", "Rejected"
+    PENDING_SELLER = "pending_seller", _("Pending Seller")
+    APPROVED = "approved", _("Approved")
+    REJECTED = "rejected", _("Rejected")
     AWAITING_PAYMENT_REVIEW = (
         "awaiting_payment_review",
-        "Awaiting Payment Review",
+        _("Awaiting Payment Review"),
     )
-    READY_HANDOFF = "ready_handoff", "Ready Handoff"
-    COMPLETED = "completed", "Completed"
-    CANCELLED = "cancelled", "Cancelled"
+    READY_HANDOFF = "ready_handoff", _("Ready Handoff")
+    COMPLETED = "completed", _("Completed")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class OrderEventType(models.TextChoices):
-    ORDER_CREATED = "order_created", "Order Created"
-    SELLER_PENDING_ITEM = "seller_pending_item", "Seller Pending Item"
-    SELLER_APPROVED = "seller_approved", "Seller Approved"
+    ORDER_CREATED = "order_created", _("Order Created")
+    SELLER_PENDING_ITEM = "seller_pending_item", _("Seller Pending Item")
+    SELLER_APPROVED = "seller_approved", _("Seller Approved")
     SELLER_AUTO_CANCELLED = (
         "seller_auto_cancelled",
-        "Seller Auto Cancelled",
+        _("Seller Auto Cancelled"),
     )
 
 

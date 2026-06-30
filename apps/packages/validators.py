@@ -2,6 +2,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.users.constants import ProfileType
 from apps.users.models import SellerProfile
+from django.utils.translation import gettext_lazy as _
 
 
 class PackageValidationRules:
@@ -42,14 +43,14 @@ class SellerPackageValidator:
     @staticmethod
     def get_seller_profile(profile):
         if not profile:
-            raise ValidationError({"seller": "Active profile is required."})
+            raise ValidationError({"seller": _("Active profile is required.")})
 
         if profile.type != ProfileType.SELLER:
             raise ValidationError(
-                {"seller": "Only seller profiles can request packages."}
+                {"seller": _("Only seller profiles can request packages.")}
             )
 
         try:
             return SellerProfile.objects.get(pk=profile.pk)
         except SellerProfile.DoesNotExist as exc:
-            raise ValidationError({"seller": "Seller profile was not found."}) from exc
+            raise ValidationError({"seller": _("Seller profile was not found.")}) from exc

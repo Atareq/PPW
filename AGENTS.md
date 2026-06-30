@@ -1862,6 +1862,20 @@ From `ppw/settings/base.py`:
 - paginated list responses use DRF's `count`, `next`, `previous`, and `results` response shape
 - `AUTH_USER_MODEL` is `authentication.UserAccount`
 - `APPEND_SLASH = False`
+- API localization is Arabic-first:
+  - `LANGUAGE_CODE = "ar"`
+  - supported languages are `ar` and `en`
+  - `LOCALE_PATHS` points to the repo-level `locale/` directory
+  - `apps.general.middleware.ApiLocaleMiddleware` selects language from `?lang=`, then `Accept-Language`, then Arabic default
+  - locale values are normalized to `ar` or `en`; unsupported languages fall back to Arabic
+
+Localization rules:
+
+- translate only human-readable API messages, labels, descriptions, validation errors, permission-denied/authentication text, response `detail`/`message` text, notification title/body display, and display labels
+- do not translate API field names, URLs, enum/status values stored in the database, notification type values, source type values, profile type values, permission codes, group keys, or other machine/database codes
+- use Django gettext helpers, usually `gettext_lazy as _` for model/constant/class-level strings and `gettext as _` for direct runtime response text that may render after view return
+- manager permission catalog entries keep `code` and `group_key` as stable English machine strings; only `group_label`, `label`, and `description` are localized
+- tests that assert English text must explicitly request English with `Accept-Language: en` or use a translation override; no-header API requests should be treated as Arabic
 
 Important JWT rule:
 
@@ -2818,6 +2832,7 @@ If adding new modules:
 - API docs tests: `pytest tests/test_api_docs.py -q`
 - full suite: `pytest -q`
 - schema validation: `python manage.py spectacular --validate --settings ppw.settings.local --file /tmp/ppw-schema.yaml`
+- i18n tests: `pytest tests/test_i18n.py -q`
 - pre-commit pytest hook runs `pytest -q`
 - for future work, start with targeted tests in the touched app
 - add broader regression tests only when changes cross module boundaries or alter shared behavior

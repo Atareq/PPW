@@ -1,14 +1,15 @@
 from django.conf import settings
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import OwnerBaseModel
 
 
 class PedigreeDocumentStatus(models.TextChoices):
-    UPLOADED = "uploaded", "Uploaded"
-    PROCESSED = "processed", "Processed"
-    REVIEWED = "reviewed", "Reviewed"
-    FAILED = "failed", "Failed"
+    UPLOADED = "uploaded", _("Uploaded")
+    PROCESSED = "processed", _("Processed")
+    REVIEWED = "reviewed", _("Reviewed")
+    FAILED = "failed", _("Failed")
 
 
 class PedigreeDocument(OwnerBaseModel):

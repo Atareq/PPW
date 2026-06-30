@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -226,7 +227,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
             seller_package_id=seller_package_id,
         )
         if not auction:
-            raise ValidationError("Failed to create auction")
+            raise ValidationError(_("Failed to create auction"))
         return Response(
             AuctionDetailSerializer(auction).data,
             status=status.HTTP_201_CREATED,

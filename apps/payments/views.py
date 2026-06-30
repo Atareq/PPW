@@ -19,6 +19,7 @@ from apps.payments.services import (
     payment_request_queryset,
 )
 from apps.users.constants import ProfileType
+from django.utils.translation import gettext_lazy as _
 
 
 def active_profile_or_denied(request, expected_type):
@@ -26,7 +27,7 @@ def active_profile_or_denied(request, expected_type):
 
     active_profile = request.user.active_profile
     if active_profile.type != expected_type:
-        raise PermissionDenied("Active profile is not allowed for this action.")
+        raise PermissionDenied(_("Active profile is not allowed for this action."))
     return active_profile
 
 

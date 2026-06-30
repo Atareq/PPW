@@ -1,4 +1,5 @@
 from drf_spectacular.utils import extend_schema, extend_schema_view
+from django.utils.translation import gettext_lazy as _
 from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 
@@ -70,7 +71,7 @@ class SeasonFinalizeViewSet(viewsets.GenericViewSet):
         if season.status != SeasonStatus.CALCULATED:
             from rest_framework.exceptions import ValidationError
             raise ValidationError(
-                {"detail": "Only calculated seasons can be finalized."}
+                {"detail": _("Only calculated seasons can be finalized.")}
             )
         season.status = SeasonStatus.FINALIZED
         season.finalized_by = request.user.active_profile

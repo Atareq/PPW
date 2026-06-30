@@ -13,6 +13,7 @@ from apps.complaints.serializers import (
 from apps.complaints.services import ComplaintService, complaint_queryset
 from apps.general.authorizations import HasAppAccess
 from apps.users.constants import ProfileType
+from django.utils.translation import gettext_lazy as _
 
 
 def active_profile(request):
@@ -81,7 +82,7 @@ class ComplaintViewSet(
     def list(self, request, *args, **kwargs):
         profile = active_profile(request)
         if self.scope != "my" and profile.type != ProfileType.MANAGER:
-            raise PermissionDenied("Only managers can list all complaints.")
+            raise PermissionDenied(_("Only managers can list all complaints."))
         return super().list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):

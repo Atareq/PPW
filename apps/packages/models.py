@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Q
+from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel, OwnerBaseModel
 from apps.packages.validators import PackageValidationRules
@@ -11,16 +12,16 @@ from apps.users.models import SellerProfile
 
 
 class SellerPackageStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    ACTIVE = "active", "Active"
-    EXHAUSTED = "exhausted", "Exhausted"
-    CANCELLED = "cancelled", "Cancelled"
+    PENDING = "pending", _("Pending")
+    ACTIVE = "active", _("Active")
+    EXHAUSTED = "exhausted", _("Exhausted")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class PackageUsageType(models.TextChoices):
-    AUCTION_CREATED = "auction_created", "Auction Created"
-    PRODUCT_CREATED = "product_created", "Product Created"
-    PEDIGREE_CREATED = "pedigree_created", "Pedigree Created"
+    AUCTION_CREATED = "auction_created", _("Auction Created")
+    PRODUCT_CREATED = "product_created", _("Product Created")
+    PEDIGREE_CREATED = "pedigree_created", _("Pedigree Created")
 
 
 class Package(BaseModel):

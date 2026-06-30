@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.general.models import AssetMedia
+from django.utils.translation import gettext_lazy as _
 
 
 class AssetMediaSerializer(serializers.ModelSerializer):
@@ -19,6 +20,6 @@ class AssetMediaSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict) and "id" in data:
             raise serializers.ValidationError(
-                {"id": ("Media ids are not accepted for nested asset media " "writes.")}
+                {"id": (_("Media ids are not accepted for nested asset media " "writes."))}
             )
         return super().to_internal_value(data)

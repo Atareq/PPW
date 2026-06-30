@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q, UniqueConstraint
+from django.utils.translation import gettext_lazy as _
 
 from apps.authentication.models import UserAccount
 from apps.general.models import BaseModel
@@ -22,14 +23,14 @@ class Profile(BaseModel):
     type = models.CharField(max_length=20, choices=ProfileType.choices)
     activated = models.BooleanField(
         default=True,  # For development reasons
-        help_text="Only updated to True by admin once the profile created",
+        help_text=_("Only updated to True by admin once the profile created"),
     )
     is_active = models.BooleanField(
-        default=False, help_text="Indecate which profile is the main now"
+        default=False, help_text=_("Indecate which profile is the main now")
     )
     is_valid = models.BooleanField(
         default=True,
-        help_text='will be "False" if profile is under punishment',
+        help_text=_('will be "False" if profile is under punishment'),
     )
     national_id = models.CharField(max_length=50, null=True, blank=True)
     address = models.TextField(blank=True)
@@ -78,7 +79,7 @@ class Profile(BaseModel):
             raise ValidationError(
                 {
                     "user": [
-                        "Manager accounts cannot coexist with customer or seller profiles."
+                        _("Manager accounts cannot coexist with customer or seller profiles.")
                     ]
                 }
             )
@@ -89,7 +90,7 @@ class Profile(BaseModel):
             raise ValidationError(
                 {
                     "user": [
-                        "Customer or seller profiles cannot be created for a manager account."
+                        _("Customer or seller profiles cannot be created for a manager account.")
                     ]
                 }
             )
@@ -141,9 +142,9 @@ class ManagerProfile(Profile):
 
 
 class ProfileBalanceTransactionType(models.TextChoices):
-    MANAGER_ADJUSTMENT = "manager_adjustment", "Manager Adjustment"
-    SYSTEM_CREDIT = "system_credit", "System Credit"
-    SYSTEM_DEBIT = "system_debit", "System Debit"
+    MANAGER_ADJUSTMENT = "manager_adjustment", _("Manager Adjustment")
+    SYSTEM_CREDIT = "system_credit", _("System Credit")
+    SYSTEM_DEBIT = "system_debit", _("System Debit")
 
 
 class ProfileBalanceTransaction(BaseModel):

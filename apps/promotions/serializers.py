@@ -8,6 +8,7 @@ from apps.promotions.models import (
 )
 from apps.promotions.services import CashbackService
 from apps.users.models import CustomerProfile
+from django.utils.translation import gettext_lazy as _
 
 
 class DiscountOfferSerializer(serializers.ModelSerializer):
@@ -165,7 +166,7 @@ class CashbackAdjustmentSerializer(serializers.Serializer):
             return CustomerProfile.objects.get(pk=value)
         except CustomerProfile.DoesNotExist as exc:
             raise serializers.ValidationError(
-                "Customer profile was not found."
+                _("Customer profile was not found.")
             ) from exc
 
     def create(self, validated_data):

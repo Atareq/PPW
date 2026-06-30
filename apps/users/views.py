@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.http import Http404
+from django.utils.translation import gettext as _
 from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -76,7 +77,7 @@ class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         if not request.user.is_superuser:
-            raise PermissionDenied("Only superusers can create managers.")
+            raise PermissionDenied(_("Only superusers can create managers."))
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         manager_profile = serializer.save()
@@ -91,7 +92,7 @@ class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         if not request.user.is_superuser:
-            raise PermissionDenied("Only superusers can update managers.")
+            raise PermissionDenied(_("Only superusers can update managers."))
         manager_profile = self.get_object()
         serializer = self.get_serializer(
             manager_profile,
@@ -108,7 +109,7 @@ class ManagerProfileAdminViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         if not self.request.user.is_superuser:
-            raise PermissionDenied("Only superusers can delete managers.")
+            raise PermissionDenied(_("Only superusers can delete managers."))
         instance.is_active = False
         instance.is_valid = False
         instance.save(update_fields=["is_active", "is_valid"])
@@ -185,12 +186,12 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
             type=ProfileType.MANAGER, deleted__isnull=True
         ).exists():
             return Response(
-                {"message": "Manager accounts cannot create seller profiles"},
+                {"message": _("Manager accounts cannot create seller profiles")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if user.profiles.filter(type=ProfileType.SELLER).exists():
             return Response(
-                {"message": "Profile already exists"},
+                {"message": _("Profile already exists")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         data = request.data.copy()
@@ -215,7 +216,7 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
 
         LuckyWheelGrantService.grant_onboarding_attempt(seller_profile)
         return Response(
-            {"message": "Seller profile created successfully"},
+            {"message": _("Seller profile created successfully")},
             status=status.HTTP_201_CREATED,
         )
 
@@ -256,7 +257,7 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
             deleted__isnull=True,
         ).exists():
             return Response(
-                {"message": "Manager accounts cannot create customer profiles"},
+                {"message": _("Manager accounts cannot create customer profiles")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         response = super().create(request, *args, **kwargs)

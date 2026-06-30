@@ -6,6 +6,7 @@ from django.db.models import Count, Q
 from django.db.models.functions import Random
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
@@ -87,11 +88,11 @@ class BlockService:
                 is_active=True,
             )
         except SellerCustomerBlock.DoesNotExist as exc:
-            raise NotFound("Active block was not found.") from exc
+            raise NotFound(_("Active block was not found.")) from exc
 
         if block.blocked_by_id != actor.pk:
             raise PermissionDenied(
-                "Only the profile that created the block can unblock."
+                _("Only the profile that created the block can unblock.")
             )
 
         block.is_active = False
@@ -164,19 +165,19 @@ class BlockService:
             raise ValidationError(
                 {
                     "profile_id": (
-                        "Blocks are supported only between customers and sellers."
+                        _("Blocks are supported only between customers and sellers.")
                     )
                 }
             )
         if actor.type == other.type:
             raise ValidationError(
-                {"profile_id": "Blocks must be between one customer and one seller."}
+                {"profile_id": _("Blocks must be between one customer and one seller.")}
             )
         if actor.user_id == other.user_id:
             raise ValidationError(
                 {
                     "profile_id": (
-                        "Cannot block another customer or seller profile on your account."
+                        _("Cannot block another customer or seller profile on your account.")
                     )
                 }
             )
@@ -195,14 +196,14 @@ class BlockService:
     def _require_active_customer_or_seller(profile_or_id):
         profile = BlockService._get_profile(profile_or_id)
         if profile.type not in {ProfileType.CUSTOMER, ProfileType.SELLER}:
-            raise PermissionDenied("Only customer and seller profiles can use blocks.")
+            raise PermissionDenied(_("Only customer and seller profiles can use blocks."))
         if (
             not profile.is_active
             or not profile.activated
             or not profile.is_valid
             or getattr(profile, "deleted", None) is not None
         ):
-            raise PermissionDenied("Active profile is required.")
+            raise PermissionDenied(_("Active profile is required."))
         return profile
 
     @staticmethod
@@ -213,7 +214,7 @@ class BlockService:
         try:
             return Profile.objects.get(pk=profile_or_id)
         except Profile.DoesNotExist as exc:
-            raise NotFound("Profile was not found.") from exc
+            raise NotFound(_("Profile was not found.")) from exc
 
     @staticmethod
     def _get_customer(profile):
@@ -221,7 +222,7 @@ class BlockService:
             return CustomerProfile.objects.get(pk=profile.pk)
         except CustomerProfile.DoesNotExist as exc:
             raise ValidationError(
-                {"profile_id": "Customer profile was not found."}
+                {"profile_id": _("Customer profile was not found.")}
             ) from exc
 
     @staticmethod
@@ -230,7 +231,7 @@ class BlockService:
             return SellerProfile.objects.get(pk=profile.pk)
         except SellerProfile.DoesNotExist as exc:
             raise ValidationError(
-                {"profile_id": "Seller profile was not found."}
+                {"profile_id": _("Seller profile was not found.")}
             ) from exc
 
 
@@ -243,7 +244,7 @@ class SellerFollowService:
         SellerFollowService._ensure_active_seller(seller)
         if BlockService.is_blocked_between(customer, seller):
             raise ValidationError(
-                {"seller_id": "Cannot follow this seller while a block is active."}
+                {"seller_id": _("Cannot follow this seller while a block is active.")}
             )
 
         try:
@@ -274,7 +275,7 @@ class SellerFollowService:
         customer = SellerFollowService._require_customer(active_profile)
         seller = SellerProfile.objects.filter(pk=seller_id).first()
         if seller is None:
-            raise NotFound("Seller was not found.")
+            raise NotFound(_("Seller was not found."))
 
         SellerFollow.objects.filter(
             follower_id=customer.pk,
@@ -335,7 +336,7 @@ class SellerFollowService:
     @staticmethod
     def _require_customer(profile):
         if profile.type != ProfileType.CUSTOMER:
-            raise PermissionDenied("Active profile must be a customer.")
+            raise PermissionDenied(_("Active profile must be a customer."))
         return CustomerProfile.objects.get(pk=profile.pk)
 
     @staticmethod
@@ -343,7 +344,7 @@ class SellerFollowService:
         try:
             return SellerProfile.objects.get(pk=seller_id)
         except SellerProfile.DoesNotExist as exc:
-            raise NotFound("Seller was not found.") from exc
+            raise NotFound(_("Seller was not found.")) from exc
 
     @staticmethod
     def _ensure_active_seller(seller):
@@ -353,13 +354,13 @@ class SellerFollowService:
             or not seller.is_valid
             or getattr(seller, "deleted", None) is not None
         ):
-            raise NotFound("Seller was not found.")
+            raise NotFound(_("Seller was not found."))
 
     @staticmethod
     def _validate_not_same_user(customer, seller):
         if customer.user_id == seller.user_id:
             raise ValidationError(
-                {"seller_id": ("Customers cannot follow their own seller profile.")}
+                {"seller_id": (_("Customers cannot follow their own seller profile."))}
             )
 
     @staticmethod
@@ -408,7 +409,7 @@ class SellerPackageFollowService:
         customer = SellerFollowService._require_customer(active_profile)
         seller_package = SellerPackage.objects.filter(pk=seller_package_id).first()
         if seller_package is None:
-            raise NotFound("Seller package was not found.")
+            raise NotFound(_("Seller package was not found."))
 
         SellerPackageFollow.objects.filter(
             follower_id=customer.pk,
@@ -458,7 +459,7 @@ class SellerPackageFollowService:
         try:
             return SellerPackage.objects.select_related("owner").get(pk=seller_package_id)
         except SellerPackage.DoesNotExist as exc:
-            raise NotFound("Seller package was not found.") from exc
+            raise NotFound(_("Seller package was not found.")) from exc
 
     @staticmethod
     def _validate_followable(customer, seller_package):
@@ -466,7 +467,7 @@ class SellerPackageFollowService:
             raise ValidationError(
                 {
                     "seller_package_id": (
-                        "Customers cannot follow their own seller package."
+                        _("Customers cannot follow their own seller package.")
                     )
                 }
             )
@@ -474,7 +475,7 @@ class SellerPackageFollowService:
             raise ValidationError(
                 {
                     "seller_package_id": (
-                        "Cannot follow this seller package while a block is active."
+                        _("Cannot follow this seller package while a block is active.")
                     )
                 }
             )
@@ -492,7 +493,7 @@ class SellerPackageFollowService:
             or getattr(seller_package.owner, "deleted", None) is not None
         ):
             raise ValidationError(
-                {"seller_package_id": "Seller package is not followable."}
+                {"seller_package_id": _("Seller package is not followable.")}
             )
 
 
@@ -511,7 +512,7 @@ class FeedCursor:
             decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
             data = json.loads(decoded.decode("utf-8"))
         except (ValueError, TypeError, UnicodeDecodeError) as exc:
-            raise ValidationError({"cursor": "Invalid cursor."}) from exc
+            raise ValidationError({"cursor": _("Invalid cursor.")}) from exc
 
         return {
             "following": FeedCursor._parse_position(data.get("following")),
@@ -545,12 +546,12 @@ class FeedCursor:
             created_at = parse_datetime(value["created_at"])
             object_id = int(value["id"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValidationError({"cursor": "Invalid cursor."}) from exc
+            raise ValidationError({"cursor": _("Invalid cursor.")}) from exc
 
         if created_at is None:
-            raise ValidationError({"cursor": "Invalid cursor."})
+            raise ValidationError({"cursor": _("Invalid cursor.")})
         if timezone.is_naive(created_at):
-            raise ValidationError({"cursor": "Invalid cursor."})
+            raise ValidationError({"cursor": _("Invalid cursor.")})
 
         return {
             "created_at": created_at,
@@ -579,9 +580,9 @@ class FeedService:
         try:
             limit = int(raw_limit)
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"limit": "Limit must be an integer."}) from exc
+            raise ValidationError({"limit": _("Limit must be an integer.")}) from exc
         if limit < 1:
-            raise ValidationError({"limit": "Limit must be at least 1."})
+            raise ValidationError({"limit": _("Limit must be at least 1.")})
         return min(limit, MAX_FEED_LIMIT)
 
     @staticmethod
@@ -591,9 +592,9 @@ class FeedService:
         try:
             limit = int(raw_limit)
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"limit": "Limit must be an integer."}) from exc
+            raise ValidationError({"limit": _("Limit must be an integer.")}) from exc
         if limit < 1:
-            raise ValidationError({"limit": "Limit must be at least 1."})
+            raise ValidationError({"limit": _("Limit must be at least 1.")})
         return min(limit, MAX_FEED_LIMIT)
 
     @staticmethod

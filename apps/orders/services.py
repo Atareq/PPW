@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset
@@ -144,7 +145,7 @@ class CartService:
                 )
             )
         except CartItem.DoesNotExist as exc:
-            raise NotFound("Cart item was not found.") from exc
+            raise NotFound(_("Cart item was not found.")) from exc
 
         validator = CartItemValidator(
             customer_profile,
@@ -176,7 +177,7 @@ class CartService:
                 cart__status=CartStatus.ACTIVE,
             )
         except CartItem.DoesNotExist as exc:
-            raise NotFound("Cart item was not found.") from exc
+            raise NotFound(_("Cart item was not found.")) from exc
 
         cart_id = item.cart_id
         item.delete()
@@ -268,7 +269,7 @@ class OrderCheckoutService:
                 status=CartStatus.ACTIVE,
             )
         except Cart.DoesNotExist as exc:
-            raise ValidationError({"cart": "Cart is empty."}) from exc
+            raise ValidationError({"cart": _("Cart is empty.")}) from exc
 
         cart_items = list(
             CartItem.objects.select_for_update()
@@ -391,7 +392,7 @@ class OrderCheckoutService:
     def _ensure_stock_available(asset, quantity):
         """Validate availability without mutating stock during checkout."""
         if asset.count < quantity:
-            raise ValidationError({"detail": "Insufficient stock"})
+            raise ValidationError({"detail": _("Insufficient stock")})
 
     @staticmethod
     def _create_checkout_events(order):
@@ -400,7 +401,7 @@ class OrderCheckoutService:
                 order=order,
                 recipient=order.owner,
                 event_type=OrderEventType.ORDER_CREATED,
-                message="Order created.",
+                message=_("Order created."),
             )
         ]
         events.extend(
@@ -409,7 +410,7 @@ class OrderCheckoutService:
                 item=item,
                 recipient=item.seller,
                 event_type=OrderEventType.SELLER_PENDING_ITEM,
-                message="Seller notified of pending item.",
+                message=_("Seller notified of pending item."),
                 metadata={"asset_id": item.asset_id},
             )
             for item in order.items.all()
@@ -427,8 +428,8 @@ class OrderCheckoutService:
                     recipient_profile=item.seller,
                     actor_profile=order.owner,
                     notification_type=NotificationType.ORDER_ITEM_PENDING_SELLER,
-                    title="New order item",
-                    body="A customer placed an order item for your review.",
+                    title=_("New order item"),
+                    body=_("A customer placed an order item for your review."),
                     object_type="order_item",
                     object_id=item.pk,
                     metadata={
@@ -489,7 +490,7 @@ class OrderItemService:
             return item
 
         if item.status != OrderItemStatus.PENDING_SELLER:
-            raise ValidationError("Only pending order items can be approved.")
+            raise ValidationError(_("Only pending order items can be approved."))
 
         item = CashbackService.redeem_for_order_item(item)
         item.status = OrderItemStatus.APPROVED
@@ -499,10 +500,10 @@ class OrderItemService:
         OrderItemService._schedule_seller_decision_notification(
             item,
             notification_type="order_item_approved",
-            title="Order item approved",
+            title=_("Order item approved"),
             body=(
-                "The seller approved your order item. "
-                "You can now create a payment request."
+                _("The seller approved your order item. "
+                "You can now create a payment request.")
             ),
             idempotency_key=f"order_item_approved:{item.pk}",
         )
@@ -522,7 +523,7 @@ class OrderItemService:
             return item
 
         if item.status != OrderItemStatus.PENDING_SELLER:
-            raise ValidationError("Only pending order items can be rejected.")
+            raise ValidationError(_("Only pending order items can be rejected."))
 
         item.status = OrderItemStatus.REJECTED
         item.save(update_fields=["status", "modified"])
@@ -530,8 +531,8 @@ class OrderItemService:
         OrderItemService._schedule_seller_decision_notification(
             item,
             notification_type="order_item_rejected",
-            title="Order item rejected",
-            body="The seller rejected your order item.",
+            title=_("Order item rejected"),
+            body=_("The seller rejected your order item."),
             idempotency_key=f"order_item_rejected:{item.pk}",
         )
 
@@ -577,7 +578,7 @@ class OrderItemService:
     @staticmethod
     def _validate_seller_owns_item(item, seller_profile):
         if item.seller_id != seller_profile.pk:
-            raise NotFound("Order item was not found.")
+            raise NotFound(_("Order item was not found."))
 
     @staticmethod
     def _create_seller_approved_event(item):
@@ -586,7 +587,7 @@ class OrderItemService:
             item=item,
             recipient=item.order.owner,
             event_type=OrderEventType.SELLER_APPROVED,
-            message=("Seller approved your order you need to complete the payment."),
+            message=(_("Seller approved your order you need to complete the payment.")),
             metadata={"asset_id": item.asset_id},
         )
 
@@ -597,7 +598,7 @@ class OrderItemService:
             item=item,
             recipient=item.order.owner,
             event_type=OrderEventType.SELLER_AUTO_CANCELLED,
-            message="Order item was cancelled because the seller did not act.",
+            message=_("Order item was cancelled because the seller did not act."),
             metadata={
                 "asset_id": item.asset_id,
                 "seller_id": item.seller_id,
@@ -644,8 +645,8 @@ class OrderItemService:
                 recipient_profile=item.order.owner,
                 actor_profile=item.seller,
                 notification_type=NotificationType.ORDER_ITEM_AUTO_CANCELLED,
-                title="Order item cancelled",
-                body="An order item was cancelled because the seller did not act.",
+                title=_("Order item cancelled"),
+                body=_("An order item was cancelled because the seller did not act."),
                 object_type="order_item",
                 object_id=item.pk,
                 metadata={

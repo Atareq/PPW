@@ -8,6 +8,7 @@ from apps.insights.models import SellerInsightEvent
 from apps.insights.serializers import SellerInsightsHomeSerializer
 from apps.insights.services import SellerInsightsService
 from apps.users.constants import ProfileType
+from django.utils.translation import gettext_lazy as _
 
 
 @extend_schema_view(
@@ -29,7 +30,7 @@ class SellerHomeInsightsViewSet(
     def list(self, request, *args, **kwargs):
         active_profile = request.user.active_profile
         if active_profile.type != ProfileType.SELLER:
-            raise PermissionDenied("Active profile must be a seller.")
+            raise PermissionDenied(_("Active profile must be a seller."))
 
         summary = SellerInsightsService.get_home_summary(active_profile)
         return Response(

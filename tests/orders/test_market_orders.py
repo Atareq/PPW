@@ -2,7 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.test import override_settings
-from django.utils import timezone
+from django.utils import timezone, translation
 import pytest
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
@@ -49,8 +49,17 @@ pytestmark = pytest.mark.django_db
 def authenticated_client(user):
     client = APIClient()
     refresh = build_token_for_user(user)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}",
+        HTTP_ACCEPT_LANGUAGE="en",
+    )
     return client
+
+
+@pytest.fixture(autouse=True)
+def english_locale():
+    with translation.override("en"):
+        yield
 
 
 def concrete_customer_profile(user):
