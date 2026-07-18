@@ -36,7 +36,16 @@ from apps.packages.models import (
     Package,
     SellerPackageStatus,
 )
-from apps.pedigrees.models import PedigreeDocument, PedigreeDocumentStatus
+from apps.pedigrees.models import (
+    PedigreeBird,
+    PedigreeBirdColour,
+    PedigreeBirdSex,
+    PedigreeCertificate,
+    PedigreeCertificateStatus,
+    PedigreeDocument,
+    PedigreeDocumentStatus,
+    PedigreeTemplate,
+)
 from apps.promotions.models import (
     CashbackOffer,
     CashbackTransaction,
@@ -79,9 +88,7 @@ class UserAccountFactory(factory.django.DjangoModelFactory):
         if not create or extracted is False:
             return
 
-        profile_type = (
-            ProfileType.CUSTOMER if extracted in (None, True) else extracted
-        )
+        profile_type = ProfileType.CUSTOMER if extracted in (None, True) else extracted
 
         if profile_type == ProfileType.CUSTOMER:
             CustomerProfileFactory(user=obj, is_active=True)
@@ -204,6 +211,58 @@ class PedigreeDocumentFactory(factory.django.DjangoModelFactory):
     reviewed_bird_ring_number = ""
     reviewed_description = ""
     processing_error = ""
+
+
+class PedigreeBirdFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PedigreeBird
+
+    owner = factory.SubFactory(CustomerProfileFactory)
+    ring_number = factory.Sequence(lambda n: f"EG 2026 {n:04d}")
+    ring_code = "EG"
+    name = factory.Sequence(lambda n: f"Pedigree Bird {n}")
+    description = ""
+    sex = PedigreeBirdSex.UNKNOWN
+    colour = PedigreeBirdColour.UNKNOWN
+    birthday = None
+    father = None
+    mother = None
+
+
+class PedigreeTemplateFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PedigreeTemplate
+
+    name = factory.Sequence(lambda n: f"Template {n}")
+    external_pdf_id = 3
+    pedigree_type = "7"
+    report_name = "Pedigree_07_G6.frx"
+    generation = 6
+    preview_image = ""
+    is_active = True
+    is_premium = False
+    sort_order = 0
+
+
+class PedigreeCertificateFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = PedigreeCertificate
+
+    owner = factory.SubFactory(CustomerProfileFactory)
+
+    @factory.lazy_attribute
+    def requested_by(self):
+        return self.owner.user
+
+    subject_bird = factory.SubFactory(
+        PedigreeBirdFactory, owner=factory.SelfAttribute("..owner")
+    )
+    template = factory.SubFactory(PedigreeTemplateFactory)
+    status = PedigreeCertificateStatus.PENDING
+    editable_data = factory.LazyFunction(dict)
+    tree_snapshot = factory.LazyFunction(dict)
+    external_request_payload = factory.LazyFunction(dict)
+    generation_revision = 1
 
 
 # ============================================================================
@@ -448,9 +507,7 @@ class ActiveAssetSellerPackageFactory(AssetSellerPackageFactory):
     status = SellerPackageStatus.ACTIVE
     activated = True
     activated_at = factory.LazyFunction(timezone.now)
-    expires_at = factory.LazyFunction(
-        lambda: timezone.now() + timedelta(days=30)
-    )
+    expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=30))
 
 
 # ============================================================================
@@ -485,9 +542,7 @@ class RaceResultFactory(factory.django.DjangoModelFactory):
     bird_ring_number = factory.Sequence(lambda n: f"RING-{n:05d}")  # noqa
     distance_km = Decimal("490.832")
     speed = factory.Sequence(lambda n: Decimal("1400.000") + Decimal(n))
-    arrival_datetime = factory.LazyFunction(
-        lambda: timezone.now() + timedelta(hours=1)
-    )
+    arrival_datetime = factory.LazyFunction(lambda: timezone.now() + timedelta(hours=1))
     basket_number = None
 
 
@@ -504,9 +559,7 @@ class AuctionFactory(factory.django.DjangoModelFactory):
     title = factory.Faker("sentence", nb_words=5)
     description = factory.Faker("text", max_nb_chars=200)
     auction_type = AuctionType.SINGLE
-    start_time = factory.LazyFunction(
-        lambda: timezone.now() - timedelta(hours=1)
-    )
+    start_time = factory.LazyFunction(lambda: timezone.now() - timedelta(hours=1))
     end_time = factory.LazyFunction(lambda: timezone.now() + timedelta(days=7))
     status = AuctionStatus.ACTIVE
     is_visible = True

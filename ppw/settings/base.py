@@ -197,6 +197,18 @@ PUBLIC_FRONTEND_BASE_URL = os.getenv(
     "PUBLIC_FRONTEND_BASE_URL",
     "http://localhost:3000",
 ).rstrip("/")
+PEDIGREE_REPORT_BASE_URL = os.getenv(
+    "PEDIGREE_REPORT_BASE_URL",
+    "http://157.245.92.15",
+).rstrip("/")
+PEDIGREE_REPORT_CONNECT_TIMEOUT = int(
+    os.getenv("PEDIGREE_REPORT_CONNECT_TIMEOUT", "5")
+)
+PEDIGREE_REPORT_READ_TIMEOUT = int(os.getenv("PEDIGREE_REPORT_READ_TIMEOUT", "45"))
+PEDIGREE_REPORT_MAX_FILE_SIZE_MB = int(
+    os.getenv("PEDIGREE_REPORT_MAX_FILE_SIZE_MB", "20")
+)
+PEDIGREE_REPORT_API_KEY = os.getenv("PEDIGREE_REPORT_API_KEY", "")
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {
         "task": "auctions.tasks.close_expired_auctions",

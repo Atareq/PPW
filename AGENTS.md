@@ -931,16 +931,34 @@ Current insights service implementation names:
 Current responsibilities:
 
 - internal pedigree certificate document upload records
-- placeholder/null local OCR adapter for future replacement
-- deterministic OCR text extraction into bird ring number and description fields
+- current image-box detection plus per-box OCR extraction for uploaded pedigree documents
 - document retrieval and manual review of extracted values
+- independent private `PedigreeBird` records owned by the active customer or seller profile
+- active backend-owned `PedigreeTemplate` records for external report metadata
+- profile-owned `PedigreeCertificate` generation records with editable snapshots, exact external payload storage, regeneration, and completed-file download
 
 Important note:
 
-This app is a Phase 1 internal extraction module only. It does not implement real OCR, Tesseract integration, cloud OCR, AI APIs, Celery/background processing, full pedigree modeling, pedigree export, media moderation, or automatic bird updates.
+This app owns private pedigree-bird and certificate-generation workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. Textual owner/loft values inside certificate editable data are report-display metadata only and never control authorization. OCR document processing remains available and does not drive certificate generation automatically.
 
 Current pedigree API:
 
+- `/api/pedigrees/birds/`
+  - `GET`: customer/seller lists only own private pedigree birds; manager lists with `pedigrees.birds.list`
+  - `POST`: active customer or seller creates a private pedigree bird owned by the active profile
+- `/api/pedigrees/birds/<id>/`
+  - `GET` / `PATCH` / `DELETE`: owner-scoped private pedigree bird detail, update, and soft delete; managers require explicit bird permissions
+- `/api/pedigrees/templates/`
+  - `GET`: lists active completely configured templates available through the current placeholder entitlement service
+- `/api/pedigrees/certificates/`
+  - `GET`: owner-scoped certificate list; managers require `pedigrees.certificates.list`
+  - `POST`: creates a pending certificate from `subject_bird_id` and backend template id, stores canonical editable data, and queues generation; returns `202`
+- `/api/pedigrees/certificates/<id>/`
+  - `GET`: retrieves status, template summary, editable data, latest tree snapshot, exact external request payload, generated file URL, errors, and timestamps
+- `/api/pedigrees/certificates/<id>/regenerate/`
+  - `POST`: accepts complete edited canonical `editable_data` plus backend template id, increments revision, and queues a new generation task
+- `/api/pedigrees/certificates/<id>/download/`
+  - `GET`: downloads only completed saved files using the stored MIME type and backend-generated filename
 - `/api/pedigrees/documents/`
   - `POST`: authenticated customer or seller uploads a pedigree certificate file for OCR extraction
 - `/api/pedigrees/documents/<id>/`
@@ -950,24 +968,49 @@ Current pedigree API:
 
 Current pedigree behavior:
 
+- `PedigreeBird` inherits `OwnerBaseModel`; owner is always the currently active customer or seller profile on create and is read-only in API input
+- `PedigreeBird.public_id` is UUID-backed and read-only
+- pedigree bird ring numbers are normalized by trimming, uppercasing, and collapsing whitespace into `normalized_ring_number`
+- one live pedigree bird per owner can use a normalized ring number; soft-deleted birds do not block reuse and ring numbers are not globally unique
+- `PedigreeBird` parent links are self-FKs for father and mother and are owner-scoped
+- pedigree bird validation rejects future birthday/record dates, self parents, same father/mother, cross-owner parents, wrong known parent sex, parent birthdays not before child birthdays, deleted parents, and direct or indirect cycles
+- `PedigreeTemplate.external_pdf_id` is backend-owned metadata constrained to 1 through 10; frontend clients send only PPW template ids, not external URLs, `reportName`, `pedigreeType`, credentials, or provider payloads
+- templates are selectable only when active and completely configured with `external_pdf_id`, `pedigree_type`, `report_name`, and `generation`
+- premium template entitlement is currently a focused placeholder that allows active configured templates; future subscription/package checks should extend `PedigreeTemplateAccessService`
+- `PedigreeCertificate` stores `requested_by`, owner, nullable subject bird, protected template, status, `editable_data`, latest `tree_snapshot`, exact `external_request_payload`, generated file metadata, errors, revision, and generation timestamp
+- initial certificate creation validates subject ownership and template availability, builds canonical editable data from the subject and ancestors, stores `pending` with revision `1`, and queues `pedigrees.tasks.generate_pedigree_certificate`
+- canonical editable data is frontend-friendly and provider-agnostic; external provider field names are produced only by `PedigreeReportMapper`
+- initial tree snapshots recurse from `PedigreeBird` using `template.generation`; subject is generation 1, missing ancestors are `null`, and dates are ISO `YYYY-MM-DD`
+- editing `editable_data` is certificate-specific and never mutates `PedigreeBird` records automatically
+- regeneration is rejected while the same certificate is `processing`, validates edited canonical data against template depth, increments `generation_revision`, clears transient errors, and queues a stale-revision-safe task
+- the Celery generation task briefly locks the certificate, copies `editable_data` to `tree_snapshot`, builds and stores the exact external payload, commits, calls the external server outside the DB transaction, then re-locks before saving completion or failure state
+- stale generation tasks whose expected revision no longer matches do nothing and must not overwrite a newer regeneration
+- the external report integration posts JSON to `{PEDIGREE_REPORT_BASE_URL}/api/reports/rdlc/pdf/{template.external_pdf_id}` using backend settings only
+- report responses must be non-empty PDF, PNG, or JPEG content validated by both content type and file signature and bounded by `PEDIGREE_REPORT_MAX_FILE_SIZE_MB`
+- generated filenames are backend-generated from the normalized subject ring, certificate id, revision, and validated extension; frontend filenames are never trusted
+- safe report logs may include ids, revision, status, duration, size, or error category only; do not log full payloads because it may include names, phone, WhatsApp, email, bird data, and image URLs
 - `PedigreeDocument` inherits the standard profile-owned model shape and also stores `uploaded_by` as the user account
 - `PedigreeDocument.bird` is nullable and can link to an existing `Bird` when supplied
 - non-manager uploads can link only to birds owned by the active profile; managers can link any bird
 - document statuses are `uploaded`, `processed`, `reviewed`, and `failed`
-- upload creates a document with status `uploaded`, then calls `LocalOCRService.extract_text(file)`
-- `LocalOCRService` is intentionally a null adapter and returns empty text until a real local OCR implementation is added
-- OCR exceptions mark the document `failed`, store `processing_error`, and return a clear error response
-- empty OCR output marks the document `failed`, stores `processing_error`, and returns a clear error response
-- extraction splits OCR text into stripped non-empty lines
-- first non-empty OCR line becomes `extracted_bird_ring_number`
-- remaining non-empty OCR lines joined by newline become `extracted_description`
+- upload creates a document with status `uploaded`, detects image boxes, then runs OCR for each detected box
+- box-detection or OCR orchestration exceptions mark the document `failed`, store `processing_error`, and return a clear error response
+- no detected boxes marks the document `failed` with a clear error response
+- successful processing stores `extracted_boxes` with normalized box coordinates, OCR lines, and per-box OCR errors, then marks the document `processed`
 - review stores corrected values in `reviewed_bird_ring_number` and `reviewed_description`, marks the document `reviewed`, and sets `reviewed_at`
 - review currently does not update linked `Bird.ring_number` or `Asset.description`; a code TODO is left because there is not yet a dedicated bird pedigree-description field and overwriting generic asset description would be ambiguous
 
 Current pedigree service implementation names:
 
-- `LocalOCRService.extract_text()` is the mockable null OCR adapter
-- `PedigreeExtractionService.extract()` owns the deterministic line-splitting extraction rule
+- `PedigreeBirdValidator` owns database-dependent pedigree bird validation, ownership checks, parent rules, and cycle detection
+- `PedigreeTemplateAccessService` is the current template availability and future entitlement extension point
+- `PedigreeTreeService` builds and validates canonical editable trees and F/M path lookups
+- `PedigreeReportMapper` maps canonical trees to the irregular external report payload field names
+- `PedigreeReportClient` owns the external HTTP call and response validation
+- `PedigreeCertificateService` owns certificate creation, regeneration, generation orchestration, stale revision checks, and status transitions
+- `generate_pedigree_certificate` is the Celery task wrapper for retry-safe certificate generation
+- `PedigreeImageBoxDetectionService` detects OCR boxes in uploaded pedigree documents
+- `PedigreeBoxOCRService` extracts text lines for each detected document box
 - `PedigreeDocumentService.upload_and_process()` creates the document and stores OCR/extraction success or failure state
 - `PedigreeDocumentService.review_document()` stores manual review corrections
 

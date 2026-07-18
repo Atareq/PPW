@@ -87,6 +87,23 @@ SELLER_PERMISSIONS = {
         "retrieve",
         "partial_update",
     ],
+    "PEDIGREE_BIRD": [
+        "list",
+        "retrieve",
+        "create",
+        "update",
+        "partial_update",
+        "destroy",
+    ],
+    "PEDIGREE_TEMPLATE": [
+        "list",
+    ],
+    "PEDIGREE_CERTIFICATE": [
+        "list",
+        "retrieve",
+        "create",
+        "download",
+    ],
     "NOTIFICATION": [
         "list",
         "create",
@@ -184,6 +201,23 @@ CUSTOMER_PERMISSIONS = {
         "create",
         "retrieve",
         "partial_update",
+    ],
+    "PEDIGREE_BIRD": [
+        "list",
+        "retrieve",
+        "create",
+        "update",
+        "partial_update",
+        "destroy",
+    ],
+    "PEDIGREE_TEMPLATE": [
+        "list",
+    ],
+    "PEDIGREE_CERTIFICATE": [
+        "list",
+        "retrieve",
+        "create",
+        "download",
     ],
     "NOTIFICATION": [
         "list",
