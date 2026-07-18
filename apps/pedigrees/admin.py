@@ -28,8 +28,18 @@ class PedigreeBirdAdmin(admin.ModelAdmin):
         "activity_status",
         "job",
     ]
-    search_fields = ["ring_number", "normalized_ring_number", "name", "ring_code"]
-    readonly_fields = ["public_id", "normalized_ring_number", "created", "modified"]
+    search_fields = [
+        "ring_number",
+        "normalized_ring_number",
+        "name",
+        "ring_code",
+    ]
+    readonly_fields = [
+        "public_id",
+        "normalized_ring_number",
+        "created",
+        "modified",
+    ]
 
 
 @admin.register(PedigreeTemplate)
@@ -70,7 +80,6 @@ class PedigreeCertificateAdmin(admin.ModelAdmin):
         "template__name",
     ]
     readonly_fields = [
-        "tree_snapshot",
         "external_request_payload",
         "created",
         "modified",

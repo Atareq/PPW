@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from apps.general.models import BaseModel, OwnerBaseModel
+from apps.pedigrees.constants import PEDIGREE_MAX_GENERATION_DEPTH
 
 
 class PedigreeBirdSex(models.TextChoices):
@@ -28,7 +29,9 @@ class PedigreeBirdColour(models.TextChoices):
         "faded_blue_check_white_flight",
         _("Faded Blue Check White Flight"),
     )
-    BLUE_CHECK_WHITE_FLIGHT = "blue_check_white_flight", _("Blue Check White Flight")
+    BLUE_CHECK_WHITE_FLIGHT = "blue_check_white_flight", _(
+        "Blue Check White Flight"
+    )
     BLUE_CHECK = "blue_check", _("Blue Check")
     DARK_CHECK = "dark_check", _("Dark Check")
     SLATE_BLUE_BAR = "slate_blue_bar", _("Slate Blue Bar")
@@ -82,7 +85,9 @@ def normalize_ring_number(value):
 
 
 class PedigreeBird(OwnerBaseModel):
-    public_id = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
+    public_id = models.UUIDField(
+        unique=True, default=uuid.uuid4, editable=False
+    )
     ring_number = models.CharField(max_length=100)
     normalized_ring_number = models.CharField(max_length=100, editable=False)
     ring_code = models.CharField(max_length=50, blank=True)
@@ -150,7 +155,9 @@ class PedigreeBird(OwnerBaseModel):
             ),
             models.Index(fields=["life_status"], name="ped_bird_life_idx"),
             models.Index(fields=["ownership_status"], name="ped_bird_own_idx"),
-            models.Index(fields=["activity_status"], name="ped_bird_activity_idx"),
+            models.Index(
+                fields=["activity_status"], name="ped_bird_activity_idx"
+            ),
             models.Index(fields=["job"], name="ped_bird_job_idx"),
             models.Index(fields=["father"], name="ped_bird_father_idx"),
             models.Index(fields=["mother"], name="ped_bird_mother_idx"),
@@ -182,7 +189,10 @@ class PedigreeTemplate(BaseModel):
     generation = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        validators=[MinValueValidator(1), MaxValueValidator(6)],
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(PEDIGREE_MAX_GENERATION_DEPTH),
+        ],
     )
     preview_image = models.CharField(max_length=2048, blank=True)
     is_active = models.BooleanField(default=True)
@@ -192,7 +202,9 @@ class PedigreeTemplate(BaseModel):
     class Meta:
         ordering = ["sort_order", "id"]
         indexes = [
-            models.Index(fields=["is_active", "sort_order"], name="ped_tpl_active_idx"),
+            models.Index(
+                fields=["is_active", "sort_order"], name="ped_tpl_active_idx"
+            ),
             models.Index(fields=["external_pdf_id"], name="ped_tpl_pdf_idx"),
         ]
 
@@ -240,8 +252,14 @@ class PedigreeCertificate(OwnerBaseModel):
         choices=PedigreeCertificateStatus.choices,
         default=PedigreeCertificateStatus.PENDING,
     )
-    editable_data = models.JSONField(default=dict, blank=True)
-    tree_snapshot = models.JSONField(default=dict, blank=True)
+    generation_depth = models.PositiveSmallIntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(PEDIGREE_MAX_GENERATION_DEPTH),
+        ],
+    )
+    owner_data = models.JSONField(default=dict, blank=True)
+    customization = models.JSONField(default=dict, blank=True)
     external_request_payload = models.JSONField(default=dict, blank=True)
     generated_file = models.FileField(
         upload_to="pedigree_certificates/",
@@ -264,7 +282,9 @@ class PedigreeCertificate(OwnerBaseModel):
             models.Index(fields=["template"], name="ped_cert_template_idx"),
             models.Index(fields=["status"], name="ped_cert_status_idx"),
             models.Index(fields=["created"], name="ped_cert_created_idx"),
-            models.Index(fields=["owner", "status"], name="ped_cert_owner_status_idx"),
+            models.Index(
+                fields=["owner", "status"], name="ped_cert_owner_status_idx"
+            ),
         ]
 
     def __str__(self):

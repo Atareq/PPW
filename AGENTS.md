@@ -935,11 +935,11 @@ Current responsibilities:
 - document retrieval and manual review of extracted values
 - independent private `PedigreeBird` records owned by the active customer or seller profile
 - active backend-owned `PedigreeTemplate` records for external report metadata
-- profile-owned `PedigreeCertificate` generation records with editable snapshots, exact external payload storage, regeneration, and completed-file download
+- profile-owned `PedigreeCertificate` generation records with selected depth/options, exact external payload storage, regeneration, and completed-file download
 
 Important note:
 
-This app owns private pedigree-bird and certificate-generation workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. Textual owner/loft values inside certificate editable data are report-display metadata only and never control authorization. OCR document processing remains available and does not drive certificate generation automatically.
+This app owns private pedigree-bird and certificate-generation workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. `PedigreeBird` father/mother links are the canonical current pedigree graph. Textual owner/loft values inside certificate owner data are report-display metadata only and never control authorization. OCR document review can create or reuse pedigree birds and connect their family graph after user review.
 
 Current pedigree API:
 
@@ -952,11 +952,11 @@ Current pedigree API:
   - `GET`: lists active completely configured templates available through the current placeholder entitlement service
 - `/api/pedigrees/certificates/`
   - `GET`: owner-scoped certificate list; managers require `pedigrees.certificates.list`
-  - `POST`: creates a pending certificate from `subject_bird_id` and backend template id, stores canonical editable data, and queues generation; returns `202`
+  - `POST`: creates a pending certificate from `subject_bird_id`, backend template id, `generation_depth`, owner data, and customization options, then queues generation; returns `202`
 - `/api/pedigrees/certificates/<id>/`
-  - `GET`: retrieves status, template summary, editable data, latest tree snapshot, exact external request payload, generated file URL, errors, and timestamps
+  - `GET`: retrieves status, template summary, selected generation depth/options, exact external request payload, generated file URL, provider status, errors, and timestamps
 - `/api/pedigrees/certificates/<id>/regenerate/`
-  - `POST`: accepts complete edited canonical `editable_data` plus backend template id, increments revision, and queues a new generation task
+  - `POST`: optionally changes template, generation depth, owner data, or customization, increments revision, and queues a new generation task
 - `/api/pedigrees/certificates/<id>/download/`
   - `GET`: downloads only completed saved files using the stored MIME type and backend-generated filename
 - `/api/pedigrees/documents/`
@@ -964,7 +964,7 @@ Current pedigree API:
 - `/api/pedigrees/documents/<id>/`
   - `GET`: owner retrieves one pedigree document; managers retrieve any document
 - `/api/pedigrees/documents/<id>/review/`
-  - `PATCH`: owner reviews corrected ring number and description; managers can review any document
+  - `PATCH`: owner submits reviewed pedigree bird nodes using F/M paths; managers can review any document
 
 Current pedigree behavior:
 
@@ -977,13 +977,13 @@ Current pedigree behavior:
 - `PedigreeTemplate.external_pdf_id` is backend-owned metadata constrained to 1 through 10; frontend clients send only PPW template ids, not external URLs, `reportName`, `pedigreeType`, credentials, or provider payloads
 - templates are selectable only when active and completely configured with `external_pdf_id`, `pedigree_type`, `report_name`, and `generation`
 - premium template entitlement is currently a focused placeholder that allows active configured templates; future subscription/package checks should extend `PedigreeTemplateAccessService`
-- `PedigreeCertificate` stores `requested_by`, owner, nullable subject bird, protected template, status, `editable_data`, latest `tree_snapshot`, exact `external_request_payload`, generated file metadata, errors, revision, and generation timestamp
-- initial certificate creation validates subject ownership and template availability, builds canonical editable data from the subject and ancestors, stores `pending` with revision `1`, and queues `pedigrees.tasks.generate_pedigree_certificate`
-- canonical editable data is frontend-friendly and provider-agnostic; external provider field names are produced only by `PedigreeReportMapper`
-- initial tree snapshots recurse from `PedigreeBird` using `template.generation`; subject is generation 1, missing ancestors are `null`, and dates are ISO `YYYY-MM-DD`
-- editing `editable_data` is certificate-specific and never mutates `PedigreeBird` records automatically
-- regeneration is rejected while the same certificate is `processing`, validates edited canonical data against template depth, increments `generation_revision`, clears transient errors, and queues a stale-revision-safe task
-- the Celery generation task briefly locks the certificate, copies `editable_data` to `tree_snapshot`, builds and stores the exact external payload, commits, calls the external server outside the DB transaction, then re-locks before saving completion or failure state
+- `PedigreeCertificate` stores `requested_by`, owner, nullable subject bird, protected template, status, `generation_depth`, `owner_data`, `customization`, exact `external_request_payload`, generated file metadata, errors, revision, and generation timestamp
+- initial certificate creation validates subject ownership, template availability, and requested generation depth, stores selected generation options with revision `1`, and queues `pedigrees.tasks.generate_pedigree_certificate`
+- generation depth counts total pedigree levels with the subject as depth `1`; depth `2` includes only direct parents, and depth must not exceed the selected template generation or platform maximum
+- certificate generation builds an in-memory tree from the current `PedigreeBird` father/mother graph at task execution time; it does not persist a tree snapshot and does not accept client-supplied pedigree nodes
+- `PedigreeReportMapper` maps the in-memory current tree to the irregular external report payload field names; provider `generation` remains the selected template generation, while fields deeper than `generation_depth` are blank
+- regeneration is rejected while the same certificate is `processing`, validates the effective template/depth, increments `generation_revision`, clears transient errors, and queues a stale-revision-safe task
+- the Celery generation task briefly locks the certificate, builds and stores the exact external payload from current `PedigreeBird` data, commits, calls the external server outside the DB transaction, then re-locks before saving completion or failure state
 - stale generation tasks whose expected revision no longer matches do nothing and must not overwrite a newer regeneration
 - the external report integration posts JSON to `{PEDIGREE_REPORT_BASE_URL}/api/reports/rdlc/pdf/{template.external_pdf_id}` using backend settings only
 - report responses must be non-empty PDF, PNG, or JPEG content validated by both content type and file signature and bounded by `PEDIGREE_REPORT_MAX_FILE_SIZE_MB`
@@ -997,22 +997,25 @@ Current pedigree behavior:
 - box-detection or OCR orchestration exceptions mark the document `failed`, store `processing_error`, and return a clear error response
 - no detected boxes marks the document `failed` with a clear error response
 - successful processing stores `extracted_boxes` with normalized box coordinates, OCR lines, and per-box OCR errors, then marks the document `processed`
-- review stores corrected values in `reviewed_bird_ring_number` and `reviewed_description`, marks the document `reviewed`, and sets `reviewed_at`
-- review currently does not update linked `Bird.ring_number` or `Asset.description`; a code TODO is left because there is not yet a dedicated bird pedigree-description field and overwriting generic asset description would be ambiguous
+- review accepts a `birds` list with `path` values such as `""`, `F`, `M`, `FF`, and `FM`; paths may contain only `F` and `M`, require existing prefixes, and are limited to six total levels including the subject
+- review creates or reuses one live same-owner `PedigreeBird` per normalized ring number, never reuses another owner profile's bird, updates only explicitly supplied fields, and treats explicit blank text as an intentional value
+- repeated normalized rings may appear at more than one path for inbreeding; conflicting scalar values or conflicting derived parent assignments are rejected
+- review derives father/mother links exclusively from paths, preserves missing existing parent links when no child path is supplied, stores subject ring/description on the document, preserves OCR boxes/raw data, marks the document `reviewed`, and sets `reviewed_at`
 
 Current pedigree service implementation names:
 
 - `PedigreeBirdValidator` owns database-dependent pedigree bird validation, ownership checks, parent rules, and cycle detection
+- `PedigreeReviewedBirdService.save_reviewed_pedigree()` transactionally saves reviewed OCR nodes into the canonical `PedigreeBird` graph
 - `PedigreeTemplateAccessService` is the current template availability and future entitlement extension point
-- `PedigreeTreeService` builds and validates canonical editable trees and F/M path lookups
-- `PedigreeReportMapper` maps canonical trees to the irregular external report payload field names
+- `PedigreeTreeService` builds in-memory generation data and F/M path lookups from current `PedigreeBird` relations
+- `PedigreeReportMapper` maps generation data to the irregular external report payload field names
 - `PedigreeReportClient` owns the external HTTP call and response validation
 - `PedigreeCertificateService` owns certificate creation, regeneration, generation orchestration, stale revision checks, and status transitions
 - `generate_pedigree_certificate` is the Celery task wrapper for retry-safe certificate generation
 - `PedigreeImageBoxDetectionService` detects OCR boxes in uploaded pedigree documents
 - `PedigreeBoxOCRService` extracts text lines for each detected document box
 - `PedigreeDocumentService.upload_and_process()` creates the document and stores OCR/extraction success or failure state
-- `PedigreeDocumentService.review_document()` stores manual review corrections
+- `PedigreeDocumentService.review_document()` delegates structured review saves and document review metadata updates
 
 ### `apps.promotions`
 

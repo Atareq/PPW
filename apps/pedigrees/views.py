@@ -1,10 +1,10 @@
-from drf_spectacular.utils import extend_schema, extend_schema_view
 from django.http import FileResponse
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError
 
 from apps.general.authorizations import HasAppAccess
 from apps.pedigrees.filters import PedigreeBirdFilter
@@ -14,6 +14,7 @@ from apps.pedigrees.models import (
     PedigreeCertificateStatus,
     PedigreeDocument,
     PedigreeDocumentStatus,
+    PedigreeTemplate,
 )
 from apps.pedigrees.serializers import (
     PedigreeBirdSerializer,
@@ -22,16 +23,16 @@ from apps.pedigrees.serializers import (
     PedigreeCertificateDetailSerializer,
     PedigreeCertificateRegenerateSerializer,
     PedigreeDocumentDetailSerializer,
+    PedigreeDocumentReviewResponseSerializer,
     PedigreeDocumentReviewSerializer,
     PedigreeDocumentUploadSerializer,
     PedigreeTemplateListSerializer,
 )
 from apps.pedigrees.services import (
-    PedigreeTemplateAccessService,
     PedigreeDocumentService,
+    PedigreeTemplateAccessService,
     pedigree_document_queryset,
 )
-from apps.pedigrees.models import PedigreeTemplate
 from apps.users.constants import ProfileType
 
 
@@ -105,7 +106,7 @@ class PedigreeDocumentViewSet(
     partial_update=extend_schema(
         tags=["Pedigrees"],
         request=PedigreeDocumentReviewSerializer,
-        responses={200: PedigreeDocumentDetailSerializer},
+        responses={200: PedigreeDocumentReviewResponseSerializer},
     ),
 )
 class PedigreeDocumentReviewViewSet(
@@ -134,15 +135,21 @@ class PedigreeDocumentReviewViewSet(
         document = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        reviewed_document = PedigreeDocumentService.review_document(
+        result = PedigreeDocumentService.review_document(
             document_id=document.pk,
             actor_profile=request.user.active_profile,
-            bird_ring_number=serializer.validated_data["bird_ring_number"],
-            description=serializer.validated_data["description"],
+            birds=serializer.validated_data["birds"],
         )
         return Response(
-            PedigreeDocumentDetailSerializer(
-                reviewed_document,
+            PedigreeDocumentReviewResponseSerializer(
+                {
+                    "document": result.document,
+                    "subject_bird_id": result.subject_bird_id,
+                    "path_to_bird_id": result.path_to_bird_id,
+                    "created_count": result.created_count,
+                    "reused_count": result.reused_count,
+                    "updated_count": result.updated_count,
+                },
                 context=self.get_serializer_context(),
             ).data,
             status=status.HTTP_200_OK,
@@ -150,13 +157,17 @@ class PedigreeDocumentReviewViewSet(
 
 
 @extend_schema_view(
-    list=extend_schema(tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}),
+    list=extend_schema(
+        tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}
+    ),
     create=extend_schema(
         tags=["Pedigrees"],
         request=PedigreeBirdSerializer,
         responses={201: PedigreeBirdSerializer},
     ),
-    retrieve=extend_schema(tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}),
+    retrieve=extend_schema(
+        tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}
+    ),
     partial_update=extend_schema(
         tags=["Pedigrees"],
         request=PedigreeBirdSerializer,
@@ -307,7 +318,10 @@ class PedigreeCertificateRegenerateViewSet(
         certificate = self.get_object()
         serializer = self.get_serializer(
             data=request.data,
-            context={**self.get_serializer_context(), "certificate": certificate},
+            context={
+                **self.get_serializer_context(),
+                "certificate": certificate,
+            },
         )
         serializer.is_valid(raise_exception=True)
         regenerated = serializer.save()
@@ -341,7 +355,9 @@ class PedigreeCertificateDownloadViewSet(
             or not certificate.generated_file
         ):
             raise ValidationError(
-                {"generated_file": "Generated certificate file is unavailable."}
+                {
+                    "generated_file": "Generated certificate file is unavailable."
+                }
             )
         response = FileResponse(
             certificate.generated_file.open("rb"),

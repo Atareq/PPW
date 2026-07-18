@@ -1,16 +1,20 @@
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 from urllib.parse import urljoin, urlparse
 
+from PIL import Image, ImageEnhance, ImageOps
+import cv2
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+import numpy as np
+import pytesseract
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from apps.assets.models import Bird
+from apps.pedigrees.constants import PEDIGREE_MAX_GENERATION_DEPTH
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdSex,
@@ -22,15 +26,20 @@ from apps.pedigrees.models import (
     normalize_ring_number,
 )
 from apps.users.constants import ProfileType
-import cv2
-import numpy as np
-from PIL import Image
-import pytesseract
-from PIL import Image, ImageOps, ImageEnhance
 
 
 class PedigreeExtractionError(ValueError):
     pass
+
+
+@dataclass
+class PedigreeReviewResult:
+    document: PedigreeDocument
+    subject_bird_id: int
+    path_to_bird_id: dict
+    created_count: int
+    reused_count: int
+    updated_count: int
 
 
 class PedigreeDocumentService:
@@ -93,15 +102,18 @@ class PedigreeDocumentService:
         *,
         document_id,
         actor_profile,
-        bird_ring_number,
-        description,
+        birds,
     ):
-        document = PedigreeDocumentService._get_locked_document_for_actor(
-            document_id,
-            actor_profile,
+        return PedigreeReviewedBirdService.save_reviewed_pedigree(
+            document_id=document_id,
+            actor_profile=actor_profile,
+            reviewed_nodes=birds,
         )
-        document.reviewed_bird_ring_number = bird_ring_number
-        document.reviewed_description = description
+
+    @staticmethod
+    def mark_document_reviewed_from_subject(*, document, subject_bird):
+        document.reviewed_bird_ring_number = subject_bird.ring_number
+        document.reviewed_description = subject_bird.description
         document.status = PedigreeDocumentStatus.REVIEWED
         document.reviewed_at = timezone.now()
         document.save(
@@ -113,9 +125,14 @@ class PedigreeDocumentService:
                 "modified",
             ]
         )
-        # TODO: Update the linked Bird when a dedicated pedigree description
-        # field exists; do not overwrite the generic Asset.description here.
-        return PedigreeDocumentService.get_document(document.pk)
+        return document
+
+    @staticmethod
+    def lock_document_for_actor(document_id, actor_profile):
+        return PedigreeDocumentService._get_locked_document_for_actor(
+            document_id,
+            actor_profile,
+        )
 
     @staticmethod
     def get_document(document_id):
@@ -273,7 +290,9 @@ class PedigreeBirdValidator:
         birthday = data.get("birthday")
         record_date = data.get("record_date")
         if birthday and birthday > today:
-            raise ValidationError({"birthday": _("Birthday cannot be in the future.")})
+            raise ValidationError(
+                {"birthday": _("Birthday cannot be in the future.")}
+            )
         if record_date and record_date > today:
             raise ValidationError(
                 {"record_date": _("Record date cannot be in the future.")}
@@ -291,7 +310,11 @@ class PedigreeBirdValidator:
             queryset = queryset.exclude(pk=instance.pk)
         if queryset.exists():
             raise ValidationError(
-                {"ring_number": _("A live pedigree bird with this ring number exists.")}
+                {
+                    "ring_number": _(
+                        "A live pedigree bird with this ring number exists."
+                    )
+                }
             )
 
     @classmethod
@@ -300,9 +323,13 @@ class PedigreeBirdValidator:
         mother = data.get("mother")
 
         if father and instance and father.pk == instance.pk:
-            raise ValidationError({"father": _("A bird cannot be its own father.")})
+            raise ValidationError(
+                {"father": _("A bird cannot be its own father.")}
+            )
         if mother and instance and mother.pk == instance.pk:
-            raise ValidationError({"mother": _("A bird cannot be its own mother.")})
+            raise ValidationError(
+                {"mother": _("A bird cannot be its own mother.")}
+            )
         if father and mother and father.pk == mother.pk:
             raise ValidationError(
                 {"mother": _("Father and mother cannot be the same bird.")}
@@ -338,9 +365,17 @@ class PedigreeBirdValidator:
         child_birthday = data.get("birthday")
         if child_birthday:
             for field, parent in (("father", father), ("mother", mother)):
-                if parent and parent.birthday and parent.birthday >= child_birthday:
+                if (
+                    parent
+                    and parent.birthday
+                    and parent.birthday >= child_birthday
+                ):
                     raise ValidationError(
-                        {field: _("Parent birthday must be before child birthday.")}
+                        {
+                            field: _(
+                                "Parent birthday must be before child birthday."
+                            )
+                        }
                     )
 
         if instance is not None:
@@ -390,6 +425,225 @@ class PedigreeBirdValidator:
         )
 
 
+class PedigreeReviewedBirdService:
+    """Persist user-reviewed OCR nodes into the canonical PedigreeBird graph."""
+
+    SCALAR_FIELDS = [
+        "ring_number",
+        "ring_code",
+        "name",
+        "description",
+        "record_date",
+        "birthday",
+        "sex",
+        "colour",
+        "life_status",
+        "ownership_status",
+        "activity_status",
+        "job",
+        "external_owner_name",
+    ]
+
+    @classmethod
+    @transaction.atomic
+    def save_reviewed_pedigree(
+        cls, *, document_id, actor_profile, reviewed_nodes
+    ):
+        document = PedigreeDocumentService.lock_document_for_actor(
+            document_id,
+            actor_profile,
+        )
+        owner = document.owner
+        PedigreeCertificateService._validate_profile_owner(owner)
+
+        merged_by_ring, path_to_ring = cls._merge_nodes_by_normalized_ring(
+            reviewed_nodes
+        )
+        birds_by_ring, created_ids, scalar_updated_ids = (
+            cls._create_or_update_birds(
+                owner=owner,
+                merged_by_ring=merged_by_ring,
+            )
+        )
+        path_to_bird = {
+            path: birds_by_ring[normalized_ring]
+            for path, normalized_ring in path_to_ring.items()
+        }
+
+        relationship_updated_ids = cls._connect_relationships(path_to_bird)
+
+        subject_bird = path_to_bird[""]
+        PedigreeDocumentService.mark_document_reviewed_from_subject(
+            document=document,
+            subject_bird=subject_bird,
+        )
+        document = PedigreeDocumentService.get_document(document.pk)
+        existing_ids = {
+            bird.pk for bird in birds_by_ring.values()
+        } - created_ids
+        updated_existing_ids = (
+            scalar_updated_ids | relationship_updated_ids
+        ) - created_ids
+        reused_ids = existing_ids - updated_existing_ids
+
+        return PedigreeReviewResult(
+            document=document,
+            subject_bird_id=subject_bird.pk,
+            path_to_bird_id={
+                path: bird.pk for path, bird in sorted(path_to_bird.items())
+            },
+            created_count=len(created_ids),
+            reused_count=len(reused_ids),
+            updated_count=len(updated_existing_ids),
+        )
+
+    @classmethod
+    def _merge_nodes_by_normalized_ring(cls, reviewed_nodes):
+        merged_by_ring = {}
+        path_to_ring = {}
+
+        for node in reviewed_nodes:
+            normalized_ring = normalize_ring_number(node["ring_number"])
+            if not normalized_ring:
+                raise ValidationError(
+                    {"ring_number": _("Ring number is required.")}
+                )
+            path_to_ring[node["path"]] = normalized_ring
+
+            if normalized_ring not in merged_by_ring:
+                merged_by_ring[normalized_ring] = {
+                    field: node[field]
+                    for field in cls.SCALAR_FIELDS
+                    if field in node
+                }
+                continue
+
+            merged = merged_by_ring[normalized_ring]
+            for field in cls.SCALAR_FIELDS:
+                if field not in node:
+                    continue
+                if field == "ring_number":
+                    continue
+                if field in merged and merged[field] != node[field]:
+                    raise ValidationError(
+                        {
+                            field: _(
+                                "Repeated pedigree bird definitions contain "
+                                "conflicting values."
+                            )
+                        }
+                    )
+                merged[field] = node[field]
+
+        return merged_by_ring, path_to_ring
+
+    @classmethod
+    def _create_or_update_birds(cls, *, owner, merged_by_ring):
+        existing_birds = {
+            bird.normalized_ring_number: bird
+            for bird in PedigreeBird.objects.select_for_update().filter(
+                owner_id=owner.pk,
+                normalized_ring_number__in=merged_by_ring.keys(),
+                deleted__isnull=True,
+            )
+        }
+        birds_by_ring = {}
+        created_ids = set()
+        updated_ids = set()
+
+        for normalized_ring, attrs in merged_by_ring.items():
+            bird = existing_birds.get(normalized_ring)
+            if bird is None:
+                PedigreeBirdValidator.validate(
+                    attrs=attrs,
+                    owner=owner,
+                    instance=None,
+                )
+                bird = PedigreeBird.objects.create(owner=owner, **attrs)
+                created_ids.add(bird.pk)
+                birds_by_ring[normalized_ring] = bird
+                continue
+
+            changed_fields = []
+            for field, value in attrs.items():
+                if getattr(bird, field) != value:
+                    setattr(bird, field, value)
+                    changed_fields.append(field)
+
+            if changed_fields:
+                PedigreeBirdValidator.validate(
+                    attrs={
+                        field: getattr(bird, field) for field in changed_fields
+                    },
+                    owner=owner,
+                    instance=bird,
+                )
+                update_fields = [*changed_fields, "modified"]
+                if "ring_number" in changed_fields:
+                    update_fields.append("normalized_ring_number")
+                bird.save(update_fields=update_fields)
+                updated_ids.add(bird.pk)
+
+            birds_by_ring[normalized_ring] = bird
+
+        return birds_by_ring, created_ids, updated_ids
+
+    @classmethod
+    def _connect_relationships(cls, path_to_bird):
+        desired_by_child = {}
+        for path, child in path_to_bird.items():
+            for relation, edge in (("father", "F"), ("mother", "M")):
+                parent = path_to_bird.get(f"{path}{edge}")
+                if parent is None:
+                    continue
+                desired = desired_by_child.setdefault(
+                    child.pk, {"bird": child}
+                )
+                existing_parent = desired.get(relation)
+                if (
+                    existing_parent is not None
+                    and existing_parent.pk != parent.pk
+                ):
+                    raise ValidationError(
+                        {
+                            relation: _(
+                                "Repeated pedigree paths assign conflicting parents "
+                                "to the same bird."
+                            )
+                        }
+                    )
+                desired[relation] = parent
+
+        updated_ids = set()
+        for path in sorted(path_to_bird, key=len):
+            child = path_to_bird[path]
+            desired = desired_by_child.get(child.pk)
+            if not desired:
+                continue
+
+            relation_attrs = {
+                relation: desired[relation]
+                for relation in ("father", "mother")
+                if relation in desired
+            }
+            PedigreeBirdValidator.validate(
+                attrs=relation_attrs,
+                owner=child.owner,
+                instance=child,
+            )
+
+            changed_fields = []
+            for relation, parent in relation_attrs.items():
+                if getattr(child, f"{relation}_id") != parent.pk:
+                    setattr(child, relation, parent)
+                    changed_fields.append(relation)
+            if changed_fields:
+                child.save(update_fields=[*changed_fields, "modified"])
+                updated_ids.add(child.pk)
+
+        return updated_ids
+
+
 class PedigreeTemplateAccessService:
     """Placeholder entitlement hook for future premium-template checks."""
 
@@ -405,7 +659,9 @@ class PedigreeTemplateAccessService:
     @staticmethod
     def validate_available(template, profile):
         if not template.is_configured:
-            raise ValidationError({"template_id": _("Template is not available.")})
+            raise ValidationError(
+                {"template_id": _("Template is not available.")}
+            )
         return template
 
 
@@ -427,37 +683,30 @@ class PedigreeTreeService:
     ]
 
     @classmethod
-    def build_editable_data(
+    def build_generation_data(
         cls,
         *,
         subject_bird,
-        template,
+        generation_depth,
         owner=None,
         customization=None,
     ):
+        # generation_depth is the total number of levels, with the subject at
+        # depth 1. A depth of 2 includes only the subject and direct parents.
         return {
             "owner": cls._owner_data(subject_bird.owner, owner or {}),
             "customization": cls._customization_data(customization or {}),
-            "subject": cls._bird_node(subject_bird, max_depth=template.generation),
+            "subject": cls._bird_node(
+                subject_bird,
+                max_depth=generation_depth,
+            ),
         }
 
     @classmethod
-    def validate_editable_data(cls, editable_data, *, max_generation):
-        if not isinstance(editable_data, dict):
-            raise ValidationError(
-                {"editable_data": _("Editable data must be an object.")}
-            )
-        subject = editable_data.get("subject")
-        if not isinstance(subject, dict):
-            raise ValidationError({"subject": _("Subject data is required.")})
-        cls._validate_node(subject, depth=1, max_generation=max_generation, path="")
-        return editable_data
-
-    @classmethod
-    def build_path_lookup(cls, editable_data, *, max_generation):
-        lookup = {"": editable_data.get("subject") or None}
+    def build_path_lookup(cls, pedigree_data, *, max_generation):
+        lookup = {"": pedigree_data.get("subject") or None}
         cls._collect_paths(
-            editable_data.get("subject"),
+            pedigree_data.get("subject"),
             path="",
             depth=1,
             max_generation=max_generation,
@@ -471,7 +720,9 @@ class PedigreeTreeService:
             return None
         seen = seen or set()
         if bird.pk in seen:
-            raise ValidationError({"subject": _("Pedigree tree contains a cycle.")})
+            raise ValidationError(
+                {"subject": _("Pedigree tree contains a cycle.")}
+            )
         seen.add(bird.pk)
 
         node = {
@@ -508,28 +759,51 @@ class PedigreeTreeService:
         return node
 
     @staticmethod
-    def _owner_data(profile, supplied):
+    def _owner_data(profile, supplied, current=None):
+        current = current or {}
         user = profile.user
         display_name = (
-            " ".join(part for part in [user.first_name, user.last_name] if part).strip()
+            " ".join(
+                part for part in [user.first_name, user.last_name] if part
+            ).strip()
             or user.username
         )
         seller = getattr(profile, "sellerprofile", None)
         loft_name = getattr(seller, "nickname", "") or display_name
+        defaults = {
+            "name": current.get("name", display_name),
+            "loft_name": current.get("loft_name", loft_name),
+            "phone": current.get("phone", str(user.phone_number or "")),
+            "whatsapp": current.get("whatsapp", str(user.phone_number or "")),
+            "email": current.get("email", user.email or ""),
+        }
         return {
-            "name": supplied.get("name", display_name) or "",
-            "loft_name": supplied.get("loft_name", loft_name) or "",
-            "phone": supplied.get("phone", str(user.phone_number or "")) or "",
-            "whatsapp": supplied.get("whatsapp", str(user.phone_number or "")) or "",
-            "email": supplied.get("email", user.email or "") or "",
+            "name": supplied.get("name", defaults["name"]) or "",
+            "loft_name": supplied.get("loft_name", defaults["loft_name"])
+            or "",
+            "phone": supplied.get("phone", defaults["phone"]) or "",
+            "whatsapp": supplied.get("whatsapp", defaults["whatsapp"]) or "",
+            "email": supplied.get("email", defaults["email"]) or "",
         }
 
     @staticmethod
-    def _customization_data(supplied):
+    def _customization_data(supplied, current=None):
+        current = current or {}
         return {
-            "background_image": supplied.get("background_image", "") or "",
-            "bird_image": supplied.get("bird_image", "") or "",
-            "compuclub": supplied.get("compuclub", "Pigeon Planet") or "Pigeon Planet",
+            "background_image": supplied.get(
+                "background_image",
+                current.get("background_image", ""),
+            )
+            or "",
+            "bird_image": supplied.get(
+                "bird_image", current.get("bird_image", "")
+            )
+            or "",
+            "compuclub": supplied.get(
+                "compuclub",
+                current.get("compuclub", "Pigeon Planet"),
+            )
+            or "Pigeon Planet",
         }
 
     @staticmethod
@@ -539,34 +813,6 @@ class PedigreeTreeService:
         if isinstance(value, date):
             return value.isoformat()
         return str(value)
-
-    @classmethod
-    def _validate_node(cls, node, *, depth, max_generation, path, seen_paths=None):
-        seen_paths = seen_paths or set()
-        if path in seen_paths:
-            raise ValidationError(
-                {"editable_data": _("Pedigree tree contains a cycle.")}
-            )
-        seen_paths.add(path)
-        if depth > max_generation:
-            raise ValidationError(
-                {"editable_data": _("Pedigree tree exceeds template generation depth.")}
-            )
-        if not isinstance(node, dict):
-            raise ValidationError(
-                {"editable_data": _("Pedigree nodes must be objects.")}
-            )
-        for key in ["father", "mother"]:
-            child = node.get(key)
-            if child is None:
-                continue
-            cls._validate_node(
-                child,
-                depth=depth + 1,
-                max_generation=max_generation,
-                path=f"{path}{'F' if key == 'father' else 'M'}",
-                seen_paths=set(seen_paths),
-            )
 
     @classmethod
     def _collect_paths(cls, node, *, path, depth, max_generation, lookup):
@@ -652,14 +898,14 @@ ANCESTOR_FIELD_MAPPING = {
 
 class PedigreeReportMapper:
     @classmethod
-    def build_payload(cls, *, certificate, template, tree_snapshot):
+    def build_payload(cls, *, certificate, template, pedigree_data):
         lookup = PedigreeTreeService.build_path_lookup(
-            tree_snapshot,
+            pedigree_data,
             max_generation=template.generation,
         )
         subject = lookup.get("") or {}
-        owner = tree_snapshot.get("owner") or {}
-        customization = tree_snapshot.get("customization") or {}
+        owner = pedigree_data.get("owner") or {}
+        customization = pedigree_data.get("customization") or {}
         filename = cls.safe_filename(certificate, subject)
         parameters = {
             "Farkh_No": cls._ring(subject),
@@ -697,8 +943,12 @@ class PedigreeReportMapper:
 
     @staticmethod
     def safe_filename(certificate, subject):
-        ring = normalize_ring_number((subject or {}).get("ring_number", "bird"))
-        slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in ring).strip("-")
+        ring = normalize_ring_number(
+            (subject or {}).get("ring_number", "bird")
+        )
+        slug = "".join(
+            ch.lower() if ch.isalnum() else "-" for ch in ring
+        ).strip("-")
         slug = "-".join(part for part in slug.split("-") if part) or "bird"
         return f"pedigree-{slug}-{certificate.pk}-r{certificate.generation_revision}"
 
@@ -737,7 +987,9 @@ class PedigreeReportClient:
         import requests
 
         base_url = settings.PEDIGREE_REPORT_BASE_URL.rstrip("/")
-        url = urljoin(f"{base_url}/", f"api/reports/rdlc/pdf/{external_pdf_id}")
+        url = urljoin(
+            f"{base_url}/", f"api/reports/rdlc/pdf/{external_pdf_id}"
+        )
         if urlparse(url).netloc != urlparse(base_url).netloc:
             raise ValidationError({"report": _("Unexpected report host.")})
 
@@ -765,7 +1017,9 @@ class PedigreeReportClient:
                 _("Temporary pedigree report service failure.")
             ) from exc
         if 300 <= response.status_code < 400:
-            raise ValidationError({"report": _("Unexpected pedigree report redirect.")})
+            raise ValidationError(
+                {"report": _("Unexpected pedigree report redirect.")}
+            )
         if response.status_code in self.RETRYABLE_STATUS_CODES:
             raise TemporaryPedigreeReportError(
                 _("Temporary pedigree report service failure.")
@@ -783,7 +1037,9 @@ class PedigreeReportClient:
     @classmethod
     def validate_response(cls, *, content, content_type, status_code=200):
         if not content:
-            raise ValidationError({"report": _("Pedigree report response was empty.")})
+            raise ValidationError(
+                {"report": _("Pedigree report response was empty.")}
+            )
         max_size = settings.PEDIGREE_REPORT_MAX_FILE_SIZE_MB * 1024 * 1024
         if len(content) > max_size:
             raise ValidationError(
@@ -823,17 +1079,23 @@ class PedigreeCertificateService:
         owner,
         subject_bird,
         template,
+        generation_depth,
         owner_data=None,
         customization=None,
     ):
         cls._validate_profile_owner(owner)
         cls._validate_subject(subject_bird, owner)
         PedigreeTemplateAccessService.validate_available(template, owner)
-        editable_data = PedigreeTreeService.build_editable_data(
-            subject_bird=subject_bird,
+        cls._validate_generation_depth(
+            generation_depth=generation_depth,
             template=template,
-            owner=owner_data,
-            customization=customization,
+        )
+        normalized_owner_data = PedigreeTreeService._owner_data(
+            owner,
+            owner_data or {},
+        )
+        normalized_customization = PedigreeTreeService._customization_data(
+            customization or {},
         )
         certificate = PedigreeCertificate.objects.create(
             owner=owner,
@@ -841,7 +1103,9 @@ class PedigreeCertificateService:
             subject_bird=subject_bird,
             template=template,
             status=PedigreeCertificateStatus.PENDING,
-            editable_data=editable_data,
+            generation_depth=generation_depth,
+            owner_data=normalized_owner_data,
+            customization=normalized_customization,
             generation_revision=1,
         )
         cls._queue_generation(certificate)
@@ -853,8 +1117,10 @@ class PedigreeCertificateService:
         cls,
         *,
         certificate,
-        template,
-        editable_data,
+        template=None,
+        generation_depth=None,
+        owner_data=None,
+        customization=None,
         actor_profile,
     ):
         if (
@@ -863,14 +1129,36 @@ class PedigreeCertificateService:
         ):
             raise NotFound(_("Pedigree certificate was not found."))
         if certificate.status == PedigreeCertificateStatus.PROCESSING:
-            raise ValidationError({"status": _("Certificate is currently processing.")})
-        PedigreeTemplateAccessService.validate_available(template, actor_profile)
-        PedigreeTreeService.validate_editable_data(
-            editable_data,
-            max_generation=template.generation,
+            raise ValidationError(
+                {"status": _("Certificate is currently processing.")}
+            )
+        effective_template = template or certificate.template
+        effective_generation_depth = (
+            generation_depth or certificate.generation_depth
         )
-        certificate.template = template
-        certificate.editable_data = editable_data
+        PedigreeTemplateAccessService.validate_available(
+            effective_template,
+            actor_profile,
+        )
+        cls._validate_generation_depth(
+            generation_depth=effective_generation_depth,
+            template=effective_template,
+        )
+        if owner_data is not None:
+            certificate.owner_data = PedigreeTreeService._owner_data(
+                certificate.owner,
+                owner_data,
+                current=certificate.owner_data,
+            )
+        if customization is not None:
+            certificate.customization = (
+                PedigreeTreeService._customization_data(
+                    customization,
+                    current=certificate.customization,
+                )
+            )
+        certificate.template = effective_template
+        certificate.generation_depth = effective_generation_depth
         certificate.status = PedigreeCertificateStatus.PENDING
         certificate.generation_revision += 1
         certificate.error_code = ""
@@ -879,7 +1167,9 @@ class PedigreeCertificateService:
         certificate.save(
             update_fields=[
                 "template",
-                "editable_data",
+                "generation_depth",
+                "owner_data",
+                "customization",
                 "status",
                 "generation_revision",
                 "error_code",
@@ -892,7 +1182,9 @@ class PedigreeCertificateService:
         return certificate
 
     @classmethod
-    def generate_certificate(cls, *, certificate_id, expected_revision, client=None):
+    def generate_certificate(
+        cls, *, certificate_id, expected_revision, client=None
+    ):
         prepared = cls._prepare_generation(
             certificate_id=certificate_id,
             expected_revision=expected_revision,
@@ -936,7 +1228,9 @@ class PedigreeCertificateService:
         try:
             certificate = (
                 PedigreeCertificate.objects.select_for_update()
-                .select_related("template")
+                .select_related(
+                    "template", "subject_bird", "owner", "requested_by"
+                )
                 .get(pk=certificate_id)
             )
         except PedigreeCertificate.DoesNotExist:
@@ -948,18 +1242,26 @@ class PedigreeCertificateService:
             and certificate.generated_file
         ):
             return None
-        tree_snapshot = deepcopy(certificate.editable_data)
-        PedigreeTreeService.validate_editable_data(
-            tree_snapshot,
-            max_generation=certificate.template.generation,
+        if certificate.subject_bird is None:
+            raise ValidationError(
+                {"subject_bird_id": _("Subject bird was not found.")}
+            )
+        cls._validate_generation_depth(
+            generation_depth=certificate.generation_depth,
+            template=certificate.template,
+        )
+        pedigree_data = PedigreeTreeService.build_generation_data(
+            subject_bird=certificate.subject_bird,
+            generation_depth=certificate.generation_depth,
+            owner=certificate.owner_data,
+            customization=certificate.customization,
         )
         payload = PedigreeReportMapper.build_payload(
             certificate=certificate,
             template=certificate.template,
-            tree_snapshot=tree_snapshot,
+            pedigree_data=pedigree_data,
         )
         certificate.status = PedigreeCertificateStatus.PROCESSING
-        certificate.tree_snapshot = tree_snapshot
         certificate.external_request_payload = payload
         certificate.error_code = ""
         certificate.error_message = ""
@@ -967,7 +1269,6 @@ class PedigreeCertificateService:
         certificate.save(
             update_fields=[
                 "status",
-                "tree_snapshot",
                 "external_request_payload",
                 "error_code",
                 "error_message",
@@ -1051,7 +1352,8 @@ class PedigreeCertificateService:
             raise ValidationError(
                 {
                     "owner": _(
-                        "Only active customer or seller profiles can generate certificates."
+                        "Only active customer or seller profiles can generate "
+                        "certificates."
                     )
                 }
             )
@@ -1059,7 +1361,33 @@ class PedigreeCertificateService:
     @staticmethod
     def _validate_subject(subject_bird, owner):
         if subject_bird.owner_id != owner.pk:
-            raise ValidationError({"subject_bird_id": _("Subject bird was not found.")})
+            raise ValidationError(
+                {"subject_bird_id": _("Subject bird was not found.")}
+            )
+
+    @staticmethod
+    def _validate_generation_depth(*, generation_depth, template):
+        if generation_depth < 1:
+            raise ValidationError(
+                {"generation_depth": _("Generation depth must be at least 1.")}
+            )
+        if generation_depth > PEDIGREE_MAX_GENERATION_DEPTH:
+            raise ValidationError(
+                {
+                    "generation_depth": _(
+                        "Generation depth exceeds the platform maximum."
+                    )
+                }
+            )
+        if template.generation and generation_depth > template.generation:
+            raise ValidationError(
+                {
+                    "generation_depth": _(
+                        "Generation depth cannot exceed the selected template "
+                        "generation."
+                    )
+                }
+            )
 
     @staticmethod
     def _queue_generation(certificate):
