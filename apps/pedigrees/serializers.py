@@ -203,8 +203,8 @@ class PedigreeDocumentDetailSerializer(serializers.ModelSerializer):
 
 
 class PedigreeDocumentReviewResponseSerializer(serializers.Serializer):
-    document = PedigreeDocumentDetailSerializer(read_only=True)
     subject_bird_id = serializers.IntegerField(read_only=True)
+    document = PedigreeDocumentDetailSerializer(read_only=True)
     path_to_bird_id = serializers.DictField(
         child=serializers.IntegerField(),
         read_only=True,

@@ -848,10 +848,13 @@ class PedigreeReportMapper:
         "whatsapp": "OwnerWhatsApp",
         "email": "OwnerEmail",
     }
+
     CUSTOMIZATION_PARAMETER_MAP = {
         "background_image": "BackgroundImage",
         "bird_image": "Farkh_Image",
+        "details_pic": "Details_Pic",
         "compuclub": "Compuclub",
+        "bird_type": "BirdType",
     }
 
     @classmethod
@@ -865,6 +868,10 @@ class PedigreeReportMapper:
         customization=None,
     ):
         payload = deepcopy(frontend_report)
+
+        # Prevent report.generation and generation_depth from becoming different.
+        payload["generation"] = generation_depth
+
         parameters = payload.get("parameters")
         if not isinstance(parameters, dict):
             parameters = {}
@@ -874,12 +881,22 @@ class PedigreeReportMapper:
             subject_bird=subject_bird,
             generation_depth=generation_depth,
         )
+
         parameters.update(
-            cls._bird_parameters(pedigree_data, generation_depth)
+            cls._bird_parameters(
+                pedigree_data,
+                generation_depth,
+            )
         )
-        parameters.update(cls._owner_parameters(owner or {}))
-        parameters.update(cls._customization_parameters(customization or {}))
+        parameters.update(
+            cls._owner_parameters(owner or {})
+        )
+        parameters.update(
+            cls._customization_parameters(customization or {})
+        )
+
         parameters["PrintDate"] = timezone.localdate().isoformat()
+
         return payload
 
     @classmethod
@@ -888,39 +905,68 @@ class PedigreeReportMapper:
             pedigree_data,
             max_generation=generation_depth,
         )
-        subject = lookup.get("") or {}
+
+        subject = lookup.get("")
+        father = lookup.get("F")
+        mother = lookup.get("M")
+
         parameters = {
+            # Subject ring
             "Farkh_No": cls._ring(subject),
             "Farth_No": cls._ring(subject),
-            "Esmah_FullNo": cls._text(subject),
-            "Farth_FatherNo": cls._ring(lookup.get("F")),
-            "Father_Info": cls._text(lookup.get("F")),
-            "Farth_MotherNo": cls._ring(lookup.get("M")),
-            "Mother_Info": cls._text(lookup.get("M")),
+
+            # Subject
+            "Esmah_Name": cls._name(subject),
+            "Esmah_FullNo": cls._description(subject),
+
+            # Direct father
+            "Farth_FatherNo": cls._ring(father),
+            "Father_Name": cls._name(father),
+            "Father_Info": cls._description(father),
+
+            # Direct mother
+            "Farth_MotherNo": cls._ring(mother),
+            "Mother_Name": cls._name(mother),
+            "Mother_Info": cls._description(mother),
         }
-        for path, (ring_field, text_field) in ANCESTOR_FIELD_MAPPING.items():
+
+        for path, (
+            ring_field,
+            description_field,
+        ) in ANCESTOR_FIELD_MAPPING.items():
             node = lookup.get(path)
+
             parameters[ring_field] = cls._ring(node)
-            parameters[text_field] = cls._text(node)
+            parameters[f"{description_field}_Name"] = cls._name(node)
+            parameters[description_field] = cls._description(node)
+
         return parameters
 
     @classmethod
     def _owner_parameters(cls, owner):
         parameters = {}
+
         for key, parameter_name in cls.OWNER_PARAMETER_MAP.items():
-            if key in owner:
-                value = owner.get(key) or ""
-                parameters[parameter_name] = value
-                if key == "loft_name":
-                    parameters["Owner_LoftName"] = value
+            if key not in owner:
+                continue
+
+            value = owner.get(key) or ""
+            parameters[parameter_name] = value
+
+            if key == "loft_name":
+                # The provider currently supports both spellings.
+                parameters["Owner_LoftName"] = value
+
         return parameters
 
     @classmethod
     def _customization_parameters(cls, customization):
         parameters = {}
+
         for key, parameter_name in cls.CUSTOMIZATION_PARAMETER_MAP.items():
             if key in customization:
                 parameters[parameter_name] = customization.get(key) or ""
+
         return parameters
 
     @staticmethod
@@ -928,10 +974,12 @@ class PedigreeReportMapper:
         return (node or {}).get("ring_number", "") or ""
 
     @staticmethod
-    def _text(node):
-        node = node or {}
-        return node.get("name", "") or node.get("description", "") or ""
+    def _name(node):
+        return (node or {}).get("name", "") or ""
 
+    @staticmethod
+    def _description(node):
+        return (node or {}).get("description", "") or ""
 
 class PedigreeReportClient:
     SAFE_RESPONSE_HEADERS = [
@@ -968,6 +1016,9 @@ class PedigreeReportClient:
 
         url = self._build_url(f"api/reports/fastreport/pdf/{pdf_id}")
         started_at = perf_counter()
+        import json
+        with open("/tmp/pedigree_provider_payload.json", "w", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, indent=2)
         response = requests.post(
             url,
             json=payload,
