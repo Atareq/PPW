@@ -1,7 +1,6 @@
 from collections import OrderedDict
 
-from django.core.exceptions import ImproperlyConfigured
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.utils.translation import gettext_lazy as _
 
 
@@ -475,7 +474,9 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "seasons",
         _("Seasons"),
         _("Finalize seasons"),
-        _("Finalize a calculated reward season without recalculating rewards."),
+        _(
+            "Finalize a calculated reward season without recalculating rewards."
+        ),
     ),
     _permission(
         "seasons.insights.list",
@@ -594,7 +595,9 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "pedigrees.birds",
         _("Pedigree Birds"),
         _("Create pedigree birds"),
-        _("Create private pedigree bird records where the API supports ownership."),
+        _(
+            "Create private pedigree bird records where the API supports ownership."
+        ),
     ),
     _permission(
         "pedigrees.birds.update",
@@ -611,53 +614,36 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         _("Delete private pedigree bird records."),
     ),
     _permission(
-        "pedigrees.templates.list",
-        "pedigrees.templates",
-        _("Pedigree Templates"),
-        _("List pedigree templates"),
-        _("View active configured pedigree certificate templates."),
+        "pedigrees.reports.list",
+        "pedigrees.reports",
+        _("Pedigree Reports"),
+        _("List pedigree reports"),
+        _("Proxy the external FastReport reports list."),
     ),
     _permission(
-        "pedigrees.certificates.list",
-        "pedigrees.certificates",
-        _("Pedigree Certificates"),
-        _("List pedigree certificates"),
-        _("View pedigree certificate generation records."),
-    ),
-    _permission(
-        "pedigrees.certificates.retrieve",
-        "pedigrees.certificates",
-        _("Pedigree Certificates"),
-        _("View pedigree certificate details"),
-        _("Open one pedigree certificate generation record."),
-    ),
-    _permission(
-        "pedigrees.certificates.generate",
-        "pedigrees.certificates",
-        _("Pedigree Certificates"),
-        _("Generate pedigree certificates"),
-        _("Create or regenerate pedigree certificate files."),
-    ),
-    _permission(
-        "pedigrees.certificates.download",
-        "pedigrees.certificates",
-        _("Pedigree Certificates"),
-        _("Download pedigree certificates"),
-        _("Download completed pedigree certificate files."),
+        "pedigrees.reports.generate",
+        "pedigrees.reports",
+        _("Pedigree Reports"),
+        _("Generate pedigree reports"),
+        _("Synchronously proxy pedigree report generation."),
     ),
     _permission(
         "feed.blocks.list",
         "feed.blocks",
         _("Feed Blocks"),
         _("List feed blocks"),
-        _("View seller/customer block records exposed by moderation endpoints."),
+        _(
+            "View seller/customer block records exposed by moderation endpoints."
+        ),
     ),
     _permission(
         "feed.blocks.remove",
         "feed.blocks",
         _("Feed Blocks"),
         _("Remove feed blocks"),
-        _("Remove seller/customer block records exposed by moderation endpoints."),
+        _(
+            "Remove seller/customer block records exposed by moderation endpoints."
+        ),
     ),
     _permission(
         "feed.sellers.list",
@@ -748,13 +734,19 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         "insights.seller_home",
         _("Seller Insights"),
         _("View seller home insights"),
-        _("View seller home insight summaries when exposed by manager endpoints."),
+        _(
+            "View seller home insight summaries when exposed by manager endpoints."
+        ),
     ),
 )
 
-_CATALOG_BY_CODE = {entry["code"]: entry for entry in MANAGER_PERMISSION_CATALOG}
+_CATALOG_BY_CODE = {
+    entry["code"]: entry for entry in MANAGER_PERMISSION_CATALOG
+}
 if len(_CATALOG_BY_CODE) != len(MANAGER_PERMISSION_CATALOG):
-    raise ImproperlyConfigured("Duplicate manager permission codes are not allowed.")
+    raise ImproperlyConfigured(
+        "Duplicate manager permission codes are not allowed."
+    )
 
 
 # Kept for legacy imports and migrations. New authorization does not use levels.
@@ -823,7 +815,9 @@ def get_manager_permission_groups() -> list[dict[str, object]]:
         {
             "key": group["key"],
             "label": group["label"],
-            "permissions": [permission.copy() for permission in group["permissions"]],
+            "permissions": [
+                permission.copy() for permission in group["permissions"]
+            ],
         }
         for group in groups.values()
     ]
@@ -841,7 +835,9 @@ def validate_manager_permissions(permissions) -> list[str]:
         return []
 
     if not isinstance(permissions, list):
-        raise ValidationError({"permissions": [_("Permissions must be a list.")]})
+        raise ValidationError(
+            {"permissions": [_("Permissions must be a list.")]}
+        )
 
     invalid_codes = []
 

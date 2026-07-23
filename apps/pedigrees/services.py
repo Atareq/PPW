@@ -1,11 +1,13 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
+import logging
+from time import perf_counter
 from urllib.parse import urljoin, urlparse
 
 from PIL import Image, ImageEnhance, ImageOps
 import cv2
 from django.conf import settings
-from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -14,22 +16,37 @@ import pytesseract
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from apps.assets.models import Bird
-from apps.pedigrees.constants import PEDIGREE_MAX_GENERATION_DEPTH
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdSex,
-    PedigreeCertificate,
-    PedigreeCertificateStatus,
     PedigreeDocument,
     PedigreeDocumentStatus,
-    PedigreeTemplate,
     normalize_ring_number,
 )
 from apps.users.constants import ProfileType
 
+logger = logging.getLogger(__name__)
+
 
 class PedigreeExtractionError(ValueError):
     pass
+
+
+class PedigreeReportConfigurationError(APIException):
+    status_code = 500
+    default_code = "pedigree_report_not_configured"
+
+
+def validate_pedigree_owner_profile(owner):
+    if owner.type not in {ProfileType.CUSTOMER, ProfileType.SELLER}:
+        raise ValidationError(
+            {
+                "owner": _(
+                    "Only active customer or seller profiles can own pedigree "
+                    "birds."
+                )
+            }
+        )
 
 
 @dataclass
@@ -454,7 +471,7 @@ class PedigreeReviewedBirdService:
             actor_profile,
         )
         owner = document.owner
-        PedigreeCertificateService._validate_profile_owner(owner)
+        validate_pedigree_owner_profile(owner)
 
         merged_by_ring, path_to_ring = cls._merge_nodes_by_normalized_ring(
             reviewed_nodes
@@ -644,27 +661,6 @@ class PedigreeReviewedBirdService:
         return updated_ids
 
 
-class PedigreeTemplateAccessService:
-    """Placeholder entitlement hook for future premium-template checks."""
-
-    @staticmethod
-    def available_templates_for_profile(profile):
-        return PedigreeTemplate.objects.filter(
-            is_active=True,
-            pedigree_type__gt="",
-            report_name__gt="",
-            generation__isnull=False,
-        ).order_by("sort_order", "id")
-
-    @staticmethod
-    def validate_available(template, profile):
-        if not template.is_configured:
-            raise ValidationError(
-                {"template_id": _("Template is not available.")}
-            )
-        return template
-
-
 class PedigreeTreeService:
     NODE_FIELDS = [
         "ring_number",
@@ -688,14 +684,10 @@ class PedigreeTreeService:
         *,
         subject_bird,
         generation_depth,
-        owner=None,
-        customization=None,
     ):
         # generation_depth is the total number of levels, with the subject at
         # depth 1. A depth of 2 includes only the subject and direct parents.
         return {
-            "owner": cls._owner_data(subject_bird.owner, owner or {}),
-            "customization": cls._customization_data(customization or {}),
             "subject": cls._bird_node(
                 subject_bird,
                 max_depth=generation_depth,
@@ -757,54 +749,6 @@ class PedigreeTreeService:
             seen=set(seen),
         )
         return node
-
-    @staticmethod
-    def _owner_data(profile, supplied, current=None):
-        current = current or {}
-        user = profile.user
-        display_name = (
-            " ".join(
-                part for part in [user.first_name, user.last_name] if part
-            ).strip()
-            or user.username
-        )
-        seller = getattr(profile, "sellerprofile", None)
-        loft_name = getattr(seller, "nickname", "") or display_name
-        defaults = {
-            "name": current.get("name", display_name),
-            "loft_name": current.get("loft_name", loft_name),
-            "phone": current.get("phone", str(user.phone_number or "")),
-            "whatsapp": current.get("whatsapp", str(user.phone_number or "")),
-            "email": current.get("email", user.email or ""),
-        }
-        return {
-            "name": supplied.get("name", defaults["name"]) or "",
-            "loft_name": supplied.get("loft_name", defaults["loft_name"])
-            or "",
-            "phone": supplied.get("phone", defaults["phone"]) or "",
-            "whatsapp": supplied.get("whatsapp", defaults["whatsapp"]) or "",
-            "email": supplied.get("email", defaults["email"]) or "",
-        }
-
-    @staticmethod
-    def _customization_data(supplied, current=None):
-        current = current or {}
-        return {
-            "background_image": supplied.get(
-                "background_image",
-                current.get("background_image", ""),
-            )
-            or "",
-            "bird_image": supplied.get(
-                "bird_image", current.get("bird_image", "")
-            )
-            or "",
-            "compuclub": supplied.get(
-                "compuclub",
-                current.get("compuclub", "Pigeon Planet"),
-            )
-            or "Pigeon Planet",
-        }
 
     @staticmethod
     def _date_value(value):
@@ -897,60 +841,87 @@ ANCESTOR_FIELD_MAPPING = {
 
 
 class PedigreeReportMapper:
+    OWNER_PARAMETER_MAP = {
+        "name": "Farth_Name",
+        "loft_name": "OwnerLoftName",
+        "phone": "OwnerPhone",
+        "whatsapp": "OwnerWhatsApp",
+        "email": "OwnerEmail",
+    }
+    CUSTOMIZATION_PARAMETER_MAP = {
+        "background_image": "BackgroundImage",
+        "bird_image": "Farkh_Image",
+        "compuclub": "Compuclub",
+    }
+
     @classmethod
-    def build_payload(cls, *, certificate, template, pedigree_data):
+    def merge_payload(
+        cls,
+        *,
+        frontend_report,
+        subject_bird,
+        generation_depth,
+        owner=None,
+        customization=None,
+    ):
+        payload = deepcopy(frontend_report)
+        parameters = payload.get("parameters")
+        if not isinstance(parameters, dict):
+            parameters = {}
+            payload["parameters"] = parameters
+
+        pedigree_data = PedigreeTreeService.build_generation_data(
+            subject_bird=subject_bird,
+            generation_depth=generation_depth,
+        )
+        parameters.update(
+            cls._bird_parameters(pedigree_data, generation_depth)
+        )
+        parameters.update(cls._owner_parameters(owner or {}))
+        parameters.update(cls._customization_parameters(customization or {}))
+        parameters["PrintDate"] = timezone.localdate().isoformat()
+        return payload
+
+    @classmethod
+    def _bird_parameters(cls, pedigree_data, generation_depth):
         lookup = PedigreeTreeService.build_path_lookup(
             pedigree_data,
-            max_generation=template.generation,
+            max_generation=generation_depth,
         )
         subject = lookup.get("") or {}
-        owner = pedigree_data.get("owner") or {}
-        customization = pedigree_data.get("customization") or {}
-        filename = cls.safe_filename(certificate, subject)
         parameters = {
             "Farkh_No": cls._ring(subject),
             "Farth_No": cls._ring(subject),
             "Esmah_FullNo": cls._text(subject),
-            "Farkh_Image": customization.get("bird_image", "") or "",
-            "Farth_Name": owner.get("name", "") or "",
-            "OwnerLoftName": owner.get("loft_name", "") or "",
-            "Owner_LoftName": owner.get("loft_name", "") or "",
-            "OwnerPhone": owner.get("phone", "") or "",
-            "OwnerWhatsApp": owner.get("whatsapp", "") or "",
-            "OwnerEmail": owner.get("email", "") or "",
-            "BackgroundImage": customization.get("background_image", "") or "",
-            "Compuclub": customization.get("compuclub", "Pigeon Planet")
-            or "Pigeon Planet",
-            "PrintDate": timezone.localdate().isoformat(),
+            "Farth_FatherNo": cls._ring(lookup.get("F")),
+            "Father_Info": cls._text(lookup.get("F")),
+            "Farth_MotherNo": cls._ring(lookup.get("M")),
+            "Mother_Info": cls._text(lookup.get("M")),
         }
-        parameters["Farth_FatherNo"] = cls._ring(lookup.get("F"))
-        parameters["Father_Info"] = cls._text(lookup.get("F"))
-        parameters["Farth_MotherNo"] = cls._ring(lookup.get("M"))
-        parameters["Mother_Info"] = cls._text(lookup.get("M"))
         for path, (ring_field, text_field) in ANCESTOR_FIELD_MAPPING.items():
             node = lookup.get(path)
             parameters[ring_field] = cls._ring(node)
             parameters[text_field] = cls._text(node)
+        return parameters
 
-        return {
-            "pedigreeType": str(template.pedigree_type),
-            "reportName": template.report_name,
-            "generation": str(template.generation),
-            "fileName": filename,
-            "parameters": parameters,
-            "dataSources": [],
-        }
+    @classmethod
+    def _owner_parameters(cls, owner):
+        parameters = {}
+        for key, parameter_name in cls.OWNER_PARAMETER_MAP.items():
+            if key in owner:
+                value = owner.get(key) or ""
+                parameters[parameter_name] = value
+                if key == "loft_name":
+                    parameters["Owner_LoftName"] = value
+        return parameters
 
-    @staticmethod
-    def safe_filename(certificate, subject):
-        ring = normalize_ring_number(
-            (subject or {}).get("ring_number", "bird")
-        )
-        slug = "".join(
-            ch.lower() if ch.isalnum() else "-" for ch in ring
-        ).strip("-")
-        slug = "-".join(part for part in slug.split("-") if part) or "bird"
-        return f"pedigree-{slug}-{certificate.pk}-r{certificate.generation_revision}"
+    @classmethod
+    def _customization_parameters(cls, customization):
+        parameters = {}
+        for key, parameter_name in cls.CUSTOMIZATION_PARAMETER_MAP.items():
+            if key in customization:
+                parameters[parameter_name] = customization.get(key) or ""
+        return parameters
 
     @staticmethod
     def _ring(node):
@@ -962,449 +933,126 @@ class PedigreeReportMapper:
         return node.get("name", "") or node.get("description", "") or ""
 
 
-@dataclass
-class PedigreeReportResponse:
-    content: bytes
-    mime_type: str
-    status_code: int
-    extension: str
-
-
-class TemporaryPedigreeReportError(APIException):
-    status_code = 503
-    default_code = "temporary_report_error"
-
-
 class PedigreeReportClient:
-    ALLOWED_MIME_TYPES = {
-        "application/pdf": (b"%PDF-", ".pdf"),
-        "image/png": (b"\x89PNG\r\n\x1a\n", ".png"),
-        "image/jpeg": (b"\xff\xd8", ".jpg"),
-    }
-    RETRYABLE_STATUS_CODES = {502, 503, 504}
+    SAFE_RESPONSE_HEADERS = [
+        "Content-Disposition",
+        "Cache-Control",
+        "ETag",
+        "Expires",
+        "Last-Modified",
+        "Pragma",
+    ]
 
-    def post_report(self, *, external_pdf_id, payload):
+    def get_reports(self):
         import requests
 
-        base_url = settings.PEDIGREE_REPORT_BASE_URL.rstrip("/")
-        url = urljoin(
-            f"{base_url}/", f"api/reports/rdlc/pdf/{external_pdf_id}"
+        url = self._build_url("api/reports/fastreport/reports")
+        started_at = perf_counter()
+        response = requests.get(
+            url,
+            timeout=self._timeout(),
+            allow_redirects=False,
         )
+        logger.info(
+            "Pedigree reports-list provider response.",
+            extra={
+                "operation": "reports-list",
+                "upstream_status_code": response.status_code,
+                "duration_seconds": round(perf_counter() - started_at, 3),
+            },
+        )
+        return response
+
+    def post_pdf(self, *, pdf_id, payload, accept):
+        import requests
+
+        url = self._build_url(f"api/reports/fastreport/pdf/{pdf_id}")
+        started_at = perf_counter()
+        response = requests.post(
+            url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": accept or "application/pdf",
+            },
+            timeout=self._timeout(),
+            allow_redirects=False,
+        )
+        logger.info(
+            "Pedigree generate provider response.",
+            extra={
+                "operation": "generate",
+                "pdf_id": pdf_id,
+                "upstream_status_code": response.status_code,
+                "duration_seconds": round(perf_counter() - started_at, 3),
+            },
+        )
+        return response
+
+    def _build_url(self, path):
+        base_url = self._base_url()
+        url = urljoin(f"{base_url}/", path)
         if urlparse(url).netloc != urlparse(base_url).netloc:
             raise ValidationError({"report": _("Unexpected report host.")})
+        return url
 
-        headers = {}
-        api_key = getattr(settings, "PEDIGREE_REPORT_API_KEY", "")
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+    @staticmethod
+    def _base_url():
+        base_url = getattr(settings, "PEDIGREE_REPORT_BASE_URL", "")
+        base_url = (base_url or "").rstrip("/")
+        if not base_url:
+            raise PedigreeReportConfigurationError(
+                _("PEDIGREE_REPORT_BASE_URL is not configured.")
+            )
+        return base_url
 
-        try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=(
-                    settings.PEDIGREE_REPORT_CONNECT_TIMEOUT,
-                    settings.PEDIGREE_REPORT_READ_TIMEOUT,
-                ),
-                allow_redirects=False,
-            )
-        except (
-            requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout,
-        ) as exc:
-            raise TemporaryPedigreeReportError(
-                _("Temporary pedigree report service failure.")
-            ) from exc
-        if 300 <= response.status_code < 400:
-            raise ValidationError(
-                {"report": _("Unexpected pedigree report redirect.")}
-            )
-        if response.status_code in self.RETRYABLE_STATUS_CODES:
-            raise TemporaryPedigreeReportError(
-                _("Temporary pedigree report service failure.")
-            )
-        if response.status_code >= 400:
-            raise ValidationError(
-                {"report": _("Pedigree report service rejected the request.")}
-            )
-        return self.validate_response(
-            content=response.content,
-            content_type=response.headers.get("content-type", ""),
-            status_code=response.status_code,
-        )
+    @staticmethod
+    def _timeout():
+        return getattr(settings, "PEDIGREE_REPORT_TIMEOUT", 120)
 
+
+class PedigreeReportGenerationService:
     @classmethod
-    def validate_response(cls, *, content, content_type, status_code=200):
-        if not content:
-            raise ValidationError(
-                {"report": _("Pedigree report response was empty.")}
-            )
-        max_size = settings.PEDIGREE_REPORT_MAX_FILE_SIZE_MB * 1024 * 1024
-        if len(content) > max_size:
-            raise ValidationError(
-                {"report": _("Pedigree report response was too large.")}
-            )
-        mime_type = (content_type or "").split(";")[0].strip().lower()
-        if mime_type not in cls.ALLOWED_MIME_TYPES:
-            raise ValidationError(
-                {"report": _("Unsupported pedigree report MIME type.")}
-            )
-        signature, extension = cls.ALLOWED_MIME_TYPES[mime_type]
-        if not content.startswith(signature):
-            raise ValidationError(
-                {"report": _("Pedigree report file signature is invalid.")}
-            )
-        return PedigreeReportResponse(
-            content=content,
-            mime_type=mime_type,
-            status_code=status_code,
-            extension=extension,
-        )
-
-
-class PedigreeCertificateService:
-    TRANSIENT_ERROR_FIELDS = {
-        "error_code": "",
-        "error_message": "",
-        "external_status_code": None,
-    }
-
-    @classmethod
-    @transaction.atomic
-    def create_certificate(
+    def build_provider_payload(
         cls,
         *,
-        requested_by,
-        owner,
-        subject_bird,
-        template,
-        generation_depth,
-        owner_data=None,
-        customization=None,
-    ):
-        cls._validate_profile_owner(owner)
-        cls._validate_subject(subject_bird, owner)
-        PedigreeTemplateAccessService.validate_available(template, owner)
-        cls._validate_generation_depth(
-            generation_depth=generation_depth,
-            template=template,
-        )
-        normalized_owner_data = PedigreeTreeService._owner_data(
-            owner,
-            owner_data or {},
-        )
-        normalized_customization = PedigreeTreeService._customization_data(
-            customization or {},
-        )
-        certificate = PedigreeCertificate.objects.create(
-            owner=owner,
-            requested_by=requested_by,
-            subject_bird=subject_bird,
-            template=template,
-            status=PedigreeCertificateStatus.PENDING,
-            generation_depth=generation_depth,
-            owner_data=normalized_owner_data,
-            customization=normalized_customization,
-            generation_revision=1,
-        )
-        cls._queue_generation(certificate)
-        return certificate
-
-    @classmethod
-    @transaction.atomic
-    def regenerate_certificate(
-        cls,
-        *,
-        certificate,
-        template=None,
-        generation_depth=None,
-        owner_data=None,
-        customization=None,
+        subject_bird_id,
         actor_profile,
+        generation_depth,
+        report,
+        owner=None,
+        customization=None,
     ):
-        if (
-            actor_profile.type != ProfileType.MANAGER
-            and certificate.owner_id != actor_profile.pk
-        ):
-            raise NotFound(_("Pedigree certificate was not found."))
-        if certificate.status == PedigreeCertificateStatus.PROCESSING:
-            raise ValidationError(
-                {"status": _("Certificate is currently processing.")}
-            )
-        effective_template = template or certificate.template
-        effective_generation_depth = (
-            generation_depth or certificate.generation_depth
+        subject_bird = cls._get_subject_bird(subject_bird_id, actor_profile)
+        logger.info(
+            "Building pedigree generate payload.",
+            extra={
+                "operation": "generate",
+                "subject_bird_id": subject_bird.pk,
+                "generation_depth": generation_depth,
+            },
         )
-        PedigreeTemplateAccessService.validate_available(
-            effective_template,
-            actor_profile,
+        return PedigreeReportMapper.merge_payload(
+            frontend_report=report,
+            subject_bird=subject_bird,
+            generation_depth=generation_depth,
+            owner=owner,
+            customization=customization,
         )
-        cls._validate_generation_depth(
-            generation_depth=effective_generation_depth,
-            template=effective_template,
-        )
-        if owner_data is not None:
-            certificate.owner_data = PedigreeTreeService._owner_data(
-                certificate.owner,
-                owner_data,
-                current=certificate.owner_data,
-            )
-        if customization is not None:
-            certificate.customization = (
-                PedigreeTreeService._customization_data(
-                    customization,
-                    current=certificate.customization,
-                )
-            )
-        certificate.template = effective_template
-        certificate.generation_depth = effective_generation_depth
-        certificate.status = PedigreeCertificateStatus.PENDING
-        certificate.generation_revision += 1
-        certificate.error_code = ""
-        certificate.error_message = ""
-        certificate.external_status_code = None
-        certificate.save(
-            update_fields=[
-                "template",
-                "generation_depth",
-                "owner_data",
-                "customization",
-                "status",
-                "generation_revision",
-                "error_code",
-                "error_message",
-                "external_status_code",
-                "modified",
-            ]
-        )
-        cls._queue_generation(certificate)
-        return certificate
 
-    @classmethod
-    def generate_certificate(
-        cls, *, certificate_id, expected_revision, client=None
-    ):
-        prepared = cls._prepare_generation(
-            certificate_id=certificate_id,
-            expected_revision=expected_revision,
+    @staticmethod
+    def _get_subject_bird(subject_bird_id, actor_profile):
+        queryset = PedigreeBird.objects.select_related(
+            "owner",
+            "father",
+            "mother",
         )
-        if prepared is None:
-            return "stale"
-        certificate_id, payload = prepared
-        client = client or PedigreeReportClient()
+        if actor_profile.type != ProfileType.MANAGER:
+            queryset = queryset.filter(owner_id=actor_profile.pk)
         try:
-            response = client.post_report(
-                external_pdf_id=payload["_external_pdf_id"],
-                payload=payload["body"],
-            )
-        except TemporaryPedigreeReportError:
-            cls._mark_failed(
-                certificate_id=certificate_id,
-                expected_revision=expected_revision,
-                code="temporary_report_error",
-                message="Temporary pedigree report service failure.",
-            )
-            raise
-        except Exception as exc:
-            cls._mark_failed(
-                certificate_id=certificate_id,
-                expected_revision=expected_revision,
-                code=cls._error_code(exc),
-                message=str(exc),
-            )
-            return "failed"
-        cls._mark_completed(
-            certificate_id=certificate_id,
-            expected_revision=expected_revision,
-            response=response,
-            filename_base=payload["body"]["fileName"],
-        )
-        return "completed"
-
-    @classmethod
-    @transaction.atomic
-    def _prepare_generation(cls, *, certificate_id, expected_revision):
-        try:
-            certificate = (
-                PedigreeCertificate.objects.select_for_update()
-                .select_related(
-                    "template", "subject_bird", "owner", "requested_by"
-                )
-                .get(pk=certificate_id)
-            )
-        except PedigreeCertificate.DoesNotExist:
-            return None
-        if certificate.generation_revision != expected_revision:
-            return None
-        if (
-            certificate.status == PedigreeCertificateStatus.COMPLETED
-            and certificate.generated_file
-        ):
-            return None
-        if certificate.subject_bird is None:
-            raise ValidationError(
-                {"subject_bird_id": _("Subject bird was not found.")}
-            )
-        cls._validate_generation_depth(
-            generation_depth=certificate.generation_depth,
-            template=certificate.template,
-        )
-        pedigree_data = PedigreeTreeService.build_generation_data(
-            subject_bird=certificate.subject_bird,
-            generation_depth=certificate.generation_depth,
-            owner=certificate.owner_data,
-            customization=certificate.customization,
-        )
-        payload = PedigreeReportMapper.build_payload(
-            certificate=certificate,
-            template=certificate.template,
-            pedigree_data=pedigree_data,
-        )
-        certificate.status = PedigreeCertificateStatus.PROCESSING
-        certificate.external_request_payload = payload
-        certificate.error_code = ""
-        certificate.error_message = ""
-        certificate.external_status_code = None
-        certificate.save(
-            update_fields=[
-                "status",
-                "external_request_payload",
-                "error_code",
-                "error_message",
-                "external_status_code",
-                "modified",
-            ]
-        )
-        return certificate.pk, {
-            "_external_pdf_id": certificate.template.external_pdf_id,
-            "body": payload,
-        }
-
-    @classmethod
-    @transaction.atomic
-    def _mark_completed(
-        cls, *, certificate_id, expected_revision, response, filename_base
-    ):
-        try:
-            certificate = PedigreeCertificate.objects.select_for_update().get(
-                pk=certificate_id
-            )
-        except PedigreeCertificate.DoesNotExist:
-            return
-        if certificate.generation_revision != expected_revision:
-            return
-        filename = f"{filename_base}{response.extension}"
-        certificate.generated_file.save(
-            filename,
-            ContentFile(response.content),
-            save=False,
-        )
-        certificate.generated_filename = filename
-        certificate.mime_type = response.mime_type
-        certificate.external_status_code = response.status_code
-        certificate.status = PedigreeCertificateStatus.COMPLETED
-        certificate.generated_at = timezone.now()
-        certificate.error_code = ""
-        certificate.error_message = ""
-        certificate.save(
-            update_fields=[
-                "generated_file",
-                "generated_filename",
-                "mime_type",
-                "external_status_code",
-                "status",
-                "generated_at",
-                "error_code",
-                "error_message",
-                "modified",
-            ]
-        )
-
-    @classmethod
-    @transaction.atomic
-    def _mark_failed(cls, *, certificate_id, expected_revision, code, message):
-        try:
-            certificate = PedigreeCertificate.objects.select_for_update().get(
-                pk=certificate_id
-            )
-        except PedigreeCertificate.DoesNotExist:
-            return
-        if certificate.generation_revision != expected_revision:
-            return
-        certificate.status = PedigreeCertificateStatus.FAILED
-        certificate.error_code = code[:100]
-        certificate.error_message = str(message)[:1000]
-        certificate.generated_at = None
-        certificate.save(
-            update_fields=[
-                "status",
-                "error_code",
-                "error_message",
-                "generated_at",
-                "modified",
-            ]
-        )
-
-    @staticmethod
-    def _validate_profile_owner(owner):
-        if owner.type not in {ProfileType.CUSTOMER, ProfileType.SELLER}:
-            raise ValidationError(
-                {
-                    "owner": _(
-                        "Only active customer or seller profiles can generate "
-                        "certificates."
-                    )
-                }
-            )
-
-    @staticmethod
-    def _validate_subject(subject_bird, owner):
-        if subject_bird.owner_id != owner.pk:
-            raise ValidationError(
-                {"subject_bird_id": _("Subject bird was not found.")}
-            )
-
-    @staticmethod
-    def _validate_generation_depth(*, generation_depth, template):
-        if generation_depth < 1:
-            raise ValidationError(
-                {"generation_depth": _("Generation depth must be at least 1.")}
-            )
-        if generation_depth > PEDIGREE_MAX_GENERATION_DEPTH:
-            raise ValidationError(
-                {
-                    "generation_depth": _(
-                        "Generation depth exceeds the platform maximum."
-                    )
-                }
-            )
-        if template.generation and generation_depth > template.generation:
-            raise ValidationError(
-                {
-                    "generation_depth": _(
-                        "Generation depth cannot exceed the selected template "
-                        "generation."
-                    )
-                }
-            )
-
-    @staticmethod
-    def _queue_generation(certificate):
-        from apps.pedigrees.tasks import generate_pedigree_certificate
-
-        transaction.on_commit(
-            lambda: generate_pedigree_certificate.delay(
-                certificate.pk,
-                certificate.generation_revision,
-            )
-        )
-
-    @staticmethod
-    def _error_code(exc):
-        if isinstance(exc, ValidationError):
-            return "invalid_report_response"
-        return exc.__class__.__name__.lower()[:100]
+            return queryset.get(pk=subject_bird_id, deleted__isnull=True)
+        except PedigreeBird.DoesNotExist as exc:
+            raise NotFound(_("Subject bird was not found.")) from exc
 
 
 class PedigreeImageBoxDetectionService:

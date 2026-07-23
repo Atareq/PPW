@@ -1,39 +1,54 @@
-from django.http import FileResponse
+import logging
+
+from django.http import HttpResponse, JsonResponse
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
+import requests
 from rest_framework import mixins, status, viewsets
-from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
 from apps.pedigrees.filters import PedigreeBirdFilter
 from apps.pedigrees.models import (
     PedigreeBird,
-    PedigreeCertificate,
-    PedigreeCertificateStatus,
     PedigreeDocument,
     PedigreeDocumentStatus,
-    PedigreeTemplate,
 )
 from apps.pedigrees.serializers import (
     PedigreeBirdSerializer,
-    PedigreeCertificateCreateResponseSerializer,
-    PedigreeCertificateCreateSerializer,
-    PedigreeCertificateDetailSerializer,
-    PedigreeCertificateRegenerateSerializer,
     PedigreeDocumentDetailSerializer,
     PedigreeDocumentReviewResponseSerializer,
     PedigreeDocumentReviewSerializer,
     PedigreeDocumentUploadSerializer,
-    PedigreeTemplateListSerializer,
+    PedigreeReportGenerateSerializer,
 )
 from apps.pedigrees.services import (
     PedigreeDocumentService,
-    PedigreeTemplateAccessService,
+    PedigreeReportClient,
+    PedigreeReportGenerationService,
     pedigree_document_queryset,
 )
 from apps.users.constants import ProfileType
+
+logger = logging.getLogger(__name__)
+
+
+class ProviderProxyRenderer(BaseRenderer):
+    media_type = "*/*"
+    format = "proxy"
+    charset = None
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        if isinstance(data, (bytes, bytearray)):
+            return bytes(data)
+        return JSONRenderer().render(
+            data,
+            accepted_media_type="application/json",
+            renderer_context=renderer_context,
+        )
 
 
 @extend_schema_view(
@@ -215,154 +230,136 @@ class PedigreeBirdViewSet(viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(
         tags=["Pedigrees"],
-        responses={200: PedigreeTemplateListSerializer},
+        responses={200: OpenApiTypes.BINARY},
+        description=(
+            "Proxy the external FastReport reports list. PPW passes through "
+            "the upstream status, body, Content-Type, and safe response "
+            "headers without storing or reshaping the report definitions."
+        ),
     ),
 )
-class PedigreeTemplateViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """List configured pedigree templates without exposing provider internals."""
+class PedigreeReportListProxyViewSet(
+    mixins.ListModelMixin, viewsets.GenericViewSet
+):
+    """Proxy the external reports list without local template persistence."""
 
     permission_classes = [HasAppAccess]
-    permission_resource = "PEDIGREE_TEMPLATE"
-    manager_permission_map = {"list": "pedigrees.templates.list"}
-    serializer_class = PedigreeTemplateListSerializer
-    queryset = PedigreeTemplate.objects.all()
+    permission_resource = "PEDIGREE_REPORT"
+    manager_permission_map = {"list": "pedigrees.reports.list"}
+    renderer_classes = [JSONRenderer, ProviderProxyRenderer]
+    queryset = PedigreeBird.objects.none()
 
-    def get_queryset(self):
-        return PedigreeTemplateAccessService.available_templates_for_profile(
-            self.request.user.active_profile
-        )
+    def list(self, request, *args, **kwargs):
+        try:
+            upstream_response = PedigreeReportClient().get_reports()
+        except requests.exceptions.Timeout as exc:
+            _log_provider_exception("reports-list", exc)
+            return _provider_timeout_response()
+        except requests.exceptions.ConnectionError as exc:
+            _log_provider_exception("reports-list", exc)
+            return _provider_gateway_response()
+        return _raw_provider_response(upstream_response)
 
 
 @extend_schema_view(
-    list=extend_schema(
-        tags=["Pedigrees"],
-        responses={200: PedigreeCertificateDetailSerializer},
-    ),
     create=extend_schema(
         tags=["Pedigrees"],
-        request=PedigreeCertificateCreateSerializer,
-        responses={202: PedigreeCertificateCreateResponseSerializer},
-    ),
-    retrieve=extend_schema(
-        tags=["Pedigrees"],
-        responses={200: PedigreeCertificateDetailSerializer},
+        request=PedigreeReportGenerateSerializer,
+        responses={200: OpenApiTypes.BINARY},
+        description=(
+            "Build a provider payload from the frontend report object and the "
+            "current PedigreeBird graph, call the external FastReport PDF "
+            "endpoint synchronously, and pass through the upstream response."
+        ),
     ),
 )
-class PedigreeCertificateViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.CreateModelMixin,
-    viewsets.GenericViewSet,
+class PedigreeReportGenerateViewSet(
+    mixins.CreateModelMixin, viewsets.GenericViewSet
 ):
-    """Create and retrieve generated pedigree certificate records."""
+    """Synchronously generate one external report without local persistence."""
 
     permission_classes = [HasAppAccess]
-    permission_resource = "PEDIGREE_CERTIFICATE"
-    manager_permission_map = {
-        "list": "pedigrees.certificates.list",
-        "retrieve": "pedigrees.certificates.retrieve",
-        "create": "pedigrees.certificates.generate",
-    }
-    queryset = PedigreeCertificate.objects.all()
-
-    def get_serializer_class(self):
-        if self.action == "create":
-            return PedigreeCertificateCreateSerializer
-        return PedigreeCertificateDetailSerializer
-
-    def get_queryset(self):
-        queryset = PedigreeCertificate.objects.select_related(
-            "owner",
-            "requested_by",
-            "subject_bird",
-            "template",
-        ).order_by("-created")
-        active_profile = self.request.user.active_profile
-        if active_profile.type == ProfileType.MANAGER:
-            return queryset
-        return queryset.filter(owner_id=active_profile.pk)
+    permission_resource = "PEDIGREE_REPORT"
+    manager_permission_map = {"create": "pedigrees.reports.generate"}
+    serializer_class = PedigreeReportGenerateSerializer
+    renderer_classes = [JSONRenderer, ProviderProxyRenderer]
+    queryset = PedigreeBird.objects.all()
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        certificate = serializer.save()
-        return Response(
-            PedigreeCertificateCreateResponseSerializer(certificate).data,
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-
-@extend_schema_view(
-    create=extend_schema(
-        tags=["Pedigrees"],
-        request=PedigreeCertificateRegenerateSerializer,
-        responses={202: PedigreeCertificateCreateResponseSerializer},
-    ),
-)
-class PedigreeCertificateRegenerateViewSet(
-    mixins.CreateModelMixin,
-    viewsets.GenericViewSet,
-):
-    """Regenerate one certificate from edited canonical data."""
-
-    permission_classes = [HasAppAccess]
-    permission_resource = "PEDIGREE_CERTIFICATE"
-    manager_permission_map = {"create": "pedigrees.certificates.generate"}
-    serializer_class = PedigreeCertificateRegenerateSerializer
-    queryset = PedigreeCertificate.objects.all()
-
-    def get_queryset(self):
-        return PedigreeCertificateViewSet.get_queryset(self)
-
-    def create(self, request, *args, **kwargs):
-        certificate = self.get_object()
-        serializer = self.get_serializer(
-            data=request.data,
-            context={
-                **self.get_serializer_context(),
-                "certificate": certificate,
-            },
-        )
-        serializer.is_valid(raise_exception=True)
-        regenerated = serializer.save()
-        return Response(
-            PedigreeCertificateCreateResponseSerializer(regenerated).data,
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-
-class PedigreeCertificateDownloadViewSet(
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet,
-):
-    """Download the completed generated certificate file."""
-
-    permission_classes = [HasAppAccess]
-    permission_resource = "PEDIGREE_CERTIFICATE"
-    serializer_class = PedigreeCertificateDetailSerializer
-    queryset = PedigreeCertificate.objects.all()
-
-    def get_required_manager_permission(self):
-        return "pedigrees.certificates.download"
-
-    def get_queryset(self):
-        return PedigreeCertificateViewSet.get_queryset(self)
-
-    def retrieve(self, request, *args, **kwargs):
-        certificate = self.get_object()
-        if (
-            certificate.status != PedigreeCertificateStatus.COMPLETED
-            or not certificate.generated_file
-        ):
-            raise ValidationError(
-                {
-                    "generated_file": "Generated certificate file is unavailable."
-                }
+        data = serializer.validated_data
+        provider_payload = (
+            PedigreeReportGenerationService.build_provider_payload(
+                subject_bird_id=data["subject_bird_id"],
+                actor_profile=request.user.active_profile,
+                generation_depth=data["generation_depth"],
+                report=data["report"],
+                owner=data.get("owner") or {},
+                customization=data.get("customization") or {},
             )
-        response = FileResponse(
-            certificate.generated_file.open("rb"),
-            content_type=certificate.mime_type or "application/octet-stream",
         )
-        filename = certificate.generated_filename or "pedigree-certificate"
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
+        try:
+            upstream_response = PedigreeReportClient().post_pdf(
+                pdf_id=data["pdf_id"],
+                payload=provider_payload,
+                accept=request.headers.get("Accept") or "application/pdf",
+            )
+        except requests.exceptions.Timeout as exc:
+            _log_provider_exception(
+                "generate",
+                exc,
+                subject_bird_id=data["subject_bird_id"],
+                pdf_id=data["pdf_id"],
+                generation_depth=data["generation_depth"],
+            )
+            return _provider_timeout_response()
+        except requests.exceptions.ConnectionError as exc:
+            _log_provider_exception(
+                "generate",
+                exc,
+                subject_bird_id=data["subject_bird_id"],
+                pdf_id=data["pdf_id"],
+                generation_depth=data["generation_depth"],
+            )
+            return _provider_gateway_response()
+        return _raw_provider_response(upstream_response)
+
+
+def _raw_provider_response(upstream_response):
+    response = HttpResponse(
+        upstream_response.content,
+        status=upstream_response.status_code,
+        content_type=upstream_response.headers.get(
+            "Content-Type", "application/octet-stream"
+        ),
+    )
+    for header in PedigreeReportClient.SAFE_RESPONSE_HEADERS:
+        if header in upstream_response.headers:
+            response[header] = upstream_response.headers[header]
+    return response
+
+
+def _provider_timeout_response():
+    return JsonResponse(
+        {"detail": "Pedigree report provider timed out."},
+        status=504,
+    )
+
+
+def _provider_gateway_response():
+    return JsonResponse(
+        {"detail": "Pedigree report provider was unavailable."},
+        status=502,
+    )
+
+
+def _log_provider_exception(operation, exc, **extra):
+    logger.warning(
+        "Pedigree report provider request failed.",
+        extra={
+            "operation": operation,
+            "exception_type": exc.__class__.__name__,
+            **extra,
+        },
+    )

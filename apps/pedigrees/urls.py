@@ -2,12 +2,10 @@ from django.urls import path
 
 from apps.pedigrees.views import (
     PedigreeBirdViewSet,
-    PedigreeCertificateDownloadViewSet,
-    PedigreeCertificateRegenerateViewSet,
-    PedigreeCertificateViewSet,
     PedigreeDocumentReviewViewSet,
     PedigreeDocumentViewSet,
-    PedigreeTemplateViewSet,
+    PedigreeReportGenerateViewSet,
+    PedigreeReportListProxyViewSet,
 )
 
 CREATE_ACTION = {"post": "create"}
@@ -36,28 +34,13 @@ urlpatterns = [
     ),
     path(
         "templates/",
-        PedigreeTemplateViewSet.as_view(LIST_ACTION),
+        PedigreeReportListProxyViewSet.as_view(LIST_ACTION),
         name="pedigree-template-list",
     ),
     path(
-        "certificates/",
-        PedigreeCertificateViewSet.as_view(LIST_CREATE_ACTION),
-        name="pedigree-certificate-list",
-    ),
-    path(
-        "certificates/<int:pk>/",
-        PedigreeCertificateViewSet.as_view(RETRIEVE_ACTION),
-        name="pedigree-certificate-detail",
-    ),
-    path(
-        "certificates/<int:pk>/regenerate/",
-        PedigreeCertificateRegenerateViewSet.as_view(CREATE_ACTION),
-        name="pedigree-certificate-regenerate",
-    ),
-    path(
-        "certificates/<int:pk>/download/",
-        PedigreeCertificateDownloadViewSet.as_view(RETRIEVE_ACTION),
-        name="pedigree-certificate-download",
+        "generate/",
+        PedigreeReportGenerateViewSet.as_view(CREATE_ACTION),
+        name="pedigree-report-generate",
     ),
     path(
         "documents/",

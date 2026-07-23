@@ -1,8 +1,8 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.utils import timezone
 import pytest
 from rest_framework.test import APIClient
@@ -11,23 +11,14 @@ from apps.authentication.services import build_token_for_user
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdSex,
-    PedigreeCertificate,
-    PedigreeCertificateStatus,
     PedigreeDocument,
     PedigreeDocumentStatus,
 )
-from apps.pedigrees.services import (
-    PedigreeReportClient,
-    PedigreeReportMapper,
-    PedigreeReportResponse,
-    PedigreeTreeService,
-)
+from apps.pedigrees.services import PedigreeReportMapper, PedigreeTreeService
 from apps.users.constants import ProfileType
 from tests.factories import (
     PedigreeBirdFactory,
-    PedigreeCertificateFactory,
     PedigreeDocumentFactory,
-    PedigreeTemplateFactory,
     UserAccountFactory,
 )
 
@@ -47,6 +38,13 @@ def uploaded_file(name="pedigree.jpg"):
         b"fake image bytes",
         content_type="image/jpeg",
     )
+
+
+class UpstreamResponse:
+    def __init__(self, *, content, status_code=200, headers=None):
+        self.content = content
+        self.status_code = status_code
+        self.headers = headers or {}
 
 
 def test_upload_marks_document_failed_when_box_detection_raises(
@@ -521,11 +519,10 @@ def test_tree_builds_paths_and_null_missing_ancestors():
         father=grand_father,
     )
     subject = PedigreeBirdFactory(owner=owner, ring_number="S", father=father)
-    template = PedigreeTemplateFactory(generation=3)
 
     generation_data = PedigreeTreeService.build_generation_data(
         subject_bird=subject,
-        generation_depth=template.generation,
+        generation_depth=3,
     )
     lookup = PedigreeTreeService.build_path_lookup(
         generation_data,
@@ -576,49 +573,75 @@ def test_generation_depth_treats_subject_as_depth_one():
     assert depth_3["subject"]["father"]["father"]["ring_number"] == "FF"
 
 
-def test_mapper_uses_backend_template_metadata_and_deepest_fields():
-    certificate = PedigreeCertificateFactory(generation_revision=2)
-    template = certificate.template
-    subject = {
-        "ring_number": "S",
-        "name": "Subject",
-        "father": {"ring_number": "F", "name": "Father"},
-        "mother": {"ring_number": "M", "description": "Mother Desc"},
+def test_mapper_merges_local_bird_data_and_preserves_frontend_report():
+    owner = UserAccountFactory(
+        with_profile=ProfileType.CUSTOMER
+    ).active_profile
+    deep = PedigreeBirdFactory(owner=owner, ring_number="FFFF")
+    grand_father = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="FF",
+        name="Grand Father",
+        father=deep,
+    )
+    father = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="F",
+        name="Father",
+        father=grand_father,
+    )
+    mother = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="M",
+        name="",
+        description="Mother Desc",
+    )
+    subject = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="S",
+        name="Subject",
+        father=father,
+        mother=mother,
+    )
+    report = {
+        "generation": 4,
+        "fileName": "Pedigree_07_G4.pdf",
+        "parameters": {
+            "Farkh_No": "frontend subject",
+            "Father1_NO": "frontend grand father",
+            "Father4_NO": "too deep",
+            "CustomFutureField": "value",
+        },
+        "dataSources": [{"name": "future"}],
+        "unknownTopLevel": True,
     }
-    subject["father"]["father"] = {"ring_number": "FF", "name": "Grand Father"}
-    current = subject["mother"]
-    for _ in range(4):
-        current["mother"] = {"ring_number": "MMMMM", "name": "Deep Mother"}
-        current = current["mother"]
-    snapshot = {
-        "owner": {
+
+    payload = PedigreeReportMapper.merge_payload(
+        frontend_report=report,
+        subject_bird=subject,
+        generation_depth=3,
+        owner={
             "name": "Owner",
             "loft_name": "Loft",
             "phone": "1",
             "whatsapp": "2",
             "email": "e@example.com",
         },
-        "customization": {
+        customization={
             "background_image": "bg",
             "bird_image": "bird",
             "compuclub": "Club",
         },
-        "subject": subject,
-    }
-
-    payload = PedigreeReportMapper.build_payload(
-        certificate=certificate,
-        template=template,
-        pedigree_data=snapshot,
     )
     params = payload["parameters"]
 
-    assert payload["pedigreeType"] == template.pedigree_type
-    assert payload["reportName"] == template.report_name
-    assert payload["generation"] == str(template.generation)
-    assert payload["dataSources"] == []
+    assert payload["generation"] == 4
+    assert payload["fileName"] == "Pedigree_07_G4.pdf"
+    assert payload["dataSources"] == [{"name": "future"}]
+    assert payload["unknownTopLevel"] is True
     assert params["Farkh_No"] == "S"
     assert params["Farth_No"] == "S"
+    assert params["Esmah_FullNo"] == "Subject"
     assert params["OwnerLoftName"] == "Loft"
     assert params["Owner_LoftName"] == "Loft"
     assert params["Farth_FatherNo"] == "F"
@@ -626,221 +649,294 @@ def test_mapper_uses_backend_template_metadata_and_deepest_fields():
     assert params["Farth_MotherNo"] == "M"
     assert params["Mother_Info"] == "Mother Desc"
     assert params["Father1_NO"] == "FF"
-    assert params["Mother6_16_NO"] == "MMMMM"
-    assert params["Mother6_16"] == "Deep Mother"
+    assert params["Father4_NO"] == ""
+    assert params["CustomFutureField"] == "value"
+    assert params["BackgroundImage"] == "bg"
+    assert params["Farkh_Image"] == "bird"
+    assert params["Compuclub"] == "Club"
+    assert "PrintDate" in params
 
 
-def test_certificate_create_stores_generation_options_and_queues_task(
+def test_reports_proxy_uses_settings_url_and_returns_upstream_response(
     settings,
-    tmp_path,
-    django_capture_on_commit_callbacks,
 ):
-    settings.MEDIA_ROOT = tmp_path
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
+    settings.PEDIGREE_REPORT_TIMEOUT = 7
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-    bird = PedigreeBirdFactory(owner=user.active_profile, ring_number="EG-7")
-    template = PedigreeTemplateFactory()
     client = authenticated_client(user)
 
-    with patch(
-        "apps.pedigrees.tasks.generate_pedigree_certificate.delay"
-    ) as delay:
-        with django_capture_on_commit_callbacks(execute=True):
-            response = client.post(
-                "/api/pedigrees/certificates/",
-                {
-                    "subject_bird_id": bird.pk,
-                    "template_id": template.pk,
-                    "generation_depth": 4,
-                    "owner": {"name": "SAAD"},
-                    "customization": {"compuclub": "Pigeon Planet"},
-                },
-                format="json",
-            )
+    upstream = UpstreamResponse(
+        content=b'{"reports":[{"id":7}]}',
+        status_code=200,
+        headers={
+            "Content-Type": "application/json",
+            "Content-Disposition": "inline",
+        },
+    )
+    with patch("requests.get", return_value=upstream) as get:
+        response = client.get("/api/pedigrees/templates/")
 
-    certificate = PedigreeCertificate.objects.get()
-    assert response.status_code == 202
-    assert response.data["generation_revision"] == 1
-    assert response.data["generation_depth"] == 4
-    assert certificate.generation_depth == 4
-    assert certificate.owner_data["name"] == "SAAD"
-    assert certificate.customization["compuclub"] == "Pigeon Planet"
-    delay.assert_called_once_with(certificate.pk, 1)
+    get.assert_called_once_with(
+        "http://provider.test/api/reports/fastreport/reports",
+        timeout=7,
+        allow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert response.content == b'{"reports":[{"id":7}]}'
+    assert response["Content-Type"] == "application/json"
+    assert response["Content-Disposition"] == "inline"
 
 
 @pytest.mark.parametrize(
-    "payload, expected_field",
+    "content, status_code, content_type",
     [
-        ({"template_id": 1, "generation_depth": 1}, "subject_bird_id"),
-        ({"subject_bird_id": 1, "generation_depth": 1}, "template_id"),
-        ({"subject_bird_id": 1, "template_id": 1}, "generation_depth"),
+        (b'{"error":"bad"}', 400, "application/json"),
+        (b"Report failed", 500, "text/plain"),
     ],
 )
-def test_certificate_create_requires_subject_template_and_generation_depth(
-    payload,
-    expected_field,
+def test_reports_proxy_preserves_upstream_error_response(
+    settings, content, status_code, content_type
 ):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-    response = authenticated_client(user).post(
-        "/api/pedigrees/certificates/",
-        payload,
-        format="json",
+    upstream = UpstreamResponse(
+        content=content,
+        status_code=status_code,
+        headers={"Content-Type": content_type},
     )
+    with patch("requests.get", return_value=upstream):
+        response = authenticated_client(user).get("/api/pedigrees/templates/")
 
-    assert response.status_code == 400
-    assert expected_field in response.data
+    assert response.status_code == status_code
+    assert response.content == content
+    assert response["Content-Type"] == content_type
 
 
-def test_certificate_retrieve_regenerate_and_download(
+def generation_request(subject_id, *, generation_depth=3):
+    return {
+        "subject_bird_id": subject_id,
+        "pdf_id": 7,
+        "generation_depth": generation_depth,
+        "report": {
+            "generation": 4,
+            "fileName": "Pedigree_07_G4.pdf",
+            "parameters": {
+                "Farkh_No": "frontend",
+                "BackgroundImage": "frontend-bg",
+                "CustomFutureField": "value",
+            },
+            "dataSources": [{"name": "future"}],
+        },
+        "owner": {
+            "name": "TAMER TOHAMY",
+            "loft_name": "TAMER LOFT",
+            "phone": "",
+            "whatsapp": "",
+            "email": "",
+        },
+        "customization": {
+            "background_image": "",
+            "bird_image": "bird.png",
+            "compuclub": "Pigeon Planet",
+        },
+    }
+
+
+def test_generate_requires_accessible_subject_bird_and_blocks_other_owner(
     settings,
-    tmp_path,
-    django_capture_on_commit_callbacks,
 ):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    foreign_bird = PedigreeBirdFactory(owner=other.active_profile)
+
+    with patch("requests.post") as post:
+        response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            generation_request(foreign_bird.pk),
+            format="json",
+        )
+
+    assert response.status_code == 404
+    post.assert_not_called()
+
+
+def test_generate_calls_provider_and_returns_pdf_unchanged(
+    settings, tmp_path
+):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
+    settings.PEDIGREE_REPORT_TIMEOUT = 9
     settings.MEDIA_ROOT = tmp_path
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-    certificate = PedigreeCertificateFactory(
-        owner=user.active_profile,
-        generation_depth=3,
-        owner_data={"name": "Original", "phone": "123"},
-        customization={"compuclub": "Original Club"},
+    owner = user.active_profile
+    grand_father = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="FF",
+        name="Grand Father",
     )
-    client = authenticated_client(user)
+    father = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="F",
+        name="Father",
+        father=grand_father,
+    )
+    subject = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="S",
+        name="Subject",
+        father=father,
+    )
+    upstream = UpstreamResponse(
+        content=b"%PDF-1.4 bytes",
+        status_code=200,
+        headers={
+            "Content-Type": "application/pdf",
+            "Content-Disposition": 'attachment; filename="report.pdf"',
+        },
+    )
 
-    detail = client.get(f"/api/pedigrees/certificates/{certificate.pk}/")
-    assert "editable_data" not in detail.data
-    assert "tree_snapshot" not in detail.data
+    with patch("requests.post", return_value=upstream) as post:
+        response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            generation_request(subject.pk, generation_depth=3),
+            format="json",
+            HTTP_ACCEPT="image/png",
+        )
 
+    post.assert_called_once()
+    args, kwargs = post.call_args
+    assert args[0] == "http://provider.test/api/reports/fastreport/pdf/7"
+    assert kwargs["timeout"] == 9
+    assert kwargs["headers"] == {
+        "Content-Type": "application/json",
+        "Accept": "image/png",
+    }
+    payload = kwargs["json"]
+    params = payload["parameters"]
+    assert payload["generation"] == 4
+    assert payload["fileName"] == "Pedigree_07_G4.pdf"
+    assert payload["dataSources"] == [{"name": "future"}]
+    assert params["Farkh_No"] == "S"
+    assert params["Esmah_FullNo"] == "Subject"
+    assert params["Farth_FatherNo"] == "F"
+    assert params["Father_Info"] == "Father"
+    assert params["Father1_NO"] == "FF"
+    assert params["CustomFutureField"] == "value"
+    assert params["OwnerLoftName"] == "TAMER LOFT"
+    assert params["BackgroundImage"] == ""
+    assert params["Farkh_Image"] == "bird.png"
+    assert response.status_code == 200
+    assert response.content == b"%PDF-1.4 bytes"
+    assert response["Content-Type"] == "application/pdf"
+    assert (
+        response["Content-Disposition"] == 'attachment; filename="report.pdf"'
+    )
+    assert list(tmp_path.rglob("*")) == []
+
+
+def test_generate_depth_excludes_deeper_ancestors(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    owner = user.active_profile
+    grand_father = PedigreeBirdFactory(owner=owner, ring_number="FF")
+    father = PedigreeBirdFactory(
+        owner=owner, ring_number="F", father=grand_father
+    )
+    subject = PedigreeBirdFactory(owner=owner, ring_number="S", father=father)
+    upstream = UpstreamResponse(
+        content=b"\x89PNG\r\n\x1a\npayload",
+        status_code=200,
+        headers={"Content-Type": "image/png"},
+    )
+    with patch("requests.post", return_value=upstream) as post:
+        response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            generation_request(subject.pk, generation_depth=2),
+            format="json",
+        )
+
+    assert response.status_code == 200
+    params = post.call_args.kwargs["json"]["parameters"]
+    assert params["Farth_FatherNo"] == "F"
+    assert params["Father1_NO"] == ""
+
+
+@pytest.mark.parametrize(
+    "content, status_code, content_type",
+    [
+        (b'{"error":"bad"}', 400, "application/json"),
+        (b"Report failed", 500, "text/plain"),
+    ],
+)
+def test_generate_preserves_provider_error_responses(
+    settings, content, status_code, content_type
+):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    subject = PedigreeBirdFactory(owner=user.active_profile)
+    upstream = UpstreamResponse(
+        content=content,
+        status_code=status_code,
+        headers={"Content-Type": content_type},
+    )
+    with patch("requests.post", return_value=upstream):
+        response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            generation_request(subject.pk),
+            format="json",
+        )
+
+    assert response.status_code == status_code
+    assert response.content == content
+    assert response["Content-Type"] == content_type
+
+
+def test_generate_network_errors_return_small_local_responses(settings):
+    import requests
+
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    subject = PedigreeBirdFactory(owner=user.active_profile)
+
+    with patch("requests.post", side_effect=requests.exceptions.Timeout):
+        timeout_response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            generation_request(subject.pk),
+            format="json",
+        )
     with patch(
-        "apps.pedigrees.tasks.generate_pedigree_certificate.delay"
-    ) as delay:
-        with django_capture_on_commit_callbacks(execute=True):
-            regenerated = client.post(
-                f"/api/pedigrees/certificates/{certificate.pk}/regenerate/",
-                {
-                    "generation_depth": 2,
-                    "owner": {"name": "Updated"},
-                    "customization": {"bird_image": "bird.png"},
-                },
-                format="json",
-            )
-
-    certificate.refresh_from_db()
-    assert regenerated.status_code == 202
-    assert certificate.generation_revision == 2
-    assert certificate.generation_depth == 2
-    assert certificate.owner_data["name"] == "Updated"
-    assert certificate.owner_data["phone"] == "123"
-    assert certificate.customization["bird_image"] == "bird.png"
-    delay.assert_called_once_with(certificate.pk, 2)
-
-    rejected = client.post(
-        f"/api/pedigrees/certificates/{certificate.pk}/regenerate/",
-        {"editable_data": {"subject": {}}},
-        format="json",
-    )
-    assert rejected.status_code == 400
-
-    unavailable = client.get(
-        f"/api/pedigrees/certificates/{certificate.pk}/download/"
-    )
-    assert unavailable.status_code == 400
-
-    certificate.status = PedigreeCertificateStatus.COMPLETED
-    certificate.mime_type = "application/pdf"
-    certificate.generated_filename = "pedigree.pdf"
-    certificate.generated_file.save(
-        "pedigree.pdf", ContentFile(b"%PDF-1.4"), save=True
-    )
-
-    downloaded = client.get(
-        f"/api/pedigrees/certificates/{certificate.pk}/download/"
-    )
-    assert downloaded.status_code == 200
-    assert downloaded["Content-Type"] == "application/pdf"
-
-
-def test_generation_success_failure_and_stale_revision(settings, tmp_path):
-    settings.MEDIA_ROOT = tmp_path
-    certificate = PedigreeCertificateFactory()
-    certificate.subject_bird.name = "Current Subject"
-    certificate.subject_bird.save(update_fields=["name", "modified"])
-
-    class FakeClient:
-        def post_report(self, *, external_pdf_id, payload):
-            assert external_pdf_id == certificate.template.external_pdf_id
-            assert payload["dataSources"] == []
-            assert payload["parameters"]["Esmah_FullNo"] == "Current Subject"
-            return PedigreeReportResponse(
-                content=b"%PDF-1.4",
-                mime_type="application/pdf",
-                status_code=200,
-                extension=".pdf",
-            )
-
-    from apps.pedigrees.services import PedigreeCertificateService
-
-    assert (
-        PedigreeCertificateService.generate_certificate(
-            certificate_id=certificate.pk,
-            expected_revision=1,
-            client=FakeClient(),
+        "requests.post", side_effect=requests.exceptions.ConnectionError
+    ):
+        gateway_response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            generation_request(subject.pk),
+            format="json",
         )
-        == "completed"
-    )
-    certificate.refresh_from_db()
-    assert certificate.status == PedigreeCertificateStatus.COMPLETED
-    assert certificate.generated_file
-    assert certificate.external_request_payload
 
-    stale = PedigreeCertificateService.generate_certificate(
-        certificate_id=certificate.pk,
-        expected_revision=0,
-        client=FakeClient(),
-    )
-    assert stale == "stale"
-
-    failed = PedigreeCertificateFactory()
-
-    class BadClient:
-        def post_report(self, *, external_pdf_id, payload):
-            raise ValueError("bad response")
-
-    assert (
-        PedigreeCertificateService.generate_certificate(
-            certificate_id=failed.pk,
-            expected_revision=1,
-            client=BadClient(),
-        )
-        == "failed"
-    )
-    failed.refresh_from_db()
-    assert failed.status == PedigreeCertificateStatus.FAILED
-    assert failed.external_request_payload
+    assert timeout_response.status_code == 504
+    assert gateway_response.status_code == 502
 
 
-def test_report_response_validation_accepts_pdf_png_jpeg_and_rejects_bad_content():
-    assert (
-        PedigreeReportClient.validate_response(
-            content=b"%PDF-1.4",
-            content_type="application/pdf",
-        ).extension
-        == ".pdf"
+def test_no_provider_ip_is_hardcoded_in_application_python_files():
+    from pathlib import Path
+
+    python_files = list(Path("apps").rglob("*.py")) + list(
+        Path("ppw").rglob("*.py")
     )
-    assert (
-        PedigreeReportClient.validate_response(
-            content=b"\x89PNG\r\n\x1a\npayload",
-            content_type="image/png",
-        ).extension
-        == ".png"
+    assert not any(
+        "157.245.92.15" in path.read_text(encoding="utf-8")
+        for path in python_files
     )
-    assert (
-        PedigreeReportClient.validate_response(
-            content=b"\xff\xd8payload",
-            content_type="image/jpeg",
-        ).extension
-        == ".jpg"
-    )
-    with pytest.raises(Exception):
-        PedigreeReportClient.validate_response(
-            content=b"<html></html>",
-            content_type="text/html",
-        )
+
+
+def test_report_persistence_models_and_task_are_removed():
+    import importlib.util
+
+    from apps.pedigrees import models
+
+    assert not hasattr(models, "PedigreeTemplate")
+    assert not hasattr(models, "PedigreeCertificate")
+    assert importlib.util.find_spec("apps.pedigrees.tasks") is None
+    table_names = connection.introspection.table_names()
+    assert "pedigrees_pedigreetemplate" not in table_names
+    assert "pedigrees_pedigreecertificate" not in table_names

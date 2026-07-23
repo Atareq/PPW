@@ -109,8 +109,12 @@ REST_FRAMEWORK = {
         "apps.authentication.authentication.ProfileSyncJWTAuthentication",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_PAGINATION_CLASS": ("rest_framework.pagination.PageNumberPagination"),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_PAGINATION_CLASS": (
+        "rest_framework.pagination.PageNumberPagination"
+    ),
     "PAGE_SIZE": 20,
 }
 
@@ -197,18 +201,10 @@ PUBLIC_FRONTEND_BASE_URL = os.getenv(
     "PUBLIC_FRONTEND_BASE_URL",
     "http://localhost:3000",
 ).rstrip("/")
-PEDIGREE_REPORT_BASE_URL = os.getenv(
-    "PEDIGREE_REPORT_BASE_URL",
-    "http://157.245.92.15",
-).rstrip("/")
-PEDIGREE_REPORT_CONNECT_TIMEOUT = int(
-    os.getenv("PEDIGREE_REPORT_CONNECT_TIMEOUT", "5")
+PEDIGREE_REPORT_BASE_URL = os.getenv("PEDIGREE_REPORT_BASE_URL", "").rstrip(
+    "/"
 )
-PEDIGREE_REPORT_READ_TIMEOUT = int(os.getenv("PEDIGREE_REPORT_READ_TIMEOUT", "45"))
-PEDIGREE_REPORT_MAX_FILE_SIZE_MB = int(
-    os.getenv("PEDIGREE_REPORT_MAX_FILE_SIZE_MB", "20")
-)
-PEDIGREE_REPORT_API_KEY = os.getenv("PEDIGREE_REPORT_API_KEY", "")
+PEDIGREE_REPORT_TIMEOUT = int(os.getenv("PEDIGREE_REPORT_TIMEOUT", "120"))
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {
         "task": "auctions.tasks.close_expired_auctions",

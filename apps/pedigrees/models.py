@@ -1,13 +1,11 @@
 import uuid
 
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
-from apps.general.models import BaseModel, OwnerBaseModel
-from apps.pedigrees.constants import PEDIGREE_MAX_GENERATION_DEPTH
+from apps.general.models import OwnerBaseModel
 
 
 class PedigreeBirdSex(models.TextChoices):
@@ -177,118 +175,6 @@ class PedigreeBird(OwnerBaseModel):
 
     def __str__(self):
         return f"PedigreeBird #{self.pk} {self.ring_number}"
-
-
-class PedigreeTemplate(BaseModel):
-    name = models.CharField(max_length=255)
-    external_pdf_id = models.PositiveSmallIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(10)]
-    )
-    pedigree_type = models.CharField(max_length=50, blank=True)
-    report_name = models.CharField(max_length=255, blank=True)
-    generation = models.PositiveSmallIntegerField(
-        null=True,
-        blank=True,
-        validators=[
-            MinValueValidator(1),
-            MaxValueValidator(PEDIGREE_MAX_GENERATION_DEPTH),
-        ],
-    )
-    preview_image = models.CharField(max_length=2048, blank=True)
-    is_active = models.BooleanField(default=True)
-    is_premium = models.BooleanField(default=False)
-    sort_order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["sort_order", "id"]
-        indexes = [
-            models.Index(
-                fields=["is_active", "sort_order"], name="ped_tpl_active_idx"
-            ),
-            models.Index(fields=["external_pdf_id"], name="ped_tpl_pdf_idx"),
-        ]
-
-    @property
-    def is_configured(self):
-        return bool(
-            self.is_active
-            and self.external_pdf_id
-            and self.pedigree_type
-            and self.report_name
-            and self.generation
-        )
-
-    def __str__(self):
-        return self.name
-
-
-class PedigreeCertificateStatus(models.TextChoices):
-    PENDING = "pending", _("Pending")
-    PROCESSING = "processing", _("Processing")
-    COMPLETED = "completed", _("Completed")
-    FAILED = "failed", _("Failed")
-
-
-class PedigreeCertificate(OwnerBaseModel):
-    requested_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="pedigree_certificates",
-    )
-    subject_bird = models.ForeignKey(
-        PedigreeBird,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="certificates",
-    )
-    template = models.ForeignKey(
-        PedigreeTemplate,
-        on_delete=models.PROTECT,
-        related_name="certificates",
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=PedigreeCertificateStatus.choices,
-        default=PedigreeCertificateStatus.PENDING,
-    )
-    generation_depth = models.PositiveSmallIntegerField(
-        validators=[
-            MinValueValidator(1),
-            MaxValueValidator(PEDIGREE_MAX_GENERATION_DEPTH),
-        ],
-    )
-    owner_data = models.JSONField(default=dict, blank=True)
-    customization = models.JSONField(default=dict, blank=True)
-    external_request_payload = models.JSONField(default=dict, blank=True)
-    generated_file = models.FileField(
-        upload_to="pedigree_certificates/",
-        null=True,
-        blank=True,
-    )
-    generated_filename = models.CharField(max_length=255, blank=True)
-    mime_type = models.CharField(max_length=100, blank=True)
-    external_status_code = models.PositiveIntegerField(null=True, blank=True)
-    error_code = models.CharField(max_length=100, blank=True)
-    error_message = models.TextField(blank=True)
-    generation_revision = models.PositiveIntegerField(default=0)
-    generated_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ["-created"]
-        indexes = [
-            models.Index(fields=["owner"], name="ped_cert_owner_idx"),
-            models.Index(fields=["subject_bird"], name="ped_cert_subject_idx"),
-            models.Index(fields=["template"], name="ped_cert_template_idx"),
-            models.Index(fields=["status"], name="ped_cert_status_idx"),
-            models.Index(fields=["created"], name="ped_cert_created_idx"),
-            models.Index(
-                fields=["owner", "status"], name="ped_cert_owner_status_idx"
-            ),
-        ]
-
-    def __str__(self):
-        return f"PedigreeCertificate #{self.pk} ({self.status})"
 
 
 class PedigreeDocumentStatus(models.TextChoices):

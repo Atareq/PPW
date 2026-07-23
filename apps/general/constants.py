@@ -95,14 +95,9 @@ SELLER_PERMISSIONS = {
         "partial_update",
         "destroy",
     ],
-    "PEDIGREE_TEMPLATE": [
+    "PEDIGREE_REPORT": [
         "list",
-    ],
-    "PEDIGREE_CERTIFICATE": [
-        "list",
-        "retrieve",
         "create",
-        "download",
     ],
     "NOTIFICATION": [
         "list",
@@ -210,14 +205,9 @@ CUSTOMER_PERMISSIONS = {
         "partial_update",
         "destroy",
     ],
-    "PEDIGREE_TEMPLATE": [
+    "PEDIGREE_REPORT": [
         "list",
-    ],
-    "PEDIGREE_CERTIFICATE": [
-        "list",
-        "retrieve",
         "create",
-        "download",
     ],
     "NOTIFICATION": [
         "list",

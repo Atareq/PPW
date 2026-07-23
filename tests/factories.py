@@ -40,11 +40,8 @@ from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdColour,
     PedigreeBirdSex,
-    PedigreeCertificate,
-    PedigreeCertificateStatus,
     PedigreeDocument,
     PedigreeDocumentStatus,
-    PedigreeTemplate,
 )
 from apps.promotions.models import (
     CashbackOffer,
@@ -231,43 +228,6 @@ class PedigreeBirdFactory(factory.django.DjangoModelFactory):
     birthday = None
     father = None
     mother = None
-
-
-class PedigreeTemplateFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = PedigreeTemplate
-
-    name = factory.Sequence(lambda n: f"Template {n}")
-    external_pdf_id = 3
-    pedigree_type = "7"
-    report_name = "Pedigree_07_G6.frx"
-    generation = 6
-    preview_image = ""
-    is_active = True
-    is_premium = False
-    sort_order = 0
-
-
-class PedigreeCertificateFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = PedigreeCertificate
-
-    owner = factory.SubFactory(CustomerProfileFactory)
-
-    @factory.lazy_attribute
-    def requested_by(self):
-        return self.owner.user
-
-    subject_bird = factory.SubFactory(
-        PedigreeBirdFactory, owner=factory.SelfAttribute("..owner")
-    )
-    template = factory.SubFactory(PedigreeTemplateFactory)
-    status = PedigreeCertificateStatus.PENDING
-    generation_depth = 6
-    owner_data = factory.LazyFunction(dict)
-    customization = factory.LazyFunction(dict)
-    external_request_payload = factory.LazyFunction(dict)
-    generation_revision = 1
 
 
 # ============================================================================

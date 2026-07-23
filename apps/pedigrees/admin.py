@@ -1,11 +1,6 @@
 from django.contrib import admin
 
-from apps.pedigrees.models import (
-    PedigreeBird,
-    PedigreeCertificate,
-    PedigreeDocument,
-    PedigreeTemplate,
-)
+from apps.pedigrees.models import PedigreeBird, PedigreeDocument
 
 
 @admin.register(PedigreeBird)
@@ -37,50 +32,6 @@ class PedigreeBirdAdmin(admin.ModelAdmin):
     readonly_fields = [
         "public_id",
         "normalized_ring_number",
-        "created",
-        "modified",
-    ]
-
-
-@admin.register(PedigreeTemplate)
-class PedigreeTemplateAdmin(admin.ModelAdmin):
-    list_display = [
-        "id",
-        "name",
-        "external_pdf_id",
-        "pedigree_type",
-        "report_name",
-        "generation",
-        "is_active",
-        "is_premium",
-        "sort_order",
-    ]
-    list_filter = ["is_active", "is_premium", "generation", "external_pdf_id"]
-    search_fields = ["name", "report_name", "pedigree_type"]
-
-
-@admin.register(PedigreeCertificate)
-class PedigreeCertificateAdmin(admin.ModelAdmin):
-    list_display = [
-        "id",
-        "owner",
-        "subject_bird",
-        "template",
-        "status",
-        "generation_revision",
-        "generated_at",
-        "error_code",
-        "created",
-    ]
-    list_filter = ["status", "template", "generated_at"]
-    search_fields = [
-        "generated_filename",
-        "error_code",
-        "subject_bird__ring_number",
-        "template__name",
-    ]
-    readonly_fields = [
-        "external_request_payload",
         "created",
         "modified",
     ]
