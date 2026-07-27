@@ -16,8 +16,37 @@ from apps.users.models import (
 from apps.users.services import ManagerPermissionService, ProfileBalanceService
 
 
+class UserSecondaryPhoneMixin(serializers.Serializer):
+    secondary_phone_number = serializers.CharField(
+        source="user.secondary_phone_number",
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+
+    def create(self, validated_data):
+        user_data = validated_data.pop("user", {})
+        instance = super().create(validated_data)
+        if "secondary_phone_number" in user_data:
+            instance.user.secondary_phone_number = (
+                user_data["secondary_phone_number"] or None
+            )
+            instance.user.save(update_fields=["secondary_phone_number"])
+        return instance
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop("user", {})
+        profile_instance = super().update(instance, validated_data)
+        if "secondary_phone_number" in user_data:
+            profile_instance.user.secondary_phone_number = (
+                user_data["secondary_phone_number"] or None
+            )
+            profile_instance.user.save(update_fields=["secondary_phone_number"])
+        return profile_instance
+
+
 # ---------------- Dashboard Serializer ----------------
-class SellerProfileAdminSerializer(serializers.ModelSerializer):
+class SellerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -42,7 +71,7 @@ class SellerProfileAdminSerializer(serializers.ModelSerializer):
         return SellerLevelService.get_level(self.get_completed_orders_count(obj)).label
 
 
-class CustomerProfileAdminSerializer(serializers.ModelSerializer):
+class CustomerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -82,7 +111,7 @@ class CustomerProfileAdminSerializer(serializers.ModelSerializer):
 
 
 # ---------------- Mobile Serializer ----------------
-class SellerProfileMobileSerializer(serializers.ModelSerializer):
+class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -105,6 +134,9 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
             "ratings_count",
             "national_id",
             "address",
+            "loft_name",
+            "loft_picture",
+            "secondary_phone_number",
             "successful_invites_count",
             "completed_orders_count",
             "seller_level",
@@ -144,7 +176,7 @@ class SellerProfileMobileSerializer(serializers.ModelSerializer):
         return SellerLevelService.get_level(self.get_completed_orders_count(obj)).label
 
 
-class CustomerProfileMobileSerializer(serializers.ModelSerializer):
+class CustomerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -220,6 +252,10 @@ class ManagerProfileadminSerializer(serializers.ModelSerializer):
 class ManagerProfileAdminDetailSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    secondary_phone_number = serializers.CharField(
+        source="user.secondary_phone_number",
+        read_only=True,
+    )
     email = serializers.EmailField(source="user.email", read_only=True)
     first_name = serializers.CharField(source="user.first_name", read_only=True)
     last_name = serializers.CharField(source="user.last_name", read_only=True)
@@ -230,6 +266,7 @@ class ManagerProfileAdminDetailSerializer(serializers.ModelSerializer):
             "id",
             "username",
             "phone_number",
+            "secondary_phone_number",
             "email",
             "first_name",
             "last_name",
@@ -292,6 +329,11 @@ class ManagerAdminCreateSerializer(serializers.ModelSerializer):
 class ManagerAdminUpdateSerializer(PhoneValidationMixin, serializers.Serializer):
     username = serializers.CharField(required=False)
     phone_number = serializers.CharField(required=False)
+    secondary_phone_number = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
     region = serializers.CharField(required=False)
     email = serializers.EmailField(required=False, allow_blank=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
@@ -320,12 +362,22 @@ class ManagerAdminUpdateSerializer(PhoneValidationMixin, serializers.Serializer)
 
     def update(self, instance, validated_data):
         user = instance.user
-        user_fields = {"username", "phone_number", "email", "first_name", "last_name"}
+        user_fields = {
+            "username",
+            "phone_number",
+            "secondary_phone_number",
+            "email",
+            "first_name",
+            "last_name",
+        }
         profile_fields = {"activated", "is_valid", "is_active"}
 
         for field in user_fields:
             if field in validated_data:
-                setattr(user, field, validated_data[field])
+                value = validated_data[field]
+                if field == "secondary_phone_number" and not value:
+                    value = None
+                setattr(user, field, value)
 
         for field in profile_fields:
             if field in validated_data:

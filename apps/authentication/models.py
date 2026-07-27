@@ -13,6 +13,11 @@ from apps.general.models import BaseModel
 
 class UserAccount(AbstractUser, BaseModel):
     phone_number = PhoneNumberField(unique=True, db_index=True)
+    secondary_phone_number = PhoneNumberField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS = []
 

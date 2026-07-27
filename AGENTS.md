@@ -1562,9 +1562,18 @@ Current responsibilities:
 
 Authentication identity. A user may have multiple profiles. The active profile determines current behavior and permission context.
 
+Optional account fields:
+
+- `secondary_phone_number`: optional, non-unique secondary contact number; not used for login or `USERNAME_FIELD`
+
 #### Profile
 
 Profile is the real business actor in the system.
+
+Optional shared profile fields:
+
+- `loft_name`: optional loft display name
+- `loft_picture`: optional loft image uploaded through existing profile update flows
 
 Current profile types:
 

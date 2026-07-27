@@ -34,6 +34,15 @@ class Profile(BaseModel):
     )
     national_id = models.CharField(max_length=50, null=True, blank=True)
     address = models.TextField(blank=True)
+    loft_name = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+    loft_picture = models.ImageField(
+        upload_to="lofts/",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         unique_together = ("user", "type")
