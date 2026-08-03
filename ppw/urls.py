@@ -40,6 +40,7 @@ urlpatterns = [
     path("api/feed/", include("apps.feed.urls")),
     path("api/insights/", include("apps.insights.urls")),
     path("api/pedigrees/", include("apps.pedigrees.urls")),
+    path("api/loft-subscriptions/", include("apps.loft_subscriptions.urls")),
     path("api/seasons/", include("apps.seasons.urls")),
     path(
         "api/schema/",

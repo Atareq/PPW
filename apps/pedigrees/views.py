@@ -11,6 +11,7 @@ from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
+from apps.loft_subscriptions.services import SubscriptionAccessService
 from apps.pedigrees.filters import PedigreeBirdFilter
 from apps.pedigrees.models import (
     PedigreeBird,
@@ -298,6 +299,10 @@ class PedigreeReportGenerateViewSet(
                 owner=data.get("owner") or {},
                 customization=data.get("customization") or {},
             )
+        )
+        SubscriptionAccessService.require_pedigree_template(
+            profile=request.user.active_profile,
+            pdf_id=data["pdf_id"],
         )
         try:
             upstream_response = PedigreeReportClient().post_pdf(

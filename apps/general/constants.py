@@ -99,6 +99,18 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "LOFT_SUBSCRIPTION": [
+        "list",
+        "create",
+    ],
+    "LOFT_SUBSCRIPTION_INVOICE": [
+        "list",
+        "retrieve",
+    ],
+    "LOFT_SUBSCRIPTION_PAYMENT_REQUEST": [
+        "list",
+        "retrieve",
+    ],
     "NOTIFICATION": [
         "list",
         "create",
@@ -208,6 +220,18 @@ CUSTOMER_PERMISSIONS = {
     "PEDIGREE_REPORT": [
         "list",
         "create",
+    ],
+    "LOFT_SUBSCRIPTION": [
+        "list",
+        "create",
+    ],
+    "LOFT_SUBSCRIPTION_INVOICE": [
+        "list",
+        "retrieve",
+    ],
+    "LOFT_SUBSCRIPTION_PAYMENT_REQUEST": [
+        "list",
+        "retrieve",
     ],
     "NOTIFICATION": [
         "list",

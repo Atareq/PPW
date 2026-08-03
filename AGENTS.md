@@ -34,6 +34,7 @@ The platform currently supports and will continue to expand around:
 - customer-to-seller block relationships that prevent new follow, feed, chat, and payment-request interactions
 - seller home-page insights summaries from current marketplace data
 - internal pedigree OCR extraction MVP with a null local OCR adapter
+- Loft Manager subscriptions for pedigree template entitlement and AI quota access
 - loyalty reward automation for selected profile, bid, listing, rating, follow, and seller-approved payment-request events
 - ledger-backed Lucky Wheel attempts, backend-selected spins, and user-owned promotion prizes
 - link-sharing referral codes with inviter PP Coin rewards
@@ -151,6 +152,7 @@ Current major apps:
 - `apps.lucky_wheel`
 - `apps.notifications`
 - `apps.payments`
+- `apps.loft_subscriptions`
 - `apps.promotions`
 - `apps.referrals`
 - `apps.complaints`
@@ -589,6 +591,65 @@ Current payment behavior:
 - seller rejection marks the request rejected and does not transfer ownership, complete order items, or mutate stock
 - `PaymentRequestEvent` records are written only for created, updated, approved, and rejected events
 
+### `apps.loft_subscriptions`
+
+Current responsibilities:
+
+- Loft Manager subscription catalog records and admin-managed pricing
+- backend-authoritative subscription pricing, quote, checkout, and invoice snapshots
+- one-time per-`UserAccount` trial usage tracking
+- manual trusted-manager subscription payment confirmation
+- profile-owned subscription entitlement snapshots for pedigree template access and add-ons
+- idempotent AI quota consumption records for subscription-backed AI operations
+
+Important note:
+
+This app is not a payment gateway, recurring billing system, coupon engine, tax engine, refund/proration engine, cloud-storage provider, QR generation workflow, custom template design workflow, or external pedigree report provider. It records subscription invoices and trusted backend confirmation only. Auction and marketplace sale-completion payment requests remain owned by `apps.payments`.
+
+Current Loft Manager subscription API:
+
+- `/api/loft-subscriptions/catalog/`
+  - `GET`: authenticated users read only active purchasable catalog records
+- `/api/loft-subscriptions/revise/`
+  - `POST`: dry-run pricing for selected duration, template package, add-ons, optional AI package, and provider PDF ids; creates no rows
+- `/api/loft-subscriptions/checkout/`
+  - `POST`: validates a signed quote, recalculates current pricing, creates an invoice and lines, creates a subscription payment request for paid invoices, and directly activates a valid free trial
+- `/api/loft-subscriptions/current/`
+  - `GET`: reads the active profile's current active subscription and AI balance summary
+- `/api/loft-subscriptions/invoices/`
+  - `GET`: owner lists own invoices; managers list all with `loft_subscriptions.invoices.list`
+- `/api/loft-subscriptions/invoices/<id>/`
+  - `GET`: owner retrieves own invoice; managers retrieve any with `loft_subscriptions.invoices.retrieve`
+- `/api/loft-subscriptions/payment-requests/`
+  - `GET`: owner lists own subscription payment requests; managers list all with `loft_subscriptions.payment_requests.list`
+- `/api/loft-subscriptions/payment-requests/<id>/`
+  - `GET`: owner retrieves own subscription payment request; managers retrieve any with `loft_subscriptions.payment_requests.retrieve`
+- `/api/loft-subscriptions/payment-requests/<id>/confirm/`
+  - `POST`: manager with `loft_subscriptions.payment_requests.confirm` marks a subscription payment request confirmed and activates or schedules the subscription
+
+Current Loft Manager subscription behavior:
+
+- catalog prices are stored in database rows and all public pricing uses `SubscriptionPricingService.calculate()`; views and serializers must not hardcode prices or trust frontend totals
+- the frontend sends selected object ids only: `duration_id`, `pedigree_package_id`, `addon_ids`, optional `ai_package_id`, and `template_ids`
+- quote tokens use Django signing, include selected ids, currency, total, and issue time, expire after 10 minutes, and are only a stale-price guard because checkout always recalculates
+- checkout idempotency uses `SubscriptionInvoice.idempotency_key`; retrying the same selection returns the existing invoice, while conflicting reuse is rejected
+- invoice lines, selected template ids, add-on codes, selected catalog ids, prices, and entitlement snapshots are historical snapshots; paid invoices must not be displayed from current catalog names or prices
+- paid checkout creates a pending invoice and one `SubscriptionPaymentRequest`; it never activates the subscription until trusted confirmation
+- manager confirmation marks the subscription invoice paid and creates exactly one subscription; repeated confirmation returns the existing result safely
+- when no active subscription exists, a paid subscription starts at confirmation time; when an active subscription still has time, the new subscription is created as `scheduled` and starts at the active subscription's `ends_at`
+- paid durations use calendar-month arithmetic through `dateutil.relativedelta`; trials use exactly three calendar days
+- the free trial is limited to one use per `UserAccount`, activates directly, lasts three days, requires the one-shape package and exactly one template id, includes 10 total AI operations, and cannot include paid add-ons or a paid AI package
+- selected provider PDF ids are stored as positive integers; pricing and checkout never call the external FastReport provider
+- limited packages require at least one selected template id, `shapes_1` requires exactly one, other limited packages allow up to their limit, and unlimited packages allow any number of positive ids
+- active subscriptions store entitlement snapshots: template limit/unlimited flag, selected template ids, add-on codes, included AI operations per month, and purchased AI operations
+- `SubscriptionAccessService.require_pedigree_template()` gates `/api/pedigrees/generate/` after local subject access validation and before the external provider call
+- `SubscriptionAccessService.require_addon(profile, "medical_records")` is the future medical-record endpoint gate; no medicine endpoint currently exists
+- `SubscriptionAccessService.require_addon(profile, "qr_code_pedigree")` is the future QR-generation endpoint gate; the current public asset QR payload URL is unchanged
+- Cloud Backup is exposed only as an entitlement code for now; no cloud-storage provider is implemented
+- AI quota consumption uses `SubscriptionAIQuotaService.consume(profile, operation_code, idempotency_key)` and should be called only after an actual AI-backed operation succeeds; current local OCR, review, retrieval, and PDF generation do not consume AI quota
+- paid subscriptions consume the current monthly included allowance first and purchased operations second; included monthly operations do not roll over, and purchased operations expire with the subscription
+- trial AI quota is 10 total operations for the whole trial and does not monthly reset
+
 ### `apps.complaints`
 
 Current responsibilities:
@@ -950,7 +1011,7 @@ Current pedigree API:
 - `/api/pedigrees/templates/`
   - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/reports`; returns upstream status/body/content type without local storage or reshaping
 - `/api/pedigrees/generate/`
-  - `POST`: synchronously merges current local pedigree bird parameters into the frontend-supplied report object, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
+  - `POST`: synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
 - `/api/pedigrees/documents/`
   - `POST`: authenticated customer or seller uploads a pedigree document file for OCR extraction
 - `/api/pedigrees/documents/<id>/`
@@ -970,7 +1031,7 @@ Current pedigree behavior:
 - `PEDIGREE_REPORT_TIMEOUT` is the single report-provider timeout setting
 - `/api/pedigrees/templates/` does not read, parse, filter, cache, or save provider report definitions
 - `/api/pedigrees/generate/` accepts `subject_bird_id`, `pdf_id`, `generation_depth`, frontend `report`, optional `owner`, and optional `customization`
-- report generation validates only local subject-bird access and minimal request shape; it does not validate `pdf_id`, `report.generation`, provider parameter names, file names, or report metadata against the external reports list
+- report generation validates local subject-bird access, minimal request shape, and active subscription template entitlement; it does not validate `pdf_id`, `report.generation`, provider parameter names, file names, or report metadata against the external reports list
 - generation depth counts total pedigree levels with the subject as depth `1`; depth `2` includes only direct parents and depth is capped by the platform pedigree maximum
 - `PedigreeReportMapper` deep-copies the frontend report object, preserves unknown report fields and unknown parameters, then overwrites only PPW-owned bird, owner, customization, and print-date parameters
 - `PedigreeReportClient` performs raw `GET /api/reports/fastreport/reports` and `POST /api/reports/fastreport/pdf/{pdf_id}` calls with no authentication headers, no MIME/file-signature validation, no generated-file storage, no Celery retry, and no response wrapping
@@ -2491,7 +2552,7 @@ The codebase does not yet fully implement:
 - promotion features beyond the current marketplace discount/cashback MVP, such as expiration, coupons, seller-created offers, auction cashback, usage caps, and complex campaign limits
 - realtime or expanded chat beyond the current REST-only direct chat MVP
 - push or external notification delivery beyond the current DB-backed in-app notification MVP
-- pedigree package/quota enforcement as a finished business module
+- custom pedigree design, cloud backup, medical-record, and QR-generation workflows beyond subscription entitlement codes
 
 Important framing:
 

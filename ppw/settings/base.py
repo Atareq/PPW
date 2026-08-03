@@ -66,6 +66,7 @@ APPS = [
     "apps.feed",
     "apps.insights",
     "apps.pedigrees",
+    "apps.loft_subscriptions",
     "apps.seasons",
 ]
 

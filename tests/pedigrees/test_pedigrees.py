@@ -8,6 +8,13 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.authentication.services import build_token_for_user
+from apps.loft_subscriptions.models import (
+    LoftSubscription,
+    PedigreeTemplatePackage,
+    SubscriptionDurationOption,
+    SubscriptionInvoice,
+    SubscriptionInvoiceStatus,
+)
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdSex,
@@ -742,6 +749,50 @@ def generation_request(subject_id, *, generation_depth=3):
     }
 
 
+def create_report_subscription(owner, *, template_ids=None, unlimited=False):
+    duration, _created = SubscriptionDurationOption.objects.get_or_create(
+        code=f"month_1_{owner.pk}_{unlimited}",
+        defaults={
+            "name": "One Month",
+            "duration_months": 1,
+            "price": "500.00",
+        },
+    )
+    package, _created = PedigreeTemplatePackage.objects.get_or_create(
+        code=f"test_package_{owner.pk}_{unlimited}",
+        defaults={
+            "name": "Test Package",
+            "template_limit": None if unlimited else 1,
+            "is_unlimited": unlimited,
+            "price": "0.00",
+        },
+    )
+    invoice = SubscriptionInvoice.objects.create(
+        owner=owner,
+        status=SubscriptionInvoiceStatus.PAID,
+        currency="EGP",
+        subtotal="500.00",
+        total="500.00",
+        duration=duration,
+        pedigree_package=package,
+        selected_template_ids=template_ids or [7],
+        selection_snapshot={},
+        pricing_snapshot={},
+        idempotency_key=f"pedigree-test-{owner.pk}-{LoftSubscription.objects.count()}",
+        paid_at=timezone.now(),
+        activated_at=timezone.now(),
+    )
+    return LoftSubscription.objects.create(
+        owner=owner,
+        invoice=invoice,
+        starts_at=timezone.now() - timedelta(minutes=1),
+        ends_at=timezone.now() + timedelta(days=30),
+        selected_template_ids=template_ids or [7],
+        pedigree_template_limit=None if unlimited else 1,
+        pedigree_unlimited=unlimited,
+    )
+
+
 def test_generate_requires_accessible_subject_bird_and_blocks_other_owner(
     settings,
 ):
@@ -749,6 +800,7 @@ def test_generate_requires_accessible_subject_bird_and_blocks_other_owner(
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     foreign_bird = PedigreeBirdFactory(owner=other.active_profile)
+    create_report_subscription(user.active_profile)
 
     with patch("requests.post") as post:
         response = authenticated_client(user).post(
@@ -769,6 +821,7 @@ def test_generate_calls_provider_and_returns_pdf_unchanged(
     settings.MEDIA_ROOT = tmp_path
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     owner = user.active_profile
+    create_report_subscription(owner)
     grand_father = PedigreeBirdFactory(
         owner=owner,
         ring_number="FF",
@@ -838,6 +891,7 @@ def test_generate_depth_excludes_deeper_ancestors(settings):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     owner = user.active_profile
+    create_report_subscription(owner)
     grand_father = PedigreeBirdFactory(owner=owner, ring_number="FF")
     father = PedigreeBirdFactory(
         owner=owner, ring_number="F", father=grand_father
@@ -873,6 +927,7 @@ def test_generate_preserves_provider_error_responses(
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    create_report_subscription(user.active_profile)
     subject = PedigreeBirdFactory(owner=user.active_profile)
     upstream = UpstreamResponse(
         content=content,
@@ -896,6 +951,7 @@ def test_generate_network_errors_return_small_local_responses(settings):
 
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    create_report_subscription(user.active_profile)
     subject = PedigreeBirdFactory(owner=user.active_profile)
 
     with patch("requests.post", side_effect=requests.exceptions.Timeout):
