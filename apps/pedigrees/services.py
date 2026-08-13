@@ -1,6 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
+import json
 import logging
 from time import perf_counter
 from urllib.parse import urljoin, urlparse
@@ -981,6 +982,329 @@ class PedigreeReportMapper:
     def _description(node):
         return (node or {}).get("description", "") or ""
 
+
+class PedigreeProviderSyntheticPayloadBuilder:
+    TEST_SHAPE = 4
+    TEST_GENERATION = 6
+    TEST_FILE_NAME = "PPW_Provider_Test_S04_G6.pdf"
+    DIAGNOSTIC_DESCRIPTION = (
+        "PPW synthetic provider diagnostic record. "
+        "Generation 6 health test. No real user data."
+    )
+    STYLE_SUFFIXES = [
+        ("TextColor", "#FFFFFF"),
+        ("BackColor", "#1D4ED8"),
+        ("BoxBackColor", "#EFF6FF"),
+        ("BorderColor", "#1E3A8A"),
+        ("BoxShape", ""),
+    ]
+
+    @classmethod
+    def build(cls):
+        parameters = cls._bird_parameters()
+        parameters.update(cls._owner_parameters())
+        parameters.update(cls._customization_parameters())
+        parameters.update(cls._style_parameters(parameters))
+        return {
+            "generation": cls.TEST_GENERATION,
+            "fileName": cls.TEST_FILE_NAME,
+            "parameters": parameters,
+            "dataSources": [],
+        }
+
+    @classmethod
+    def _bird_parameters(cls):
+        parameters = {
+            "Farkh_No": "PPW-TEST-ROOT",
+            "Farth_No": "PPW-TEST-ROOT",
+            "Esmah_Name": "PPW Synthetic Subject",
+            "Esmah_FullNo": cls.DIAGNOSTIC_DESCRIPTION,
+            "Farth_FatherNo": "PPW-TEST-F",
+            "Father_Name": "PPW Synthetic Father",
+            "Father_Info": cls.DIAGNOSTIC_DESCRIPTION,
+            "Farth_MotherNo": "PPW-TEST-M",
+            "Mother_Name": "PPW Synthetic Mother",
+            "Mother_Info": cls.DIAGNOSTIC_DESCRIPTION,
+        }
+
+        for path, (
+            ring_field,
+            description_field,
+        ) in ANCESTOR_FIELD_MAPPING.items():
+            parameters[ring_field] = f"PPW-TEST-{path}"
+            parameters[f"{description_field}_Name"] = (
+                f"PPW Synthetic Ancestor {path}"
+            )
+            parameters[description_field] = cls.DIAGNOSTIC_DESCRIPTION
+
+        return parameters
+
+    @staticmethod
+    def _owner_parameters():
+        return {
+            "Farth_Name": "PPW Diagnostic Owner",
+            "Owner_LoftName": "PPW Diagnostic Loft",
+            "OwnerLoftName": "PPW Diagnostic Loft",
+            "OwnerPhone": "0000000000",
+            "OwnerWhatsApp": "0000000000",
+            "OwnerEmail": "diagnostic@example.invalid",
+        }
+
+    @staticmethod
+    def _customization_parameters():
+        return {
+            "BackgroundImage": "",
+            "Farkh_Image": "",
+            "Details_Pic": "",
+            "BirdType": "Diagnostic Pigeon",
+            "Compuclub": "PPW Provider Diagnostic",
+        }
+
+    @classmethod
+    def _style_parameters(cls, parameters):
+        style_parameters = {}
+        for parameter_name, value in parameters.items():
+            if not isinstance(value, str):
+                continue
+            for suffix, style_value in cls.STYLE_SUFFIXES:
+                style_parameters[f"{parameter_name}_{suffix}"] = style_value
+        return style_parameters
+
+
+class PedigreeProviderDiagnosticService:
+    TEST_SHAPE = PedigreeProviderSyntheticPayloadBuilder.TEST_SHAPE
+    TEST_GENERATION = PedigreeProviderSyntheticPayloadBuilder.TEST_GENERATION
+    MIN_VALID_PDF_SIZE_BYTES = 1000
+
+    @classmethod
+    def run(cls):
+        checked_at = timezone.now()
+        total_started_at = perf_counter()
+        client = PedigreeReportClient()
+
+        health = cls._check_health(client)
+        generation = cls._generate_pdf(client)
+
+        total_response_time = perf_counter() - total_started_at
+        overall_status = cls._overall_status(health, generation)
+        result = {
+            "status": overall_status,
+            "checked_at": checked_at.isoformat(),
+            "health": health,
+            "pedigree_generation": generation,
+            "total_response_time_seconds": round(total_response_time, 3),
+            "feedback": cls._feedback(health, generation),
+        }
+        logger.info(
+            "Pedigree provider diagnostic completed.",
+            extra={
+                "operation": "provider-test",
+                "overall_status": overall_status,
+                "health_status_code": health["status_code"],
+                "health_duration_seconds": health["response_time_seconds"],
+                "generation_status_code": generation["status_code"],
+                "generation_duration_seconds": generation[
+                    "response_time_seconds"
+                ],
+                "pdf_size_bytes": generation["pdf_size_bytes"],
+                "valid_pdf": generation["valid_pdf"],
+                "shape": cls.TEST_SHAPE,
+                "generation": cls.TEST_GENERATION,
+            },
+        )
+        return result
+
+    @classmethod
+    def _check_health(cls, client):
+        started_at = perf_counter()
+        try:
+            response = client.get_health()
+        except PedigreeReportConfigurationError:
+            return cls._health_failure(started_at, "configuration_error")
+        except TimeoutError:
+            return cls._health_failure(started_at, "timeout")
+        except Exception as exc:
+            import requests
+
+            if isinstance(exc, requests.exceptions.Timeout):
+                return cls._health_failure(started_at, "timeout")
+            if isinstance(exc, requests.exceptions.ConnectionError):
+                return cls._health_failure(started_at, "connection_error")
+            logger.exception(
+                "Unexpected pedigree provider health diagnostic error.",
+                extra={"operation": "provider-test-health"},
+            )
+            return cls._health_failure(started_at, "unexpected_error")
+
+        provider_status = cls._provider_health_status(response)
+        ok = response.status_code == 200
+        return {
+            "ok": ok,
+            "provider_status": provider_status,
+            "status_code": response.status_code,
+            "response_time_seconds": round(perf_counter() - started_at, 3),
+            "error": None if ok else "provider_health_failed",
+        }
+
+    @classmethod
+    def _generate_pdf(cls, client):
+        started_at = perf_counter()
+        try:
+            response = client.post_pdf(
+                pdf_id=cls.TEST_SHAPE,
+                payload=PedigreeProviderSyntheticPayloadBuilder.build(),
+                accept="application/pdf",
+            )
+        except PedigreeReportConfigurationError:
+            return cls._generation_failure(
+                started_at, "configuration_error"
+            )
+        except Exception as exc:
+            import requests
+
+            if isinstance(exc, requests.exceptions.Timeout):
+                return cls._generation_failure(started_at, "timeout")
+            if isinstance(exc, requests.exceptions.ConnectionError):
+                return cls._generation_failure(
+                    started_at, "connection_error"
+                )
+            logger.exception(
+                "Unexpected pedigree provider generation diagnostic error.",
+                extra={"operation": "provider-test-generation"},
+            )
+            return cls._generation_failure(started_at, "unexpected_error")
+
+        content_type = response.headers.get("Content-Type")
+        pdf_size = len(response.content or b"")
+        valid_pdf = cls.is_valid_pdf_response(response)
+        ok = response.status_code == 200 and valid_pdf
+        error = None
+        if response.status_code != 200:
+            error = "provider_generation_failed"
+        elif not valid_pdf:
+            error = "invalid_pdf"
+        return {
+            "ok": ok,
+            "shape": cls.TEST_SHAPE,
+            "generation": cls.TEST_GENERATION,
+            "status_code": response.status_code,
+            "content_type": content_type,
+            "response_time_seconds": round(perf_counter() - started_at, 3),
+            "pdf_size_bytes": pdf_size,
+            "valid_pdf": valid_pdf,
+            "error": error,
+        }
+
+    @classmethod
+    def _health_failure(cls, started_at, error):
+        return {
+            "ok": False,
+            "provider_status": None,
+            "status_code": None,
+            "response_time_seconds": round(perf_counter() - started_at, 3),
+            "error": error,
+        }
+
+    @classmethod
+    def _generation_failure(cls, started_at, error):
+        return {
+            "ok": False,
+            "shape": cls.TEST_SHAPE,
+            "generation": cls.TEST_GENERATION,
+            "status_code": None,
+            "content_type": None,
+            "response_time_seconds": round(perf_counter() - started_at, 3),
+            "pdf_size_bytes": 0,
+            "valid_pdf": False,
+            "error": error,
+        }
+
+    @classmethod
+    def _overall_status(cls, health, generation):
+        if (
+            health["error"] == "configuration_error"
+            or generation["error"] == "configuration_error"
+        ):
+            return "unhealthy"
+        if health["ok"] and generation["ok"]:
+            return "healthy"
+        if health["ok"] or generation["ok"]:
+            return "degraded"
+        return "unhealthy"
+
+    @staticmethod
+    def _feedback(health, generation):
+        if health["ok"]:
+            service = "Pedigree server health check succeeded."
+        elif health["error"] == "connection_error":
+            service = "Pedigree server is currently unreachable."
+        elif health["error"] == "timeout":
+            service = "Pedigree server health check timed out."
+        elif health["error"] == "configuration_error":
+            service = "Pedigree provider configuration is incomplete."
+        else:
+            service = "Pedigree server health check is currently failing."
+
+        if generation["ok"]:
+            generation_feedback = (
+                "Six-generation synthetic pedigree PDF generation succeeded."
+            )
+        elif generation["error"] == "connection_error":
+            generation_feedback = (
+                "Synthetic pedigree generation could not be performed."
+            )
+        elif generation["error"] == "timeout":
+            generation_feedback = "Pedigree PDF generation timed out."
+        elif generation["error"] == "invalid_pdf":
+            generation_feedback = (
+                "Pedigree PDF generation returned an invalid PDF."
+            )
+        elif generation["error"] == "configuration_error":
+            generation_feedback = (
+                "Pedigree PDF generation configuration is incomplete."
+            )
+        else:
+            generation_feedback = (
+                "Pedigree PDF generation is currently failing."
+            )
+
+        if health["ok"] and generation["ok"]:
+            service = "Pedigree server is reachable and healthy."
+
+        return {
+            "service": service,
+            "generation": generation_feedback,
+        }
+
+    @classmethod
+    def is_valid_pdf_response(cls, response):
+        content_type = response.headers.get("Content-Type", "")
+        content = response.content or b""
+        return (
+            response.status_code == 200
+            and "application/pdf" in content_type.lower()
+            and content.startswith(b"%PDF")
+            and len(content) > cls.MIN_VALID_PDF_SIZE_BYTES
+        )
+
+    @staticmethod
+    def _provider_health_status(response):
+        content = response.content or b""
+        if not content:
+            return None
+        try:
+            body = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return content.decode("utf-8", errors="replace").strip() or None
+        if isinstance(body, dict):
+            for key in ("status", "Status", "health", "Health"):
+                if key in body:
+                    return body[key]
+        if isinstance(body, str):
+            return body
+        return None
+
+
 class PedigreeReportClient:
     SAFE_RESPONSE_HEADERS = [
         "Content-Disposition",
@@ -991,6 +1315,27 @@ class PedigreeReportClient:
         "Pragma",
     ]
 
+    def get_health(self):
+        import requests
+
+        url = self._build_url("health")
+        started_at = perf_counter()
+        response = requests.get(
+            url,
+            headers={"Accept": "application/json"},
+            timeout=self._timeout(),
+            allow_redirects=False,
+        )
+        logger.info(
+            "Pedigree health provider response.",
+            extra={
+                "operation": "health",
+                "upstream_status_code": response.status_code,
+                "duration_seconds": round(perf_counter() - started_at, 3),
+            },
+        )
+        return response
+
     def get_reports(self):
         import requests
 
@@ -998,6 +1343,7 @@ class PedigreeReportClient:
         started_at = perf_counter()
         response = requests.get(
             url,
+            headers=self._headers(),
             timeout=self._timeout(),
             allow_redirects=False,
         )
@@ -1011,21 +1357,66 @@ class PedigreeReportClient:
         )
         return response
 
+    def get_schema(self, *, shape, generation):
+        import requests
+
+        url = self._build_url(f"api/reports/fastreport/schema/{shape}")
+        started_at = perf_counter()
+        response = requests.get(
+            url,
+            params={"generation": generation},
+            headers=self._headers(),
+            timeout=self._timeout(),
+            allow_redirects=False,
+        )
+        logger.info(
+            "Pedigree schema provider response.",
+            extra={
+                "operation": "schema",
+                "shape": shape,
+                "generation": generation,
+                "upstream_status_code": response.status_code,
+                "duration_seconds": round(perf_counter() - started_at, 3),
+            },
+        )
+        return response
+
+    def get_style_parameters(self, *, shape, generation):
+        import requests
+
+        url = self._build_url("api/reports/fastreport/style-parameters")
+        started_at = perf_counter()
+        response = requests.get(
+            url,
+            params={"pedigreeType": shape, "generation": generation},
+            headers=self._headers(),
+            timeout=self._timeout(),
+            allow_redirects=False,
+        )
+        logger.info(
+            "Pedigree style-parameters provider response.",
+            extra={
+                "operation": "style-parameters",
+                "shape": shape,
+                "generation": generation,
+                "upstream_status_code": response.status_code,
+                "duration_seconds": round(perf_counter() - started_at, 3),
+            },
+        )
+        return response
+
     def post_pdf(self, *, pdf_id, payload, accept):
         import requests
 
         url = self._build_url(f"api/reports/fastreport/pdf/{pdf_id}")
         started_at = perf_counter()
-        import json
-        with open("/tmp/pedigree_provider_payload.json", "w", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, indent=2)
         response = requests.post(
             url,
             json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": accept or "application/pdf",
-            },
+            headers=self._headers(
+                accept=accept or "application/pdf",
+                content_type="application/json",
+            ),
             timeout=self._timeout(),
             allow_redirects=False,
         )
@@ -1047,6 +1438,13 @@ class PedigreeReportClient:
             raise ValidationError({"report": _("Unexpected report host.")})
         return url
 
+    def _headers(self, *, accept="application/json", content_type=None):
+        headers = {"Accept": accept}
+        if content_type:
+            headers["Content-Type"] = content_type
+        headers["X-Api-Key"] = self._api_key()
+        return headers
+
     @staticmethod
     def _base_url():
         base_url = getattr(settings, "PEDIGREE_REPORT_BASE_URL", "")
@@ -1056,6 +1454,16 @@ class PedigreeReportClient:
                 _("PEDIGREE_REPORT_BASE_URL is not configured.")
             )
         return base_url
+
+    @staticmethod
+    def _api_key():
+        api_key = getattr(settings, "PEDIGREE_REPORT_API_KEY", "")
+        api_key = (api_key or "").strip()
+        if not api_key:
+            raise PedigreeReportConfigurationError(
+                _("PEDIGREE_REPORT_API_KEY is not configured.")
+            )
+        return api_key
 
     @staticmethod
     def _timeout():

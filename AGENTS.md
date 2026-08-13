@@ -1010,8 +1010,14 @@ Current pedigree API:
   - `GET` / `PATCH` / `DELETE`: owner-scoped private pedigree bird detail, update, and soft delete; managers require explicit bird permissions
 - `/api/pedigrees/templates/`
   - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/reports`; returns upstream status/body/content type without local storage or reshaping
+- `/api/pedigrees/templates/<shape>/schema/`
+  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/schema/{shape}?generation=<generation>`; validates only the integer generation query locally and leaves shape/generation availability to the provider
+- `/api/pedigrees/templates/<shape>/style-parameters/`
+  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/style-parameters?pedigreeType=<shape>&generation=<generation>`; returns provider-owned style metadata without local persistence or reshaping
 - `/api/pedigrees/generate/`
   - `POST`: synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
+- `/api/pedigrees/provider-test/`
+  - `POST`: manager-only dashboard diagnostic that calls provider `/health`, renders one deterministic in-memory Shape 04 Generation 6 synthetic PDF through `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/4`, validates the returned PDF, discards the bytes, and returns compact JSON health/generation timing and status data
 - `/api/pedigrees/documents/`
   - `POST`: authenticated customer or seller uploads a pedigree document file for OCR extraction
 - `/api/pedigrees/documents/<id>/`
@@ -1028,13 +1034,17 @@ Current pedigree behavior:
 - `PedigreeBird` parent links are self-FKs for father and mother and are owner-scoped
 - pedigree bird validation rejects future birthday/record dates, self parents, same father/mother, cross-owner parents, wrong known parent sex, parent birthdays not before child birthdays, deleted parents, and direct or indirect cycles
 - `PEDIGREE_REPORT_BASE_URL` is required for report proxy calls and must come from environment configuration; Python code must not default to the provider IP
+- `PEDIGREE_REPORT_API_KEY` is required for FastReport provider calls and must only be sent backend-to-provider as `X-Api-Key`; do not expose it through PPW APIs, serializers, logs, or frontend configuration
 - `PEDIGREE_REPORT_TIMEOUT` is the single report-provider timeout setting
 - `/api/pedigrees/templates/` does not read, parse, filter, cache, or save provider report definitions
+- `/api/pedigrees/templates/<shape>/schema/` and `/api/pedigrees/templates/<shape>/style-parameters/` validate `generation` as an integer between 2 and `PEDIGREE_MAX_GENERATION_DEPTH`; do not hardcode report availability matrices because provider reports metadata is authoritative
 - `/api/pedigrees/generate/` accepts `subject_bird_id`, `pdf_id`, `generation_depth`, frontend `report`, optional `owner`, and optional `customization`
 - report generation validates local subject-bird access, minimal request shape, and active subscription template entitlement; it does not validate `pdf_id`, `report.generation`, provider parameter names, file names, or report metadata against the external reports list
 - generation depth counts total pedigree levels with the subject as depth `1`; depth `2` includes only direct parents and depth is capped by the platform pedigree maximum
 - `PedigreeReportMapper` deep-copies the frontend report object, preserves unknown report fields and unknown parameters, then overwrites only PPW-owned bird, owner, customization, and print-date parameters
-- `PedigreeReportClient` performs raw `GET /api/reports/fastreport/reports` and `POST /api/reports/fastreport/pdf/{pdf_id}` calls with no authentication headers, no MIME/file-signature validation, no generated-file storage, no Celery retry, and no response wrapping
+- `PedigreeReportClient` performs raw `GET /api/reports/fastreport/reports`, metadata `GET`, and `POST /api/reports/fastreport/pdf/{pdf_id}` calls with `X-Api-Key`, no MIME/file-signature validation, no generated-file storage, no Celery retry, and no response wrapping
+- provider diagnostics are administrative infrastructure checks, not customer generation: they must not use `PedigreeBird` rows, profile pedigree data, documents, subscription entitlement, template allowance, AI quota, file storage, Celery, or database persistence
+- provider diagnostics use deterministic synthetic owner/bird/style values only; do not include real user data, API keys, full provider payloads, or PDF bytes in responses or logs
 - provider HTTP responses are passed through with upstream status, body, content type, content disposition, and safe cache headers; connection failures return a small `502` JSON response and timeouts return a small `504` JSON response
 - safe report logs may include operation, subject bird id, pdf id, generation depth, upstream status, duration, and exception type only; do not log full payloads because they may include names, phone, WhatsApp, email, bird data, and image URLs
 - `PedigreeDocument` inherits the standard profile-owned model shape and also stores `uploaded_by` as the user account

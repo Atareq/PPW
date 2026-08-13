@@ -4,8 +4,11 @@ from apps.pedigrees.views import (
     PedigreeBirdViewSet,
     PedigreeDocumentReviewViewSet,
     PedigreeDocumentViewSet,
+    PedigreeProviderTestViewSet,
     PedigreeReportGenerateViewSet,
     PedigreeReportListProxyViewSet,
+    PedigreeReportSchemaProxyViewSet,
+    PedigreeReportStyleParametersProxyViewSet,
 )
 
 CREATE_ACTION = {"post": "create"}
@@ -38,9 +41,24 @@ urlpatterns = [
         name="pedigree-template-list",
     ),
     path(
+        "templates/<int:shape>/schema/",
+        PedigreeReportSchemaProxyViewSet.as_view(LIST_ACTION),
+        name="pedigree-template-schema",
+    ),
+    path(
+        "templates/<int:shape>/style-parameters/",
+        PedigreeReportStyleParametersProxyViewSet.as_view(LIST_ACTION),
+        name="pedigree-template-style-parameters",
+    ),
+    path(
         "generate/",
         PedigreeReportGenerateViewSet.as_view(CREATE_ACTION),
         name="pedigree-report-generate",
+    ),
+    path(
+        "provider-test/",
+        PedigreeProviderTestViewSet.as_view(CREATE_ACTION),
+        name="pedigree-provider-test",
     ),
     path(
         "documents/",

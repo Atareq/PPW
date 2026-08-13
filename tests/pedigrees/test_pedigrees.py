@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 import pytest
 from rest_framework.test import APIClient
@@ -21,9 +22,16 @@ from apps.pedigrees.models import (
     PedigreeDocument,
     PedigreeDocumentStatus,
 )
-from apps.pedigrees.services import PedigreeReportMapper, PedigreeTreeService
+from apps.pedigrees.services import (
+    PedigreeProviderDiagnosticService,
+    PedigreeProviderSyntheticPayloadBuilder,
+    PedigreeReportClient,
+    PedigreeReportMapper,
+    PedigreeTreeService,
+)
 from apps.users.constants import ProfileType
 from tests.factories import (
+    ManagerProfileFactory,
     PedigreeBirdFactory,
     PedigreeDocumentFactory,
     UserAccountFactory,
@@ -595,6 +603,7 @@ def test_mapper_merges_local_bird_data_and_preserves_frontend_report():
         owner=owner,
         ring_number="F",
         name="Father",
+        description="Father",
         father=grand_father,
     )
     mother = PedigreeBirdFactory(
@@ -607,6 +616,7 @@ def test_mapper_merges_local_bird_data_and_preserves_frontend_report():
         owner=owner,
         ring_number="S",
         name="Subject",
+        description="Subject",
         father=father,
         mother=mother,
     )
@@ -616,7 +626,15 @@ def test_mapper_merges_local_bird_data_and_preserves_frontend_report():
         "parameters": {
             "Farkh_No": "frontend subject",
             "Father1_NO": "frontend grand father",
+            "Father1_Name": "frontend grand father name",
             "Father4_NO": "too deep",
+            "Father1_NO_TextColor": "#FFFFFF",
+            "Father1_NO_BackColor": "#1D4ED8",
+            "Father1_NO_BoxBackColor": "#EFF6FF",
+            "Father1_NO_BorderColor": "#1E3A8A",
+            "Father1_TextColor": "#14532D",
+            "Father1_BackColor": "#DCFCE7",
+            "BoxShape": "RoundedRectangle",
             "CustomFutureField": "value",
         },
         "dataSources": [{"name": "future"}],
@@ -642,7 +660,7 @@ def test_mapper_merges_local_bird_data_and_preserves_frontend_report():
     )
     params = payload["parameters"]
 
-    assert payload["generation"] == 4
+    assert payload["generation"] == 3
     assert payload["fileName"] == "Pedigree_07_G4.pdf"
     assert payload["dataSources"] == [{"name": "future"}]
     assert payload["unknownTopLevel"] is True
@@ -656,7 +674,15 @@ def test_mapper_merges_local_bird_data_and_preserves_frontend_report():
     assert params["Farth_MotherNo"] == "M"
     assert params["Mother_Info"] == "Mother Desc"
     assert params["Father1_NO"] == "FF"
+    assert params["Father1_Name"] == "Grand Father"
     assert params["Father4_NO"] == ""
+    assert params["Father1_NO_TextColor"] == "#FFFFFF"
+    assert params["Father1_NO_BackColor"] == "#1D4ED8"
+    assert params["Father1_NO_BoxBackColor"] == "#EFF6FF"
+    assert params["Father1_NO_BorderColor"] == "#1E3A8A"
+    assert params["Father1_TextColor"] == "#14532D"
+    assert params["Father1_BackColor"] == "#DCFCE7"
+    assert params["BoxShape"] == "RoundedRectangle"
     assert params["CustomFutureField"] == "value"
     assert params["BackgroundImage"] == "bg"
     assert params["Farkh_Image"] == "bird"
@@ -668,6 +694,7 @@ def test_reports_proxy_uses_settings_url_and_returns_upstream_response(
     settings,
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     settings.PEDIGREE_REPORT_TIMEOUT = 7
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     client = authenticated_client(user)
@@ -685,6 +712,7 @@ def test_reports_proxy_uses_settings_url_and_returns_upstream_response(
 
     get.assert_called_once_with(
         "http://provider.test/api/reports/fastreport/reports",
+        headers={"Accept": "application/json", "X-Api-Key": "provider-key"},
         timeout=7,
         allow_redirects=False,
     )
@@ -705,6 +733,7 @@ def test_reports_proxy_preserves_upstream_error_response(
     settings, content, status_code, content_type
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     upstream = UpstreamResponse(
         content=content,
@@ -717,6 +746,71 @@ def test_reports_proxy_preserves_upstream_error_response(
     assert response.status_code == status_code
     assert response.content == content
     assert response["Content-Type"] == content_type
+
+
+def test_schema_proxy_validates_generation_and_returns_upstream_response(
+    settings,
+):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    settings.PEDIGREE_REPORT_TIMEOUT = 8
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    upstream = UpstreamResponse(
+        content=b'{"parameters":["Farth_No"]}',
+        status_code=200,
+        headers={
+            "Content-Type": "application/json",
+            "ETag": '"schema"',
+        },
+    )
+
+    with patch("requests.get", return_value=upstream) as get:
+        response = authenticated_client(user).get(
+            "/api/pedigrees/templates/4/schema/?generation=3"
+        )
+
+    get.assert_called_once_with(
+        "http://provider.test/api/reports/fastreport/schema/4",
+        params={"generation": 3},
+        headers={"Accept": "application/json", "X-Api-Key": "provider-key"},
+        timeout=8,
+        allow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert response.content == b'{"parameters":["Farth_No"]}'
+    assert response["Content-Type"] == "application/json"
+    assert response["ETag"] == '"schema"'
+
+    invalid = authenticated_client(user).get(
+        "/api/pedigrees/templates/4/schema/?generation=1"
+    )
+    assert invalid.status_code == 400
+
+
+def test_style_parameters_proxy_uses_provider_query_names(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    upstream = UpstreamResponse(
+        content=b'{"styleParameters":["TextColor"]}',
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+    )
+
+    with patch("requests.get", return_value=upstream) as get:
+        response = authenticated_client(user).get(
+            "/api/pedigrees/templates/13/style-parameters/?generation=4"
+        )
+
+    get.assert_called_once_with(
+        "http://provider.test/api/reports/fastreport/style-parameters",
+        params={"pedigreeType": 13, "generation": 4},
+        headers={"Accept": "application/json", "X-Api-Key": "provider-key"},
+        timeout=120,
+        allow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert response.content == b'{"styleParameters":["TextColor"]}'
 
 
 def generation_request(subject_id, *, generation_depth=3):
@@ -797,6 +891,7 @@ def test_generate_requires_accessible_subject_bird_and_blocks_other_owner(
     settings,
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     foreign_bird = PedigreeBirdFactory(owner=other.active_profile)
@@ -817,6 +912,7 @@ def test_generate_calls_provider_and_returns_pdf_unchanged(
     settings, tmp_path
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     settings.PEDIGREE_REPORT_TIMEOUT = 9
     settings.MEDIA_ROOT = tmp_path
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
@@ -831,12 +927,14 @@ def test_generate_calls_provider_and_returns_pdf_unchanged(
         owner=owner,
         ring_number="F",
         name="Father",
+        description="Father",
         father=grand_father,
     )
     subject = PedigreeBirdFactory(
         owner=owner,
         ring_number="S",
         name="Subject",
+        description="Subject",
         father=father,
     )
     upstream = UpstreamResponse(
@@ -863,10 +961,11 @@ def test_generate_calls_provider_and_returns_pdf_unchanged(
     assert kwargs["headers"] == {
         "Content-Type": "application/json",
         "Accept": "image/png",
+        "X-Api-Key": "provider-key",
     }
     payload = kwargs["json"]
     params = payload["parameters"]
-    assert payload["generation"] == 4
+    assert payload["generation"] == 3
     assert payload["fileName"] == "Pedigree_07_G4.pdf"
     assert payload["dataSources"] == [{"name": "future"}]
     assert params["Farkh_No"] == "S"
@@ -889,6 +988,7 @@ def test_generate_calls_provider_and_returns_pdf_unchanged(
 
 def test_generate_depth_excludes_deeper_ancestors(settings):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     owner = user.active_profile
     create_report_subscription(owner)
@@ -926,6 +1026,7 @@ def test_generate_preserves_provider_error_responses(
     settings, content, status_code, content_type
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     create_report_subscription(user.active_profile)
     subject = PedigreeBirdFactory(owner=user.active_profile)
@@ -950,6 +1051,7 @@ def test_generate_network_errors_return_small_local_responses(settings):
     import requests
 
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     create_report_subscription(user.active_profile)
     subject = PedigreeBirdFactory(owner=user.active_profile)
@@ -996,3 +1098,336 @@ def test_report_persistence_models_and_task_are_removed():
     table_names = connection.introspection.table_names()
     assert "pedigrees_pedigreetemplate" not in table_names
     assert "pedigrees_pedigreecertificate" not in table_names
+
+
+def test_synthetic_provider_payload_is_complete_deterministic_and_query_free():
+    with CaptureQueriesContext(connection) as queries:
+        payload = PedigreeProviderSyntheticPayloadBuilder.build()
+
+    parameters = payload["parameters"]
+    assert len(queries) == 0
+    assert payload["generation"] == 6
+    assert payload["fileName"] == "PPW_Provider_Test_S04_G6.pdf"
+    assert payload["dataSources"] == []
+    assert isinstance(parameters, dict)
+
+    assert parameters["Farkh_No"] == "PPW-TEST-ROOT"
+    assert parameters["Esmah_Name"] == "PPW Synthetic Subject"
+    assert parameters["Esmah_FullNo"].startswith(
+        "PPW synthetic provider diagnostic record."
+    )
+    assert parameters["Farth_FatherNo"] == "PPW-TEST-F"
+    assert parameters["Father_Name"] == "PPW Synthetic Father"
+    assert parameters["Father_Info"].startswith(
+        "PPW synthetic provider diagnostic record."
+    )
+    assert parameters["Farth_MotherNo"] == "PPW-TEST-M"
+    assert parameters["Mother_Name"] == "PPW Synthetic Mother"
+    assert parameters["Mother_Info"].startswith(
+        "PPW synthetic provider diagnostic record."
+    )
+    assert parameters["Father1_NO"] == "PPW-TEST-FF"
+    assert parameters["Father1_Name"] == "PPW Synthetic Ancestor FF"
+    assert parameters["Father1"].startswith(
+        "PPW synthetic provider diagnostic record."
+    )
+    assert parameters["Father6_01_NO"] == "PPW-TEST-FFFFF"
+    assert parameters["Father6_01_Name"] == (
+        "PPW Synthetic Ancestor FFFFF"
+    )
+    assert parameters["Father6_01"].startswith(
+        "PPW synthetic provider diagnostic record."
+    )
+    assert parameters["Mother6_16_NO"] == "PPW-TEST-MMMMM"
+    assert parameters["Mother6_16_Name"] == (
+        "PPW Synthetic Ancestor MMMMM"
+    )
+    assert parameters["Mother6_16"].startswith(
+        "PPW synthetic provider diagnostic record."
+    )
+
+    assert parameters["Father1_NO_TextColor"] == "#FFFFFF"
+    assert parameters["Father1_NO_BackColor"] == "#1D4ED8"
+    assert parameters["Father1_NO_BoxBackColor"] == "#EFF6FF"
+    assert parameters["Father1_NO_BorderColor"] == "#1E3A8A"
+    assert parameters["Father1_NO_BoxShape"] == ""
+    assert parameters["BackgroundImage"] == ""
+    assert parameters["Farkh_Image"] == ""
+    assert parameters["Details_Pic"] == ""
+    assert "subject_bird_id" not in payload
+    assert "owner_id" not in parameters
+    assert not any(key.endswith("_id") for key in parameters)
+
+
+def test_health_client_calls_provider_health_without_api_key(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
+    settings.PEDIGREE_REPORT_TIMEOUT = 5
+    upstream = UpstreamResponse(
+        content=b'{"status":"Healthy"}',
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+    )
+
+    with patch("requests.get", return_value=upstream) as get:
+        response = PedigreeReportClient().get_health()
+
+    get.assert_called_once_with(
+        "http://provider.test/health",
+        headers={"Accept": "application/json"},
+        timeout=5,
+        allow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert response.content == b'{"status":"Healthy"}'
+
+
+def provider_pdf_bytes():
+    return b"%PDF-1.4\n" + (b"x" * 1200)
+
+
+def test_provider_diagnostic_endpoint_success(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+    health = UpstreamResponse(
+        content=b'{"status":"Healthy"}',
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+    )
+    pdf = UpstreamResponse(
+        content=provider_pdf_bytes(),
+        status_code=200,
+        headers={"Content-Type": "application/pdf"},
+    )
+
+    with patch("requests.get", return_value=health), patch(
+        "requests.post", return_value=pdf
+    ) as post:
+        response = authenticated_client(manager).post(
+            "/api/pedigrees/provider-test/",
+            {},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "healthy"
+    assert response.data["health"]["ok"] is True
+    assert response.data["health"]["provider_status"] == "Healthy"
+    assert response.data["pedigree_generation"]["ok"] is True
+    assert response.data["pedigree_generation"]["valid_pdf"] is True
+    assert response.data["pedigree_generation"]["shape"] == 4
+    assert response.data["pedigree_generation"]["generation"] == 6
+    assert isinstance(
+        response.data["health"]["response_time_seconds"], float
+    )
+    assert isinstance(
+        response.data["pedigree_generation"]["response_time_seconds"], float
+    )
+    assert isinstance(response.data["total_response_time_seconds"], float)
+    payload = post.call_args.kwargs["json"]
+    assert payload["generation"] == 6
+    assert payload["parameters"]["Father6_01_NO"] == "PPW-TEST-FFFFF"
+
+
+def test_provider_diagnostic_is_manager_only(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    manager = UserAccountFactory(with_profile=False)
+
+    ManagerProfileFactory(user=manager, is_active=True, permissions=[])
+
+    customer_response = authenticated_client(customer).post(
+        "/api/pedigrees/provider-test/",
+        {},
+        format="json",
+    )
+    manager_response = authenticated_client(manager).post(
+        "/api/pedigrees/provider-test/",
+        {},
+        format="json",
+    )
+
+    assert customer_response.status_code == 403
+    assert manager_response.status_code == 403
+
+
+def test_provider_diagnostic_rejects_input_payload(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    manager = UserAccountFactory(with_profile=ProfileType.MANAGER)
+
+    with patch("requests.get") as get, patch("requests.post") as post:
+        response = authenticated_client(manager).post(
+            "/api/pedigrees/provider-test/",
+            {"subject_bird_id": 1},
+            format="json",
+        )
+
+    assert response.status_code == 400
+    get.assert_not_called()
+    post.assert_not_called()
+
+
+def test_provider_diagnostic_degraded_when_generation_http_fails(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    health = UpstreamResponse(
+        content=b'{"status":"Healthy"}',
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+    )
+    failed_pdf = UpstreamResponse(
+        content=b'{"error":"failed"}',
+        status_code=500,
+        headers={"Content-Type": "application/json"},
+    )
+
+    with patch("requests.get", return_value=health), patch(
+        "requests.post", return_value=failed_pdf
+    ):
+        result = PedigreeProviderDiagnosticService.run()
+
+    assert result["status"] == "degraded"
+    assert result["health"]["ok"] is True
+    assert result["pedigree_generation"]["ok"] is False
+    assert result["pedigree_generation"]["error"] == (
+        "provider_generation_failed"
+    )
+
+
+def test_provider_diagnostic_degraded_when_generation_pdf_is_invalid(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    health = UpstreamResponse(
+        content=b'{"status":"Healthy"}',
+        status_code=200,
+        headers={"Content-Type": "application/json"},
+    )
+    invalid_pdf = UpstreamResponse(
+        content=b"not a pdf",
+        status_code=200,
+        headers={"Content-Type": "text/plain"},
+    )
+
+    with patch("requests.get", return_value=health), patch(
+        "requests.post", return_value=invalid_pdf
+    ):
+        result = PedigreeProviderDiagnosticService.run()
+
+    assert result["status"] == "degraded"
+    assert result["pedigree_generation"]["valid_pdf"] is False
+    assert result["pedigree_generation"]["error"] == "invalid_pdf"
+
+
+def test_provider_diagnostic_degraded_when_health_fails_but_generation_succeeds(
+    settings,
+):
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+    health = UpstreamResponse(
+        content=b'{"status":"Down"}',
+        status_code=503,
+        headers={"Content-Type": "application/json"},
+    )
+    pdf = UpstreamResponse(
+        content=provider_pdf_bytes(),
+        status_code=200,
+        headers={"Content-Type": "application/pdf"},
+    )
+
+    with patch("requests.get", return_value=health), patch(
+        "requests.post", return_value=pdf
+    ):
+        result = PedigreeProviderDiagnosticService.run()
+
+    assert result["status"] == "degraded"
+    assert result["health"]["ok"] is False
+    assert result["health"]["provider_status"] == "Down"
+    assert result["pedigree_generation"]["ok"] is True
+
+
+def test_provider_diagnostic_unhealthy_when_both_calls_connection_error(
+    settings,
+):
+    import requests
+
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+
+    with patch(
+        "requests.get", side_effect=requests.exceptions.ConnectionError
+    ), patch(
+        "requests.post", side_effect=requests.exceptions.ConnectionError
+    ):
+        result = PedigreeProviderDiagnosticService.run()
+
+    assert result["status"] == "unhealthy"
+    assert result["health"]["error"] == "connection_error"
+    assert result["pedigree_generation"]["error"] == "connection_error"
+
+
+def test_provider_diagnostic_unhealthy_when_both_calls_timeout(settings):
+    import requests
+
+    settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
+    settings.PEDIGREE_REPORT_API_KEY = "provider-key"
+
+    with patch("requests.get", side_effect=requests.exceptions.Timeout), patch(
+        "requests.post", side_effect=requests.exceptions.Timeout
+    ):
+        result = PedigreeProviderDiagnosticService.run()
+
+    assert result["status"] == "unhealthy"
+    assert result["health"]["error"] == "timeout"
+    assert result["pedigree_generation"]["error"] == "timeout"
+
+
+def test_provider_diagnostic_unhealthy_when_provider_config_missing(settings):
+    settings.PEDIGREE_REPORT_BASE_URL = ""
+    settings.PEDIGREE_REPORT_API_KEY = ""
+
+    with patch("requests.get") as get, patch("requests.post") as post:
+        result = PedigreeProviderDiagnosticService.run()
+
+    assert result["status"] == "unhealthy"
+    assert result["health"]["error"] == "configuration_error"
+    assert result["pedigree_generation"]["error"] == "configuration_error"
+    get.assert_not_called()
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "response, valid",
+    [
+        (
+            UpstreamResponse(
+                content=provider_pdf_bytes(),
+                status_code=200,
+                headers={"Content-Type": "application/pdf"},
+            ),
+            True,
+        ),
+        (
+            UpstreamResponse(
+                content=provider_pdf_bytes(),
+                status_code=200,
+                headers={"Content-Type": "text/plain"},
+            ),
+            False,
+        ),
+        (
+            UpstreamResponse(
+                content=b"",
+                status_code=200,
+                headers={"Content-Type": "application/pdf"},
+            ),
+            False,
+        ),
+    ],
+)
+def test_provider_diagnostic_pdf_validation(response, valid):
+    assert (
+        PedigreeProviderDiagnosticService.is_valid_pdf_response(response)
+        is valid
+    )

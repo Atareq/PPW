@@ -205,6 +205,7 @@ PUBLIC_FRONTEND_BASE_URL = os.getenv(
 PEDIGREE_REPORT_BASE_URL = os.getenv("PEDIGREE_REPORT_BASE_URL", "").rstrip(
     "/"
 )
+PEDIGREE_REPORT_API_KEY = os.getenv("PEDIGREE_REPORT_API_KEY", "")
 PEDIGREE_REPORT_TIMEOUT = int(os.getenv("PEDIGREE_REPORT_TIMEOUT", "120"))
 CELERY_BEAT_SCHEDULE = {
     "close-expired-auctions-every-minute": {

@@ -292,3 +292,10 @@ class PedigreeReportGenerateSerializer(serializers.Serializer):
                 "Report parameters must be an object when provided."
             )
         return value
+
+
+class PedigreeReportMetadataQuerySerializer(serializers.Serializer):
+    generation = serializers.IntegerField(
+        min_value=2,
+        max_value=PEDIGREE_MAX_GENERATION_DEPTH,
+    )
