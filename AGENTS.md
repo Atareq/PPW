@@ -285,9 +285,13 @@ Current profile behavior:
 - `Profile.save()` derives `type` from the concrete subclass
 - live manager accounts are exclusive: a user with a live `ManagerProfile` cannot create live seller/customer profiles, and a live seller/customer user cannot create a live `ManagerProfile`
 - customer registration creates an active customer profile
+- customer registration schedules best-effort `new_user_registered` notifications for active/activated/valid manager profiles after transaction commit
 - manager creation keeps the account manager-only, creates an active/activated `ManagerProfile`, and sets `is_staff=True`
 - `ManagerProfile.permissions` is the source of truth for manager authorization; legacy `UserAccount.permissions` has been removed from the runtime model
 - all profile rows support optional private `national_id` and `address`; public feed/seller discovery serializers do not expose `national_id`
+- customer and seller self-updates to locked identity/profile fields are limited to once every 60 days; admin profile updates bypass the lock but reset the affected user/profile waiting period
+- locked identity fields are `username`, `phone_number`, `secondary_phone_number`, `email`, `first_name`, and `last_name`; locked profile fields are `nickname`, `country`, `currency`, `national_id`, `address`, `loft_name`, `loft_picture`, and `recoded_voice`
+- `ProfileDataChangeLog` records self/admin data changes with changed fields and old/new values; system fields such as activation, validity, permissions, balances, and rating aggregates are not part of this lock/audit policy
 - `ProfileBalanceTransaction` is the ledger for normal `CustomerProfile.balance` and `SellerProfile.balance` manager adjustments
 - normal balance adjustments lock the target profile, reject zero amounts and negative resulting balances, and use unique idempotency keys
 - manager permissions are centrally defined in `apps.users.manager_permissions` as a static action catalog, not generated module levels
@@ -827,7 +831,10 @@ Current notifications behavior:
   - seller decision timeout auto-cancelled order items
   - new auction bids to the auction owner
   - auction won
+  - auction lost
+  - auction reserve not met
   - buy-now success to the buyer
+  - new customer registration to active managers
   - complaint status updated
   - manual manager notifications
   - badge awarded
@@ -1215,11 +1222,13 @@ Current auction API:
 Current auction behavior:
 
 - auction type values are `single`, `multi`, `pair`, `breeding`, and `racing`
+- auction bid visibility values are `public` and `sealed`; `AuctionType` remains only the item-structure classifier and `sealed` is not an auction type
 - auction statuses are `active`, `ended`, `cancelled`, and `closed`
 - auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
 - `Auction.seller_package` is a nullable FK to `SellerPackage`; existing rows and manager-created rows can be null
 - auction creation requires future `start_time`, later `end_time`, and nested item payloads
-- `AuctionCreateSerializer` owns auction creation field-shape checks such as future/later times, auto-extend minutes, deposit payment deadline, buy-now price, and required `paired_bird_id` for pair-style auctions
+- `AuctionCreateSerializer` owns auction creation field-shape checks such as future/later times, `bid_visibility`, optional per-item `reserve_price`, auto-extend minutes, deposit payment deadline, buy-now price, and required `paired_bird_id` for pair-style auctions
+- `AuctionItem.reserve_price` is optional; when supplied it must be greater than or equal to `starting_price`
 - `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, pair gender rules, duplicate bird rejection, and overlapping active-auction bird rejection
 - manager-created auctions bypass seller bird ownership validation because managers are using the administrative auction creation path
 - `AuctionService.create_auction()` writes a `created` event
@@ -1227,19 +1236,22 @@ Current auction behavior:
 - seller-created auctions are linked to the consumed `SellerPackage`
 - manager-created auctions bypass seller package consumption and keep `seller_package=NULL`
 - auction update, cancellation, close, bidding, and buy-now do not consume package points
-- auction list/detail serializers expose FE-safe read-only fields including `is_active`, `is_ended`, `buy_now_price`, `buy_now_enabled`, `min_bid_increment`, `current_price`, `thumbnail_url`, and `is_owner`; `chat_enabled` is not exposed because no such model field exists
+- auction list/detail serializers expose FE-safe read-only fields including `is_active`, `is_ended`, `bid_visibility`, `buy_now_price`, `buy_now_enabled`, `min_bid_increment`, `current_price`, `thumbnail_url`, and `is_owner`; `chat_enabled` is not exposed because no such model field exists
+- sealed-auction buyer-facing serializers hide active competitive data: bid lists, current highest bidder, reserve price, and current price; owner/manager views can see full bid and reserve details
 - auction item detail exposes `winner_payment_request_id` through the existing auction payment-request relation when present
-- `BidBusinessValidator` requires a customer profile, an active time window, an active item, starting-price compliance, and minimum increment compliance
+- `BidBusinessValidator` requires a customer profile, an active time window, an active item, and starting-price compliance; public auctions also require current-highest plus minimum increment compliance, while sealed auctions do not compare against or reveal the current highest bid
 - bid placement revalidates under an `AuctionItem` row lock before creating the bid
 - bid placement creates a best-effort in-app notification for the auction owner with `auction_id`, `auction_item_id`, and `bid_id` metadata
-- bid placement updates `AuctionItem.current_price`, optionally auto-extends, and writes a `bid_placed` event
+- public bid placement updates `AuctionItem.current_price`; sealed bid placement keeps `current_price` at the starting price until settlement, optionally auto-extends, and writes a `bid_placed` event
+- sealed auction bid list/retrieve access is restricted to a bidder's own bids, the auction owner, and managers; public auctions keep the existing bid read behavior
 - auto-extend uses the module constant `AUCTION_AUTO_EXTEND_MINUTES = 10` as the trigger window and extends by `auction.auto_extend_minutes`
 - `AuctionService.update_auction()` allows updates only when status is `active`, the start time is still in the future, and no bids exist
 - scheduled closing is handled by Celery Beat through `auctions.tasks.close_expired_auctions`
 - `AuctionService.close_expired_auctions()` selects active auctions with `end_time <= now`
 - `AuctionService.close_auction()` is idempotent for already closed auctions
-- closing an auction marks each item `sold` with winner data when bids exist, otherwise `unsold`, sets the auction to `closed`, and writes an `auction_ended` event
-- closing an auction creates a best-effort in-app `auction_won` notification for each winning customer
+- closing an auction resolves each item by `order_by("-amount", "created", "id")`, so highest amount wins, ties go to the earliest server-created bid, and exact timestamp ties go to lower id
+- closing an auction marks each item `sold` with winner data when a qualifying bid exists, otherwise `unsold`, applies reserve-price failures as unsold with no winner, sets the auction to `closed`, and writes an `auction_ended` event
+- closing an auction creates best-effort in-app `auction_won`, `auction_lost`, or `auction_reserve_not_met` notifications as applicable; loser and reserve notifications do not expose winning/highest amounts
 - closing an auction does not create `PaymentRequest` records automatically
 - sold seller-owned auction items can be finalized through buyer-created payment requests
 - buy-now creates a bid at `auction.buy_now_price`, marks the item sold, sets winner fields, updates current price, writes a `buy_now_triggered` event, and creates best-effort `auction_won` and buy-now success notifications for the buyer

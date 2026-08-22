@@ -1,7 +1,9 @@
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.db import transaction
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -19,11 +21,32 @@ from apps.users.models import (
     Profile,
     ProfileBalanceTransaction,
     ProfileBalanceTransactionType,
+    ProfileDataChangeLog,
+    ProfileDataChangeSource,
     SellerProfile,
 )
 
 
 MONEY_QUANT = Decimal("0.01")
+PROFILE_SELF_UPDATE_COOLDOWN_DAYS = 60
+LOCKED_USER_IDENTITY_FIELDS = {
+    "username",
+    "phone_number",
+    "secondary_phone_number",
+    "email",
+    "first_name",
+    "last_name",
+}
+LOCKED_PROFILE_FIELDS = {
+    "nickname",
+    "country",
+    "currency",
+    "national_id",
+    "address",
+    "loft_name",
+    "loft_picture",
+    "recoded_voice",
+}
 
 
 def quantize_money(value):
@@ -87,6 +110,158 @@ class ProfileBalanceService:
             idempotency_key=idempotency_key,
             metadata={},
         )
+
+
+class ProfileDataChangeService:
+    """Audit profile/identity edits and enforce the self-update cooldown."""
+
+    @classmethod
+    def prepare_change(
+        cls,
+        *,
+        profile,
+        profile_data,
+        user_data,
+        source,
+        actor_user=None,
+        actor_profile=None,
+    ):
+        profile_changes = cls._changed_values(profile, profile_data)
+        user_changes = cls._changed_values(profile.user, user_data)
+        changed_fields = sorted(
+            list(profile_changes["old"].keys()) + list(user_changes["old"].keys())
+        )
+        locked_profile_changed = bool(
+            set(profile_changes["old"]) & LOCKED_PROFILE_FIELDS
+        )
+        locked_user_changed = bool(
+            set(user_changes["old"]) & LOCKED_USER_IDENTITY_FIELDS
+        )
+
+        if source == ProfileDataChangeSource.SELF_UPDATE:
+            cls._validate_self_update_cooldown(
+                profile,
+                locked_profile_changed=locked_profile_changed,
+                locked_user_changed=locked_user_changed,
+            )
+
+        return {
+            "changed_fields": changed_fields,
+            "old_values": {
+                **profile_changes["old"],
+                **user_changes["old"],
+            },
+            "new_values": {
+                **profile_changes["new"],
+                **user_changes["new"],
+            },
+            "locked_profile_changed": locked_profile_changed,
+            "locked_user_changed": locked_user_changed,
+            "source": source,
+            "actor_user": actor_user,
+            "actor_profile": actor_profile,
+        }
+
+    @classmethod
+    def commit_change(cls, *, profile, prepared_change):
+        if not prepared_change["changed_fields"]:
+            return None
+
+        now = timezone.now()
+        update_profile_fields = []
+        update_user_fields = []
+        actor_profile = prepared_change["actor_profile"]
+
+        if prepared_change["locked_profile_changed"]:
+            profile.profile_data_last_changed_at = now
+            profile.profile_data_last_changed_by = actor_profile
+            update_profile_fields.extend(
+                [
+                    "profile_data_last_changed_at",
+                    "profile_data_last_changed_by",
+                    "modified",
+                ]
+            )
+
+        if prepared_change["locked_user_changed"]:
+            profile.user.identity_data_last_changed_at = now
+            profile.user.identity_data_last_changed_by_profile = actor_profile
+            update_user_fields.extend(
+                [
+                    "identity_data_last_changed_at",
+                    "identity_data_last_changed_by_profile",
+                    "modified",
+                ]
+            )
+
+        if update_profile_fields:
+            profile.save(update_fields=update_profile_fields)
+        if update_user_fields:
+            profile.user.save(update_fields=update_user_fields)
+
+        return ProfileDataChangeLog.objects.create(
+            user=profile.user,
+            profile=profile,
+            changed_by_profile=actor_profile,
+            changed_by_user=prepared_change["actor_user"],
+            actor_role=getattr(actor_profile, "type", "") if actor_profile else "",
+            changed_fields=prepared_change["changed_fields"],
+            old_values=prepared_change["old_values"],
+            new_values=prepared_change["new_values"],
+            source=prepared_change["source"],
+        )
+
+    @classmethod
+    def _validate_self_update_cooldown(
+        cls,
+        profile,
+        *,
+        locked_profile_changed,
+        locked_user_changed,
+    ):
+        cutoff = timezone.now() - timedelta(days=PROFILE_SELF_UPDATE_COOLDOWN_DAYS)
+        if (
+            locked_profile_changed
+            and profile.profile_data_last_changed_at
+            and profile.profile_data_last_changed_at > cutoff
+        ):
+            raise ValidationError(
+                _("Profile data can only be updated once every 60 days.")
+            )
+        if (
+            locked_user_changed
+            and profile.user.identity_data_last_changed_at
+            and profile.user.identity_data_last_changed_at > cutoff
+        ):
+            raise ValidationError(
+                _("Profile data can only be updated once every 60 days.")
+            )
+
+    @classmethod
+    def _changed_values(cls, instance, submitted_data):
+        old_values = {}
+        new_values = {}
+        for field, value in submitted_data.items():
+            old_value = getattr(instance, field)
+            if cls._normalize_value(old_value) == cls._normalize_value(value):
+                continue
+            old_values[field] = cls._serialize_value(old_value)
+            new_values[field] = cls._serialize_value(value)
+        return {"old": old_values, "new": new_values}
+
+    @staticmethod
+    def _normalize_value(value):
+        return "" if value is None else str(value)
+
+    @staticmethod
+    def _serialize_value(value):
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Decimal):
+            return str(value)
+        return str(value)
 
 
 class ManagerPermissionService:

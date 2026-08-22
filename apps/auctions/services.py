@@ -32,6 +32,7 @@ from rest_framework.exceptions import ValidationError
 from apps.assets.models import Bird
 from apps.auctions.models import (
     Auction,
+    AuctionBidVisibility,
     AuctionEvent,
     AuctionItem,
     AuctionItemStatus,
@@ -304,12 +305,14 @@ class AuctionFactory:
             bird_id = item_data.get("bird_id")
             paired_bird_id = item_data.get("paired_bird_id")
             starting_price = item_data.get("starting_price", Decimal("1.00"))
+            reserve_price = item_data.get("reserve_price")
 
             item = AuctionItem(
                 auction=auction,
                 bird_id=bird_id,
                 paired_bird_id=paired_bird_id,
                 starting_price=starting_price,
+                reserve_price=reserve_price,
                 current_price=starting_price,
                 status=AuctionItemStatus.ACTIVE,
             )
@@ -669,6 +672,9 @@ class BidBusinessValidator:
                 % {"amount": self.item.starting_price}
             )
 
+        if self.auction.bid_visibility == AuctionBidVisibility.SEALED:
+            return
+
         current_highest = self.item.current_highest_bid_amount()
         min_required = self.item.starting_price
         if current_highest is not None:
@@ -752,8 +758,9 @@ class BiddingService:
             amount=amount,
         )
 
-        item.current_price = amount
-        item.save()
+        if auction.bid_visibility == AuctionBidVisibility.PUBLIC:
+            item.current_price = amount
+            item.save(update_fields=["current_price", "modified"])
         was_last_minute = (
             timedelta(0) < auction.end_time - timezone.now() <= timedelta(minutes=5)
         )
@@ -841,6 +848,10 @@ class SettlementService:
     - Determine winners (highest bidder per item)
     - Mark items as SOLD/UNSOLD
     - Leave payment requests and ownership transfer to apps.payments
+
+    TODO: Payment expiry and fallback to the second-highest bidder requires
+    redesign because AuctionPaymentRequest is currently one-to-one with
+    AuctionItem.
     """
 
     @staticmethod
@@ -864,16 +875,16 @@ class SettlementService:
     def _settle_item(item: AuctionItem) -> None:
         """Determine winner and mark item status"""
 
-        # Get highest bid
-        winning_bid = item.bids.order_by("-amount").first()
+        winning_bid = item.bids.order_by("-amount", "created", "id").first()
 
-        if winning_bid:
-            # Item sold
+        if winning_bid and (
+            item.reserve_price is None or winning_bid.amount >= item.reserve_price
+        ):
             item.status = AuctionItemStatus.SOLD
             item.winner = winning_bid.bidder
             item.winner_bid = winning_bid
+            item.current_price = winning_bid.amount
         else:
-            # No bids - item unsold
             item.status = AuctionItemStatus.UNSOLD
             item.winner = None
             item.winner_bid = None
@@ -881,6 +892,9 @@ class SettlementService:
         item.save()
         if winning_bid and item.winner_id:
             SettlementService._schedule_auction_won_notification(item)
+            SettlementService._schedule_auction_lost_notifications(item)
+        elif winning_bid and item.reserve_price is not None:
+            SettlementService._schedule_reserve_not_met_notifications(item)
 
     @staticmethod
     def trigger_buy_now(
@@ -945,25 +959,85 @@ class SettlementService:
 
     @staticmethod
     def _schedule_auction_won_notification(item):
+        from apps.notifications.models import NotificationType
         from apps.notifications.services import NotificationService
 
         transaction.on_commit(
             lambda: NotificationService.safe_create_notification(
                 recipient_profile=item.winner,
                 actor_profile=item.auction.owner,
-                notification_type="auction_won",
+                notification_type=NotificationType.AUCTION_WON,
                 title=_("Auction won"),
-                body=_("You won the auction item."),
+                body=_("Congratulations! You won this auction item."),
                 object_type="auction_item",
                 object_id=item.pk,
                 metadata={
                     "auction_id": item.auction_id,
                     "auction_item_id": item.pk,
                     "bid_id": item.winner_bid_id,
+                    "winning_amount": str(item.current_price),
+                    "payment_deadline_days": item.auction.payment_deadline_days,
                 },
                 idempotency_key=f"auction_won:{item.pk}:{item.winner_id}",
             )
         )
+
+    @staticmethod
+    def _schedule_auction_lost_notifications(item):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        losing_bidder_ids = (
+            item.bids.exclude(bidder_id=item.winner_id)
+            .order_by("bidder_id")
+            .values_list("bidder_id", flat=True)
+            .distinct()
+        )
+        for bidder_id in losing_bidder_ids:
+            transaction.on_commit(
+                lambda bidder_id=bidder_id: NotificationService.safe_create_notification(
+                    recipient_profile=bidder_id,
+                    actor_profile=item.auction.owner,
+                    notification_type=NotificationType.AUCTION_LOST,
+                    title=_("Auction ended"),
+                    body=_("You did not win this auction."),
+                    object_type="auction_item",
+                    object_id=item.pk,
+                    metadata={
+                        "auction_id": item.auction_id,
+                        "auction_item_id": item.pk,
+                    },
+                    idempotency_key=f"auction_lost:{item.pk}:{bidder_id}",
+                )
+            )
+
+    @staticmethod
+    def _schedule_reserve_not_met_notifications(item):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        bidder_ids = (
+            item.bids.order_by("bidder_id")
+            .values_list("bidder_id", flat=True)
+            .distinct()
+        )
+        for bidder_id in bidder_ids:
+            transaction.on_commit(
+                lambda bidder_id=bidder_id: NotificationService.safe_create_notification(
+                    recipient_profile=bidder_id,
+                    actor_profile=item.auction.owner,
+                    notification_type=NotificationType.AUCTION_RESERVE_NOT_MET,
+                    title=_("Auction ended"),
+                    body=_("The reserve price was not met."),
+                    object_type="auction_item",
+                    object_id=item.pk,
+                    metadata={
+                        "auction_id": item.auction_id,
+                        "auction_item_id": item.pk,
+                    },
+                    idempotency_key=f"auction_reserve_not_met:{item.pk}:{bidder_id}",
+                )
+            )
 
     @staticmethod
     def _schedule_buy_now_success_notification(item, bid):

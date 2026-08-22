@@ -6,8 +6,16 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.assets.models import Bird
-from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
+from apps.auctions.models import (
+    Auction,
+    AuctionBidVisibility,
+    AuctionEvent,
+    AuctionItem,
+    AuctionItemStatus,
+    Bid,
+)
 from apps.auctions.services import AuctionService, SettlementService
+from apps.users.constants import ProfileType
 
 # ============================================================================
 # NESTED SERIALIZERS
@@ -57,15 +65,16 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
 
     bird = BirdBasicSerializer(read_only=True)
     paired_bird = BirdBasicSerializer(read_only=True)
-    bids = BidSerializer(many=True, read_only=True)
-    current_highest_bidder = serializers.CharField(read_only=True)
-    winner_username = serializers.CharField(
-        source="winner.username", read_only=True, allow_null=True
-    )
     is_active = serializers.SerializerMethodField()
     auction_title = serializers.CharField(source="auction.title", read_only=True)
     auction_id = serializers.IntegerField(source="auction.id", read_only=True)
     winner_payment_request_id = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
+    reserve_price = serializers.SerializerMethodField()
+    bids = serializers.SerializerMethodField()
+    current_highest_bidder = serializers.SerializerMethodField()
+    winner = serializers.SerializerMethodField()
+    winner_username = serializers.SerializerMethodField()
 
     class Meta:
         model = AuctionItem
@@ -75,6 +84,7 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
             "paired_bird",
             "status",
             "starting_price",
+            "reserve_price",
             "current_price",
             "winner",
             "winner_username",
@@ -101,6 +111,41 @@ class AuctionItemDetailSerializer(serializers.ModelSerializer):
     def get_is_active(self, obj) -> bool:
         return obj.is_active()
 
+    def get_current_price(self, obj):
+        if _should_hide_sealed_competitive_data(obj, self.context.get("request")):
+            return None
+        return obj.current_price
+
+    def get_reserve_price(self, obj):
+        if not _can_view_private_auction_data(obj.auction, self.context.get("request")):
+            return None
+        return obj.reserve_price
+
+    def get_bids(self, obj):
+        if _should_hide_sealed_competitive_data(obj, self.context.get("request")):
+            return []
+        return BidSerializer(
+            obj.bids.all(),
+            many=True,
+            context=self.context,
+        ).data
+
+    def get_current_highest_bidder(self, obj):
+        if _should_hide_sealed_competitive_data(obj, self.context.get("request")):
+            return None
+        bidder = obj.current_highest_bidder()
+        return str(bidder) if bidder else None
+
+    def get_winner(self, obj):
+        if _should_hide_unsettled_sealed_winner(obj, self.context.get("request")):
+            return None
+        return obj.winner_id
+
+    def get_winner_username(self, obj):
+        if _should_hide_unsettled_sealed_winner(obj, self.context.get("request")):
+            return None
+        return getattr(obj.winner, "username", None)
+
     def get_winner_payment_request_id(self, obj):
         try:
             payment_request = obj.payment_request
@@ -116,8 +161,10 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
 
     bird_name = serializers.CharField(source="bird.name", read_only=True)
     bird_gender = serializers.CharField(source="bird.gender", read_only=True)
-    current_highest_bidder = serializers.CharField(read_only=True)
+    current_highest_bidder = serializers.SerializerMethodField()
     is_active = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
+    reserve_price = serializers.SerializerMethodField()
 
     class Meta:
         model = AuctionItem
@@ -127,6 +174,7 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
             "bird_gender",
             "status",
             "starting_price",
+            "reserve_price",
             "current_price",
             "current_highest_bidder",
             "is_active",
@@ -140,6 +188,22 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
 
     def get_is_active(self, obj) -> bool:
         return obj.is_active()
+
+    def get_current_price(self, obj):
+        if _should_hide_sealed_competitive_data(obj, self.context.get("request")):
+            return None
+        return obj.current_price
+
+    def get_reserve_price(self, obj):
+        if not _can_view_private_auction_data(obj.auction, self.context.get("request")):
+            return None
+        return obj.reserve_price
+
+    def get_current_highest_bidder(self, obj):
+        if _should_hide_sealed_competitive_data(obj, self.context.get("request")):
+            return None
+        bidder = obj.current_highest_bidder()
+        return str(bidder) if bidder else None
 
 
 class AuctionEventSerializer(serializers.ModelSerializer):
@@ -196,6 +260,7 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "description",
             "auction_type",
             "auction_type_display",
+            "bid_visibility",
             "seller_nickname",
             "owner",
             "seller_package",
@@ -254,6 +319,8 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
         item = _first_auction_item(obj)
         if item is None:
             return None
+        if _should_hide_sealed_competitive_data(item, self.context.get("request")):
+            return None
         return item.current_price
 
     def get_thumbnail_url(self, obj):
@@ -288,6 +355,7 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "title",
             "auction_type",
             "auction_type_display",
+            "bid_visibility",
             "status_display",
             "seller_nickname",
             "seller_package",
@@ -338,6 +406,8 @@ class AuctionListSerializer(serializers.ModelSerializer):
         item = _first_auction_item(obj)
         if item is None:
             return None
+        if _should_hide_sealed_competitive_data(item, self.context.get("request")):
+            return None
         return item.current_price
 
     def get_thumbnail_url(self, obj):
@@ -375,6 +445,44 @@ def _is_request_profile_owner(auction, request):
     return active_profile.pk == auction.owner_id
 
 
+def _request_active_profile(request):
+    if request is None or not getattr(request, "user", None):
+        return None
+    user = request.user
+    if not getattr(user, "is_authenticated", False):
+        return None
+    try:
+        return user.active_profile
+    except PermissionDenied:
+        return None
+
+
+def _can_view_private_auction_data(auction, request):
+    profile = _request_active_profile(request)
+    if profile is None:
+        return False
+    return (
+        profile.pk == auction.owner_id
+        or getattr(profile, "type", None) == ProfileType.MANAGER
+    )
+
+
+def _should_hide_sealed_competitive_data(item, request):
+    if item.auction.bid_visibility != AuctionBidVisibility.SEALED:
+        return False
+    if _can_view_private_auction_data(item.auction, request):
+        return False
+    return item.status == AuctionItemStatus.ACTIVE
+
+
+def _should_hide_unsettled_sealed_winner(item, request):
+    if item.auction.bid_visibility != AuctionBidVisibility.SEALED:
+        return False
+    if _can_view_private_auction_data(item.auction, request):
+        return False
+    return item.status == AuctionItemStatus.ACTIVE
+
+
 # ============================================================================
 # CREATION & ACTION SERIALIZERS
 # ============================================================================
@@ -398,8 +506,26 @@ class AuctionItemInputSerializer(serializers.Serializer):
     bird_id = serializers.IntegerField()
     paired_bird_id = serializers.IntegerField(required=False, allow_null=True)
     starting_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    reserve_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
 
     description = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        reserve_price = attrs.get("reserve_price")
+        if reserve_price is not None and reserve_price < attrs["starting_price"]:
+            raise serializers.ValidationError(
+                {
+                    "reserve_price": _(
+                        "Reserve price must be greater than or equal to starting price."
+                    )
+                }
+            )
+        return attrs
 
 
 # ============================================================================
@@ -445,6 +571,10 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
 
     items = AuctionItemInputSerializer(many=True, allow_empty=False)
     seller_package_id = serializers.IntegerField(write_only=True)
+    bid_visibility = serializers.ChoiceField(
+        choices=AuctionBidVisibility.choices,
+        default=AuctionBidVisibility.PUBLIC,
+    )
 
     class Meta:
         model = Auction
@@ -453,6 +583,7 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "auction_type",
+            "bid_visibility",
             "start_time",
             "end_time",
             "auto_extend_enabled",

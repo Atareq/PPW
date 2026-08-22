@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.auctions.models import Auction, AuctionEvent, AuctionItem, Bid
+from apps.auctions.models import Auction, AuctionBidVisibility, AuctionEvent, AuctionItem, Bid
 from apps.auctions.serializers import (
     AuctionCreateSerializer,
     AuctionDetailSerializer,
@@ -203,6 +203,10 @@ class AuctionViewSet(viewsets.ModelViewSet):
             title=validated_data["title"],
             description=validated_data.get("description", ""),
             auction_type=validated_data["auction_type"],
+            bid_visibility=validated_data.get(
+                "bid_visibility",
+                AuctionBidVisibility.PUBLIC,
+            ),
             start_time=validated_data["start_time"],
             end_time=validated_data["end_time"],
             auto_extend_enabled=validated_data.get("auto_extend_enabled", False),
@@ -229,7 +233,10 @@ class AuctionViewSet(viewsets.ModelViewSet):
         if not auction:
             raise ValidationError(_("Failed to create auction"))
         return Response(
-            AuctionDetailSerializer(auction).data,
+            AuctionDetailSerializer(
+                auction,
+                context=self.get_serializer_context(),
+            ).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -253,7 +260,10 @@ class AuctionViewSet(viewsets.ModelViewSet):
         try:
             auction = serializer.save()
             return Response(
-                AuctionDetailSerializer(auction).data,
+                AuctionDetailSerializer(
+                    auction,
+                    context=self.get_serializer_context(),
+                ).data,
                 status=status.HTTP_200_OK,
             )
         except ValidationError as e:
@@ -345,7 +355,11 @@ class AuctionViewSet(viewsets.ModelViewSet):
         serializer.save()
 
         return Response(
-            AuctionDetailSerializer(auction).data, status=status.HTTP_200_OK
+            AuctionDetailSerializer(
+                auction,
+                context=self.get_serializer_context(),
+            ).data,
+            status=status.HTTP_200_OK,
         )
 
     @action(
@@ -368,7 +382,10 @@ class AuctionViewSet(viewsets.ModelViewSet):
             )
 
             return Response(
-                AuctionDetailSerializer(auction).data,
+                AuctionDetailSerializer(
+                    auction,
+                    context=self.get_serializer_context(),
+                ).data,
                 status=status.HTTP_200_OK,
             )
         except ValidationError as e:
@@ -470,7 +487,10 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
                 amount=amount,
             )
 
-            return Response(BidSerializer(bid).data, status=status.HTTP_201_CREATED)
+            return Response(
+                BidSerializer(bid, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
+            )
         except ValidationError as e:
             raise ValidationError(str(e.detail))
 
@@ -493,7 +513,10 @@ class AuctionItemViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
         bid = serializer.save()
 
-        return Response(BidSerializer(bid).data, status=status.HTTP_201_CREATED)
+        return Response(
+            BidSerializer(bid, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 @extend_schema_view(
@@ -545,14 +568,43 @@ class BidViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        queryset = Bid.objects.order_by("-amount")
+        queryset = Bid.objects.select_related(
+            "bidder",
+            "item",
+            "item__auction",
+        ).order_by("-amount", "created", "id")
 
         if self.action == "list":
             item_id = self.request.query_params.get("item_id")
             if item_id:
                 queryset = queryset.filter(item_id=item_id)
 
+        if self.action in {"list", "retrieve"}:
+            queryset = self._restrict_sealed_bids(queryset)
+
         return queryset
+
+    def _restrict_sealed_bids(self, queryset):
+        public_bids = queryset.exclude(
+            item__auction__bid_visibility=AuctionBidVisibility.SEALED,
+        )
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return public_bids
+
+        active_profile = user.active_profile
+        if active_profile.type == ProfileType.MANAGER:
+            return queryset
+
+        own_sealed_bids = queryset.filter(
+            item__auction__bid_visibility=AuctionBidVisibility.SEALED,
+            bidder=active_profile,
+        )
+        owned_auction_sealed_bids = queryset.filter(
+            item__auction__bid_visibility=AuctionBidVisibility.SEALED,
+            item__auction__owner=active_profile,
+        )
+        return public_bids | own_sealed_bids | owned_auction_sealed_bids
 
     @action(
         detail=False,

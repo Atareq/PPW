@@ -1,12 +1,16 @@
 from io import BytesIO
+from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from PIL import Image
 import pytest
 from rest_framework import status
+from rest_framework.test import APIClient
 
+from apps.authentication.services import build_token_for_user
 from apps.authentication.models import UserAccount
-from apps.users.models import CustomerProfile, SellerProfile
+from apps.users.models import CustomerProfile, ProfileDataChangeLog, SellerProfile
 from tests.factories import UserAccountFactory
 
 pytestmark = pytest.mark.django_db
@@ -67,6 +71,16 @@ def test_customer_can_store_and_update_secondary_phone_number(
         format="json",
     )
 
+    assert update_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    customer_user.identity_data_last_changed_at = timezone.now() - timedelta(days=61)
+    customer_user.save(update_fields=["identity_data_last_changed_at"])
+    update_response = authenticated_customer_client.patch(
+        f"{CUSTOMER_PROFILE_URL}{customer_profile.id}/",
+        {"secondary_phone_number": "+201115556677"},
+        format="json",
+    )
+
     assert update_response.status_code == status.HTTP_200_OK
     assert update_response.data["secondary_phone_number"] == "+201115556677"
 
@@ -98,6 +112,16 @@ def test_customer_can_store_and_update_loft_name(
     customer_profile.refresh_from_db()
     assert customer_profile.loft_name == "Sunrise Loft"
 
+    update_response = authenticated_customer_client.patch(
+        f"{CUSTOMER_PROFILE_URL}{customer_profile.id}/",
+        {"loft_name": "Evening Loft"},
+        format="json",
+    )
+
+    assert update_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    customer_profile.profile_data_last_changed_at = timezone.now() - timedelta(days=61)
+    customer_profile.save(update_fields=["profile_data_last_changed_at"])
     update_response = authenticated_customer_client.patch(
         f"{CUSTOMER_PROFILE_URL}{customer_profile.id}/",
         {"loft_name": "Evening Loft"},
@@ -139,6 +163,16 @@ def test_seller_can_upload_and_update_loft_picture(
         format="multipart",
     )
 
+    assert replacement_response.status_code == status.HTTP_400_BAD_REQUEST
+
+    seller_profile.profile_data_last_changed_at = timezone.now() - timedelta(days=61)
+    seller_profile.save(update_fields=["profile_data_last_changed_at"])
+    replacement_response = authenticated_seller_client.patch(
+        f"{SELLER_PROFILE_URL}{seller_profile.id}/",
+        {"loft_picture": loft_picture_file("replacement-loft.jpg")},
+        format="multipart",
+    )
+
     assert replacement_response.status_code == status.HTTP_200_OK
     assert "replacement-loft" in replacement_response.data["loft_picture"]
 
@@ -174,3 +208,64 @@ def test_registration_and_login_do_not_require_new_fields(api_client):
     assert login_response.status_code == status.HTTP_200_OK
     assert "access" in login_response.data
     assert "refresh" in login_response.data
+
+
+def test_self_profile_update_writes_change_log(
+    authenticated_customer_client,
+    customer_user,
+):
+    customer_profile = CustomerProfile.objects.get(user=customer_user)
+
+    response = authenticated_customer_client.patch(
+        f"{CUSTOMER_PROFILE_URL}{customer_profile.id}/",
+        {"country": "US"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    log = ProfileDataChangeLog.objects.get(profile=customer_profile)
+    assert log.source == "self_update"
+    assert log.changed_by_profile_id == customer_profile.pk
+    assert log.changed_by_user_id == customer_user.pk
+    assert log.changed_fields == ["country"]
+
+
+def test_admin_update_bypasses_lock_and_resets_customer_cooldown(
+    superuser_manager,
+    customer_user,
+):
+    customer_profile = CustomerProfile.objects.get(user=customer_user)
+    customer_profile.profile_data_last_changed_at = timezone.now()
+    customer_profile.save(update_fields=["profile_data_last_changed_at"])
+    client = APIClient()
+    refresh = build_token_for_user(superuser_manager)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+
+    response = client.patch(
+        f"/api/users/admin/customers/{customer_profile.id}/",
+        {
+            "country": "US",
+            "secondary_phone_number": "+201110000001",
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    customer_profile.refresh_from_db()
+    assert customer_profile.country == "US"
+    assert customer_profile.profile_data_last_changed_at is not None
+    customer_user.refresh_from_db()
+    assert customer_user.identity_data_last_changed_at is not None
+    log = ProfileDataChangeLog.objects.get(profile=customer_profile)
+    assert log.source == "admin_update"
+
+    mobile_client = APIClient()
+    refresh = build_token_for_user(customer_user)
+    mobile_client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+    blocked_response = mobile_client.patch(
+        f"{CUSTOMER_PROFILE_URL}{customer_profile.id}/",
+        {"country": "EG"},
+        format="json",
+    )
+
+    assert blocked_response.status_code == status.HTTP_400_BAD_REQUEST

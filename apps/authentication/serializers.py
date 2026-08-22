@@ -5,7 +5,10 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.authentication.mixins import PhoneValidationMixin
 from apps.authentication.models import UserAccount
-from apps.authentication.services import build_token_for_user
+from apps.authentication.services import (
+    build_token_for_user,
+    notify_managers_new_user_registered,
+)
 from apps.users.models import CustomerProfile, ManagerProfile
 from apps.users.serializers import (
     CustomerProfileMobileSerializer,
@@ -68,6 +71,7 @@ class CustomerRegisterSerializer(PhoneValidationMixin, serializers.ModelSerializ
             from apps.lucky_wheel.services import LuckyWheelGrantService
 
             LuckyWheelGrantService.grant_onboarding_attempt(customer_profile)
+            notify_managers_new_user_registered(user, customer_profile)
 
         return user
 

@@ -11,12 +11,19 @@ from apps.users.models import (
     ManagerProfile,
     Profile,
     ProfileBalanceTransaction,
+    ProfileDataChangeSource,
     SellerProfile,
 )
-from apps.users.services import ManagerPermissionService, ProfileBalanceService
+from apps.users.services import (
+    ManagerPermissionService,
+    ProfileBalanceService,
+    ProfileDataChangeService,
+)
 
 
 class UserSecondaryPhoneMixin(serializers.Serializer):
+    profile_data_change_source = None
+
     secondary_phone_number = serializers.CharField(
         source="user.secondary_phone_number",
         required=False,
@@ -26,6 +33,9 @@ class UserSecondaryPhoneMixin(serializers.Serializer):
 
     def create(self, validated_data):
         user_data = validated_data.pop("user", {})
+        if user_data and not isinstance(user_data, dict):
+            validated_data["user"] = user_data
+            user_data = {}
         instance = super().create(validated_data)
         if "secondary_phone_number" in user_data:
             instance.user.secondary_phone_number = (
@@ -36,17 +46,41 @@ class UserSecondaryPhoneMixin(serializers.Serializer):
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop("user", {})
-        profile_instance = super().update(instance, validated_data)
         if "secondary_phone_number" in user_data:
-            profile_instance.user.secondary_phone_number = (
+            user_data["secondary_phone_number"] = (
                 user_data["secondary_phone_number"] or None
             )
-            profile_instance.user.save(update_fields=["secondary_phone_number"])
+        request = self.context.get("request")
+        actor_user = getattr(request, "user", None)
+        actor_profile = _active_profile_or_none(actor_user)
+        prepared_change = ProfileDataChangeService.prepare_change(
+            profile=instance,
+            profile_data=validated_data,
+            user_data=user_data,
+            source=self.profile_data_change_source,
+            actor_user=actor_user,
+            actor_profile=actor_profile,
+        )
+
+        with transaction.atomic():
+            profile_instance = super().update(instance, validated_data)
+            if user_data:
+                for field, value in user_data.items():
+                    setattr(profile_instance.user, field, value)
+                profile_instance.user.save(
+                    update_fields=[*user_data.keys(), "modified"]
+                )
+            ProfileDataChangeService.commit_change(
+                profile=profile_instance,
+                prepared_change=prepared_change,
+            )
         return profile_instance
 
 
 # ---------------- Dashboard Serializer ----------------
 class SellerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
+    profile_data_change_source = ProfileDataChangeSource.ADMIN_UPDATE
+
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -72,6 +106,8 @@ class SellerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSer
 
 
 class CustomerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
+    profile_data_change_source = ProfileDataChangeSource.ADMIN_UPDATE
+
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -112,6 +148,8 @@ class CustomerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelS
 
 # ---------------- Mobile Serializer ----------------
 class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
+    profile_data_change_source = ProfileDataChangeSource.SELF_UPDATE
+
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -177,6 +215,8 @@ class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSe
 
 
 class CustomerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
+    profile_data_change_source = ProfileDataChangeSource.SELF_UPDATE
+
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
     successful_invites_count = serializers.SerializerMethodField()
@@ -486,3 +526,12 @@ def _completed_customer_orders_count(profile):
             deleted__isnull=True,
         ).count(),
     )
+
+
+def _active_profile_or_none(user):
+    if not user or not getattr(user, "is_authenticated", False):
+        return None
+    try:
+        return user.active_profile
+    except Exception:
+        return None

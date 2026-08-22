@@ -18,6 +18,14 @@ class UserAccount(AbstractUser, BaseModel):
         blank=True,
         db_index=True,
     )
+    identity_data_last_changed_at = models.DateTimeField(null=True, blank=True)
+    identity_data_last_changed_by_profile = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS = []
 

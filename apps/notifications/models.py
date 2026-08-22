@@ -40,6 +40,12 @@ class NotificationType(models.TextChoices):
     )
     AUCTION_WON = "auction_won", _("Auction Won")
     AUCTION_OUTBID = "auction_outbid", _("Auction Outbid")
+    AUCTION_LOST = "auction_lost", _("Auction Lost")
+    AUCTION_RESERVE_NOT_MET = (
+        "auction_reserve_not_met",
+        _("Auction Reserve Not Met"),
+    )
+    NEW_USER_REGISTERED = "new_user_registered", _("New User Registered")
     COMPLAINT_CREATED = "complaint_created", _("Complaint Created")
     COMPLAINT_STATUS_UPDATED = (
         "complaint_status_updated",

@@ -21,6 +21,13 @@ class AuctionType(models.TextChoices):
     RACING = "racing", _("Racing/Loft Group")
 
 
+class AuctionBidVisibility(models.TextChoices):
+    """Bid visibility mode for an auction."""
+
+    PUBLIC = "public", _("Public Auction")
+    SEALED = "sealed", _("Silent Auction")
+
+
 class AuctionItemStatus(models.TextChoices):
     """Individual item states within an auction"""
 
@@ -63,6 +70,12 @@ class Auction(OwnerBaseModel):
     # Auction type determines behavior
     auction_type = models.CharField(
         max_length=20, choices=AuctionType.choices, default=AuctionType.SINGLE
+    )
+    bid_visibility = models.CharField(
+        max_length=20,
+        choices=AuctionBidVisibility.choices,
+        default=AuctionBidVisibility.PUBLIC,
+        db_index=True,
     )
 
     # Timing - Global for all items in this auction
@@ -131,6 +144,7 @@ class Auction(OwnerBaseModel):
             models.Index(fields=["end_time"]),
             models.Index(fields=["owner"]),
             models.Index(fields=["auction_type"]),
+            models.Index(fields=["bid_visibility"]),
             models.Index(fields=["is_visible"]),
         ]
         ordering = ["-created"]
@@ -202,6 +216,13 @@ class AuctionItem(BaseModel):
         validators=[MinValueValidator(0)],
         help_text=_("Minimum starting price for bids"),
     )
+    reserve_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
 
     current_price = models.DecimalField(
         max_digits=10,
@@ -243,12 +264,12 @@ class AuctionItem(BaseModel):
 
     def current_highest_bid(self):
         """Get the current highest bid for this item"""
-        return self.bids.order_by("-amount").first()
+        return self.bids.order_by("-amount", "created", "id").first()
 
     def current_highest_bid_amount(self):
         """Get the current highest bid for this item"""
         return (
-            self.bids.order_by("-amount").first().amount if self.bids.exists() else None
+            self.current_highest_bid().amount if self.bids.exists() else None
         )
 
     def current_highest_bidder(self):

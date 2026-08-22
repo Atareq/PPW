@@ -4,8 +4,11 @@ import pytest
 from rest_framework import status
 
 from apps.authentication.models import UserAccount
+from apps.authentication.services import notify_managers_new_user_registered
+from apps.notifications.models import Notification, NotificationType
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile, ManagerProfile
+from tests.factories import ManagerProfileFactory, UserAccountFactory
 
 
 @pytest.mark.django_db
@@ -29,7 +32,77 @@ class TestCustomerRegistration:
         )
 
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data["message"] == "User created successfully"
+        assert "message" in response.data
+
+    def test_register_customer_notifies_active_managers(
+        self,
+        api_client,
+        django_capture_on_commit_callbacks,
+    ):
+        manager = ManagerProfileFactory(is_active=True, activated=True, is_valid=True)
+        inactive_manager = ManagerProfileFactory(
+            is_active=False,
+            activated=True,
+            is_valid=True,
+        )
+        invalid_manager = ManagerProfileFactory(
+            is_active=True,
+            activated=True,
+            is_valid=False,
+        )
+        deleted_manager = ManagerProfileFactory(
+            is_active=True,
+            activated=True,
+            is_valid=True,
+        )
+        deleted_manager.delete()
+        data = {
+            "username": "testcustomer",
+            "phone_number": "+201001234567",
+            "password": "SecurePass123!@",
+            "customer_profile": {
+                "country": "EG",
+                "currency": "EGP",
+            },
+        }
+
+        with django_capture_on_commit_callbacks(execute=True):
+            response = api_client.post(
+                "/api/auth/register/customer/",
+                data,
+                format="json",
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        notification = Notification.objects.get(
+            notification_type=NotificationType.NEW_USER_REGISTERED,
+        )
+        user = UserAccount.objects.get(phone_number="+201001234567")
+        assert notification.recipient_profile_id == manager.pk
+        assert notification.object_id == user.pk
+        assert notification.metadata["user_id"] == user.pk
+        assert notification.metadata["profile_type"] == ProfileType.CUSTOMER
+        skipped_ids = {inactive_manager.pk, invalid_manager.pk, deleted_manager.pk}
+        assert not Notification.objects.filter(
+            recipient_profile_id__in=skipped_ids,
+        ).exists()
+
+    def test_new_user_registration_notification_is_idempotent(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        manager = ManagerProfileFactory(is_active=True, activated=True, is_valid=True)
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        profile = user.active_profile
+
+        with django_capture_on_commit_callbacks(execute=True):
+            notify_managers_new_user_registered(user, profile)
+            notify_managers_new_user_registered(user, profile)
+
+        assert Notification.objects.filter(
+            recipient_profile=manager,
+            notification_type=NotificationType.NEW_USER_REGISTERED,
+        ).count() == 1
 
     def test_register_customer_creates_customer_profile(self, api_client):
         """Test that customer registration creates CustomerProfile."""

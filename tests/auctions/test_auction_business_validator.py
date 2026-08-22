@@ -15,7 +15,7 @@ from django.utils import timezone
 import pytest
 from rest_framework.exceptions import ValidationError
 
-from apps.auctions.models import Auction, AuctionType
+from apps.auctions.models import Auction, AuctionBidVisibility, AuctionType
 from apps.auctions.serializers import AuctionCreateSerializer
 from apps.auctions.services import AuctionBusinessValidator
 from apps.users.models import ProfileType
@@ -157,6 +157,7 @@ class TestAuctionBusinessValidator:
 class TestAuctionCreateSerializer:
     def _valid_payload(self):
         return {
+            "seller_package_id": 1,
             "title": "Test Auction",
             "description": "Test",
             "auction_type": AuctionType.SINGLE,
@@ -184,6 +185,24 @@ class TestAuctionCreateSerializer:
 
         assert not serializer.is_valid()
         assert "auto_extend_minutes" in serializer.errors
+
+    def test_bid_visibility_defaults_to_public(self):
+        payload = self._valid_payload()
+
+        serializer = AuctionCreateSerializer(data=payload)
+
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["bid_visibility"] == AuctionBidVisibility.PUBLIC
+
+    def test_item_reserve_price_must_not_be_below_starting_price(self):
+        payload = self._valid_payload()
+        payload["bid_visibility"] = AuctionBidVisibility.SEALED
+        payload["items"][0]["reserve_price"] = "99.99"
+
+        serializer = AuctionCreateSerializer(data=payload)
+
+        assert not serializer.is_valid()
+        assert "reserve_price" in serializer.errors["items"][0]
 
     def test_deposit_requires_payment_deadline(self):
         """Test that deposit_required needs payment_deadline_days."""

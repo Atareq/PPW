@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.translation import gettext_lazy as _
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.constants import ProfileType
@@ -49,3 +50,37 @@ def build_token_for_user_role(user, profile):
     token["user_id"] = user.id
     token["is_activated"] = profile.activated
     return token
+
+
+def notify_managers_new_user_registered(user, profile):
+    """Notify active managers after a new customer account is committed."""
+
+    from apps.notifications.models import NotificationType
+    from apps.notifications.services import NotificationService
+    from apps.users.models import ManagerProfile
+
+    def _notify():
+        manager_ids = ManagerProfile.objects.filter(
+            is_active=True,
+            activated=True,
+            is_valid=True,
+            deleted__isnull=True,
+        ).values_list("id", flat=True)
+        for manager_id in manager_ids:
+            NotificationService.safe_create_notification(
+                recipient_profile=manager_id,
+                notification_type=NotificationType.NEW_USER_REGISTERED,
+                title=_("New user registered"),
+                body=_("A new user registered in Pigeon Planet."),
+                object_type="user",
+                object_id=user.pk,
+                metadata={
+                    "user_id": user.pk,
+                    "profile_id": profile.pk,
+                    "profile_type": profile.type,
+                    "phone_number": str(user.phone_number),
+                },
+                idempotency_key=f"new_user_registered:{user.pk}:{profile.pk}",
+            )
+
+    transaction.on_commit(_notify)

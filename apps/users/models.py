@@ -43,6 +43,14 @@ class Profile(BaseModel):
         null=True,
         blank=True,
     )
+    profile_data_last_changed_at = models.DateTimeField(null=True, blank=True)
+    profile_data_last_changed_by = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     class Meta:
         unique_together = ("user", "type")
@@ -154,6 +162,57 @@ class ProfileBalanceTransactionType(models.TextChoices):
     MANAGER_ADJUSTMENT = "manager_adjustment", _("Manager Adjustment")
     SYSTEM_CREDIT = "system_credit", _("System Credit")
     SYSTEM_DEBIT = "system_debit", _("System Debit")
+
+
+class ProfileDataChangeSource(models.TextChoices):
+    SELF_UPDATE = "self_update", _("Self Update")
+    ADMIN_UPDATE = "admin_update", _("Admin Update")
+
+
+class ProfileDataChangeLog(BaseModel):
+    user = models.ForeignKey(
+        UserAccount,
+        on_delete=models.PROTECT,
+        related_name="profile_data_change_logs",
+    )
+    profile = models.ForeignKey(
+        Profile,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="data_change_logs",
+    )
+    changed_by_profile = models.ForeignKey(
+        Profile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    changed_by_user = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    actor_role = models.CharField(max_length=30, blank=True)
+    changed_fields = models.JSONField(default=list)
+    old_values = models.JSONField(default=dict, blank=True)
+    new_values = models.JSONField(default=dict, blank=True)
+    source = models.CharField(
+        max_length=30,
+        choices=ProfileDataChangeSource.choices,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-created"]
+        indexes = [
+            models.Index(fields=["user", "-created"]),
+            models.Index(fields=["profile", "-created"]),
+            models.Index(fields=["source", "-created"]),
+        ]
 
 
 class ProfileBalanceTransaction(BaseModel):
