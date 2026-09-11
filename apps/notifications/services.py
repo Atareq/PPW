@@ -39,6 +39,16 @@ def _publish_after_commit(notification_id):
                 notification_id,
             )
 
+        try:
+            from apps.notifications.tasks import deliver_notification_push
+
+            deliver_notification_push.delay(notification_id)
+        except Exception:
+            logger.exception(
+                "Failed to enqueue FCM delivery for notification %s.",
+                notification_id,
+            )
+
     transaction.on_commit(publish)
 
 
@@ -129,9 +139,7 @@ class NotificationService:
         now = timezone.now()
         instance.is_read = True
         instance.read_at = now
-        instance.save(
-            update_fields=["is_read", "read_at", "modified"],
-        )
+        instance.save(update_fields=["is_read", "read_at", "modified"])
         return NotificationService.get_notification(instance.pk)
 
     @staticmethod
@@ -141,11 +149,7 @@ class NotificationService:
         return Notification.objects.filter(
             recipient_profile_id=recipient.pk,
             is_read=False,
-        ).update(
-            is_read=True,
-            read_at=now,
-            modified=now,
-        )
+        ).update(is_read=True, read_at=now, modified=now)
 
     @staticmethod
     def get_unread_count(profile):
