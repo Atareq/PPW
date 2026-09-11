@@ -36,6 +36,7 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "corsheaders",
+    "channels",
     "django_extensions",
     "safedelete",
     "rest_framework",
@@ -47,7 +48,6 @@ THIRD_PARTY_APPS = [
 
 APPS = [
     "apps.assets",
-    "apps.orders",
     "apps.users",
     "apps.general",
     "apps.authentication",
@@ -104,6 +104,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "ppw.wsgi.application"
+ASGI_APPLICATION = "ppw.asgi.application"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -195,6 +196,14 @@ CELERY_TASK_EAGER_PROPAGATES = env_bool(
     "CELERY_TASK_EAGER_PROPAGATES",
     CELERY_TASK_ALWAYS_EAGER,
 )
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv("CHANNEL_REDIS_URL", CELERY_BROKER_URL)],
+        },
+    },
+}
 ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS = int(
     os.getenv("ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS", "3")
 )
