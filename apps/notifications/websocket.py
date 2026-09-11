@@ -1,10 +1,7 @@
-import json
-from urllib.parse import parse_qs
-
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.authentication.models import UserAccount
 from apps.notifications.serializers import NotificationSerializer
@@ -12,16 +9,24 @@ from apps.users.models import Profile
 
 
 class JWTAuthMiddleware:
-    """Authenticate WebSocket connections with the existing JWT access token."""
+    """Authenticate notification WebSockets with the existing Bearer JWT."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        query = parse_qs(scope.get("query_string", b"").decode())
-        raw_token = query.get("token", [None])[0]
+        raw_token = self._get_bearer_token(scope.get("headers", []))
         scope["user"] = await self._get_user(raw_token)
         return await self.app(scope, receive, send)
+
+    @staticmethod
+    def _get_bearer_token(headers):
+        for key, value in headers:
+            if key.lower() == b"authorization":
+                parts = value.decode("utf-8").split(None, 1)
+                if len(parts) == 2 and parts[0].lower() == "bearer":
+                    return parts[1]
+        return None
 
     @database_sync_to_async
     def _get_user(self, raw_token):
