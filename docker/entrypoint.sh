@@ -31,10 +31,11 @@ if [ "$APP_ROLE" = "web" ]; then
   echo "Collecting static files..."
   python manage.py collectstatic --noinput
 
-  echo "Starting Gunicorn..."
-  exec gunicorn ppw.wsgi:application \
+  echo "Starting ASGI application..."
+  exec gunicorn ppw.asgi:application \
       --bind 0.0.0.0:8000 \
       --workers 3 \
+      --worker-class uvicorn.workers.UvicornWorker \
       --timeout 120
 fi
 
