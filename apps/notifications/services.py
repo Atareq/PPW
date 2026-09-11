@@ -1,5 +1,6 @@
 import logging
 
+from asgiref.sync import async_to_sync
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -23,6 +24,22 @@ def normalize_optional_string(value):
         return None
     value = str(value).strip()
     return value or None
+
+
+def _publish_after_commit(notification_id):
+    def publish():
+        try:
+            from apps.notifications.websocket import broadcast_notification
+
+            notification = notification_queryset().get(pk=notification_id)
+            async_to_sync(broadcast_notification)(notification)
+        except Exception:
+            logger.exception(
+                "Failed to broadcast notification %s over WebSocket.",
+                notification_id,
+            )
+
+    transaction.on_commit(publish)
 
 
 class NotificationService:
@@ -60,7 +77,7 @@ class NotificationService:
                 return existing
 
         try:
-            return Notification.objects.create(
+            notification = Notification.objects.create(
                 recipient_profile=recipient,
                 actor_profile=actor,
                 notification_type=notification_type,
@@ -81,6 +98,9 @@ class NotificationService:
             if existing is not None:
                 return existing
             raise
+
+        _publish_after_commit(notification.pk)
+        return notification
 
     @staticmethod
     def safe_create_notification(*args, **kwargs):
