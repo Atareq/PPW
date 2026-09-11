@@ -84,18 +84,12 @@ class Notification(BaseModel):
     target_url = models.CharField(max_length=2048, null=True, blank=True)
     is_read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
-    idempotency_key = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-    )
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         ordering = ["-created", "-id"]
         indexes = [
-            models.Index(
-                fields=["recipient_profile", "is_read", "-created"],
-            ),
+            models.Index(fields=["recipient_profile", "is_read", "-created"]),
             models.Index(fields=["recipient_profile", "-created"]),
             models.Index(fields=["notification_type", "-created"]),
             models.Index(fields=["object_type", "object_id"]),
@@ -114,3 +108,33 @@ class Notification(BaseModel):
             f"Notification #{self.pk} "
             f"{self.notification_type} -> {self.recipient_profile_id}"
         )
+
+
+class PushDevice(BaseModel):
+    class Platform(models.TextChoices):
+        ANDROID = "android", _("Android")
+        IOS = "ios", _("iOS")
+
+    user = models.ForeignKey(
+        "authentication.UserAccount",
+        on_delete=models.CASCADE,
+        related_name="push_devices",
+    )
+    profile = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.CASCADE,
+        related_name="push_devices",
+    )
+    token = models.TextField(unique=True)
+    platform = models.CharField(max_length=20, choices=Platform.choices)
+    is_active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "profile", "is_active"]),
+            models.Index(fields=["profile", "is_active"]),
+        ]
+
+    def __str__(self):
+        return f"PushDevice #{self.pk} {self.platform} -> {self.profile_id}"
