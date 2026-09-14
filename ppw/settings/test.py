@@ -48,3 +48,12 @@ USE_TZ = True
 
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
+
+# In-memory channel layer for fast and isolated testing
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
+
+LANGUAGE_CODE = "en"

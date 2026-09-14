@@ -1,6 +1,5 @@
 import logging
 
-from asgiref.sync import async_to_sync
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -32,7 +31,7 @@ def _publish_after_commit(notification_id):
             from apps.notifications.websocket import broadcast_notification
 
             notification = notification_queryset().get(pk=notification_id)
-            async_to_sync(broadcast_notification)(notification)
+            broadcast_notification(notification)
         except Exception:
             logger.exception(
                 "Failed to broadcast notification %s over WebSocket.",

@@ -49,7 +49,8 @@ class PointService:
 
     @staticmethod
     def get_or_create_wallet(user):
-        user = UserAccount.objects.get(pk=user.pk)
+        user_id = getattr(user, "pk", user)
+        user = UserAccount.objects.get(pk=user_id)
         try:
             wallet, _ = PointWallet.objects.get_or_create(user=user)
         except IntegrityError:
@@ -145,7 +146,8 @@ class PointService:
     ):
         """Create one transaction and update the wallet balance atomically."""
 
-        user = UserAccount.objects.get(pk=user.pk)
+        user_id = getattr(user, "pk", user)
+        user = UserAccount.objects.get(pk=user_id)
         profile = PointValidator.validate_profile_belongs_to_user(
             profile,
             user,

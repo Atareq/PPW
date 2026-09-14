@@ -132,8 +132,14 @@ class PushDevice(BaseModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "profile", "is_active"]),
-            models.Index(fields=["profile", "is_active"]),
+            models.Index(
+                fields=["user", "profile", "is_active"],
+                name="notificati_user_id_8e8e6d_idx",
+            ),
+            models.Index(
+                fields=["profile", "is_active"],
+                name="notificati_profile__2a9c1b_idx",
+            ),
         ]
 
     def __str__(self):
