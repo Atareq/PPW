@@ -442,6 +442,27 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         _("View lucky wheel spin history."),
     ),
     _permission(
+        "reward_rules.list",
+        "reward_rules",
+        _("Reward Rules"),
+        _("List reward rules"),
+        _("View reward rule configuration."),
+    ),
+    _permission(
+        "reward_rules.retrieve",
+        "reward_rules",
+        _("Reward Rules"),
+        _("View reward rule details"),
+        _("View one reward rule configuration."),
+    ),
+    _permission(
+        "reward_rules.update",
+        "reward_rules",
+        _("Reward Rules"),
+        _("Update reward rules"),
+        _("Tune values of system-defined reward rules."),
+    ),
+    _permission(
         "seasons.list",
         "seasons",
         _("Seasons"),

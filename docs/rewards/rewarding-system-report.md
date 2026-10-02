@@ -1,5 +1,11 @@
 # PPW Rewards and Badges System Report
 
+> **Canonical source of truth:** [`REWARDS_SOURCE_OF_TRUTH.md`](REWARDS_SOURCE_OF_TRUTH.md).
+> This report describes the original MVP implementation. Where the two disagree,
+> the source-of-truth file wins. Sections not re-verified there (for example the
+> deferred/blocked badge lists) may predate later modules such as Lucky Wheel,
+> referrals, and seasons.
+
 ## 1. Overview
 
 This implementation adds an MVP rewards engine to the existing `apps.loyalty` foundation. It reuses the current user-level `PointWallet`, immutable `PointTransaction` ledger, and profile-level `BadgeAward` table. Reward execution is event-driven through `RewardEngine.handle_event(...)`.
@@ -10,7 +16,7 @@ The MVP implements immediate rewards for profile creation, bidding, first seller
 
 PPW does not process real money. Payment is manual outside the app. `PaymentRequest` records confirmation only.
 
-Seller approval of a `PaymentRequest` finalizes the sale internally. Market `OrderItem` seller approval is not sale completion. Auction item sold/won is not payment confirmation. Sale-completion rewards are granted only on `PaymentRequest` approved. Rejected requests do not grant positive sale rewards.
+Seller approval of a `PaymentRequest` finalizes the sale internally and records a `CompletedDeal` (BE-REW-04). Market `OrderItem` seller approval is not sale completion. Auction item sold/won is not payment confirmation. Sale-completion rewards are granted only from the recorded `CompletedDeal` (`deal_completed` event, BE-REW-05). Rejected requests do not grant positive sale rewards.
 
 There is no payment gateway, proof upload, wallet, refund engine, shipping, handoff, receipt confirmation, ownership history, automatic rollback, or cashback reversal workflow.
 
@@ -19,7 +25,7 @@ There is no payment gateway, proof upload, wallet, refund engine, shipping, hand
 Trusted sale completion event:
 
 ```text
-payment_request_approved
+deal_completed   (emitted once when a CompletedDeal is recorded)
 ```
 
 Auction sale rewards are sourced from seller approval of `AuctionPaymentRequest`. Market sale rewards are sourced from seller approval of `MarketPaymentRequest` after order-item completion, stock mutation, cashback earning, and ownership transfer logic have succeeded.
@@ -30,7 +36,8 @@ No sale-completion reward is granted on auction win, auction item sold, payment 
 
 Synchronous rewards are used for cheap, current-object events:
 
-- welcome buyer/seller
+- account onboarding PP (once per `UserAccount`)
+- welcome buyer/seller badges
 - first bid
 - last-minute bid
 - first auction published
@@ -44,7 +51,7 @@ Asynchronous Celery tasks are used for aggregate rewards:
 - trusted buyer
 - trusted seller
 
-The payment approval flow schedules trusted buyer/seller aggregate checks with `transaction.on_commit`.
+Deal completion schedules trusted buyer/seller aggregate checks with `transaction.on_commit`; they count `CompletedDeal` rows.
 
 ## 5. Data Model Changes
 
@@ -66,7 +73,11 @@ Every reward grant uses a deterministic key:
 reward:{reward_code}:{event_type}:{source_type}:{source_id}:profile:{profile_id}
 ```
 
-The same key is used independently for the point transaction and badge award. `PointService` locks the wallet with `select_for_update()` and returns an existing transaction when the same logical key is retried.
+The same key is used independently for the point transaction and badge award when an event grants both (`RewardEngine._grant_points_and_badge`); badge-only and points-only rewards use the matching single helper.
+
+Exception: the account onboarding reward is user-scoped and uses
+`reward:onboarding:user:{user_id}` so it is paid once per `UserAccount`, not once
+per profile (BE-REW-02). `PointService` locks the wallet with `select_for_update()` and returns an existing transaction when the same logical key is retried.
 
 Repeated payment approval attempts do not duplicate stock, ownership transfer, points, or badges.
 
@@ -87,7 +98,7 @@ Temporary implemented badges:
 
 ## 8. Point Wallet Strategy
 
-Loyalty points remain separate from cashback. Points use the existing user-level `PointWallet` and immutable `PointTransaction` ledger. Points are earned through `PointService.earn_points()` only.
+Loyalty points remain separate from cashback. Points use the existing user-level `PointWallet` and immutable `PointTransaction` ledger. Customer and seller modes of one `UserAccount` share that single wallet; `PointTransaction.profile` is context only. Points are earned through `PointService.earn_points()` only.
 
 ## 9. Cashback Separation Rule
 
@@ -97,13 +108,12 @@ Cashback is not loyalty points. Cashback remains in `apps.promotions` through `C
 
 | Event | Source | Timing | Implemented |
 | --- | --- | --- | --- |
-| `customer_profile_created` | `CustomerProfile` | Sync | Yes |
-| `seller_profile_created` | `SellerProfile` | Sync | Yes |
+| `customer_profile_created` | `CustomerProfile` | Sync | Yes (welcome badge + account onboarding PP if not yet awarded) |
+| `seller_profile_created` | `SellerProfile` | Sync | Yes (welcome badge + account onboarding PP if not yet awarded) |
 | `auction_published` | `Auction` | Sync | Yes |
 | `market_item_listed` | `Asset` product subtype | Sync | Yes |
 | `bid_placed` | `Bid` | Sync | Yes |
-| `auction_payment_request_approved` | `AuctionPaymentRequest` | Sync + async aggregate enqueue | Yes |
-| `market_payment_request_approved` | `MarketPaymentRequest` | Sync + async aggregate enqueue | Yes |
+| `deal_completed` | `CompletedDeal` (`auction` or `market`) | Sync + async aggregate enqueue | Yes (replaces the two payment-approved events, BE-REW-05) |
 | `rating_created` | `AssetRating` / `SellerRating` | Sync | Yes |
 | `seller_followed` | `SellerFollow` | Sync + future aggregate | Yes |
 | `payment_request_created` | `PaymentRequest` | None | Deferred |
@@ -114,16 +124,18 @@ Cashback is not loyalty points. Cashback remains in `apps.promotions` through `C
 
 ## 11. Buyer Badge Stories
 
-| Code | Role | Story | Trigger | Source model/event | Points | Badge validity | Sync/Async | Status | Reason |
+Since BE-REW-06 a badge never implies PP Coins. The points column shows what the same event pays alongside the badge; `RewardEngine` grants points and badges separately.
+
+| Code | Role | Story | Trigger | Source model/event | Event points (paid by the event, not the badge) | Badge validity | Sync/Async | Status | Reason |
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |
-| `WELCOME_BUYER` | Buyer | New customer starter reward | `customer_profile_created` | `CustomerProfile` | 100 | Permanent | Sync | Implemented | Customer registration hook exists |
+| `WELCOME_BUYER` | Buyer | New customer starter badge | `customer_profile_created` | `CustomerProfile` | 0 (onboarding PP is account-level, once per `UserAccount`; default 100 via the `ACCOUNT_ONBOARDING` reward rule) | Permanent | Sync | Implemented | Customer registration hook exists |
 | `FIRST_BIDDER` | Buyer | First accepted bid | `bid_placed` | `Bid` | 10 | Permanent | Sync | Implemented | Bid service hook exists |
 | `LAST_MINUTE_FIGHTER` | Buyer | Bid in final five minutes | `bid_placed` | `Bid` | 5 | 7 days | Sync | Implemented | Uses pre-auto-extend last-minute flag |
-| `AUCTION_PURCHASE_CONFIRMED` | Buyer | Confirmed auction purchase | `auction_payment_request_approved` | `PaymentRequest` | 50 | Permanent | Sync | Implemented | Seller approval is sale confirmation |
-| `MARKET_PURCHASE_CONFIRMED` | Buyer | Confirmed market purchase | `market_payment_request_approved` | `PaymentRequest` | 30 | Permanent | Sync | Implemented | Runs after market finalization succeeds |
+| `AUCTION_PURCHASE_CONFIRMED` | Buyer | Confirmed auction purchase | `deal_completed` (auction) | `CompletedDeal` | 50 | Permanent | Sync | Implemented | Seller approval is sale confirmation |
+| `MARKET_PURCHASE_CONFIRMED` | Buyer | Confirmed market purchase | `deal_completed` (market) | `CompletedDeal` | 30 | Permanent | Sync | Implemented | Runs after market finalization succeeds |
 | `REVIEWER_BUYER` | Buyer | First valid rating | `rating_created` | `AssetRating` / `SellerRating` | 10 | Permanent | Sync | Implemented | Rating services already validate completed sale |
 | `LOYAL_FOLLOWER` | Buyer | First active seller follow | `seller_followed` | `SellerFollow` | 5 | Permanent | Sync | Implemented | Follow service hook exists |
-| `TRUSTED_BUYER` | Buyer | Ten confirmed purchases | Aggregate | Approved `PaymentRequest` count | 100 | 90 days | Async | Implemented | Celery task entry point added |
+| `TRUSTED_BUYER` | Buyer | Ten confirmed purchases | Aggregate | `CompletedDeal` count | 100 | 90 days | Async | Implemented | Celery task entry point added |
 | `BIRD_COLLECTOR` | Buyer | Five confirmed bird purchases | Aggregate | Approved bird `PaymentRequest` count | 50 | 90 days | Async | Deferred | Not in MVP implementation scope |
 | `ACTIVE_BIDDER` | Buyer | Twenty bids in 30 days | Aggregate | `Bid` count | 50 | 30 days | Async | Deferred | Periodic task not implemented |
 | `AUCTION_WINNER_STREAK` | Buyer | Three auction confirmations in 30 days | Aggregate | Approved auction requests | 75 | 30 days | Async | Deferred | Periodic task not implemented |
@@ -131,14 +143,14 @@ Cashback is not loyalty points. Cashback remains in `apps.promotions` through `C
 
 ## 12. Seller Badge Stories
 
-| Code | Role | Story | Trigger | Source model/event | Points | Badge validity | Sync/Async | Status | Reason |
+| Code | Role | Story | Trigger | Source model/event | Event points (paid by the event, not the badge) | Badge validity | Sync/Async | Status | Reason |
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |
-| `WELCOME_SELLER` | Seller | New seller starter reward | `seller_profile_created` | `SellerProfile` | 100 | Permanent | Sync | Implemented | Seller mobile profile hook exists |
+| `WELCOME_SELLER` | Seller | New seller starter badge | `seller_profile_created` | `SellerProfile` | 0 (onboarding PP is account-level, once per `UserAccount`; default 100 via the `ACCOUNT_ONBOARDING` reward rule) | Permanent | Sync | Implemented | Seller mobile profile hook exists |
 | `FIRST_AUCTION_PUBLISHED` | Seller | First auction published | `auction_published` | `Auction` | 25 | Permanent | Sync | Implemented | Auction creation service hook exists |
 | `FIRST_MARKET_ITEM_LISTED` | Seller | First market product listed | `market_item_listed` | Product `Asset` | 25 | Permanent | Sync | Implemented | Product creation service hook exists |
-| `FIRST_AUCTION_SALE_CONFIRMED` | Seller | First confirmed auction sale | `auction_payment_request_approved` | `PaymentRequest` | 75 | Permanent | Sync | Implemented | Seller approval of auction request |
-| `FIRST_MARKET_SALE_CONFIRMED` | Seller | First confirmed market sale | `market_payment_request_approved` | `PaymentRequest` | 50 | Permanent | Sync | Implemented | Seller approval after stock mutation |
-| `TRUSTED_SELLER` | Seller | Ten confirmed sales | Aggregate | Approved `PaymentRequest` count | 150 | 90 days | Async | Implemented | Celery task entry point added |
+| `FIRST_AUCTION_SALE_CONFIRMED` | Seller | First confirmed auction sale | `deal_completed` (auction) | `CompletedDeal` | 75 | Permanent | Sync | Implemented | Seller approval of auction request |
+| `FIRST_MARKET_SALE_CONFIRMED` | Seller | First confirmed market sale | `deal_completed` (market) | `CompletedDeal` | 50 | Permanent | Sync | Implemented | Seller approval after stock mutation |
+| `TRUSTED_SELLER` | Seller | Ten confirmed sales | Aggregate | `CompletedDeal` count | 150 | 90 days | Async | Implemented | Celery task entry point added |
 | `HIGH_RATED_SELLER` | Seller | Average rating >= 4.5 with 5 ratings | Aggregate | Seller rating fields | 100 | 90 days | Async | Deferred | Aggregate task not implemented |
 | `POPULAR_SELLER` | Seller | High profile/item attention | Aggregate | `SellerInsightEvent` | 75 | 30 days | Async | Deferred | Threshold task not implemented |
 | `FOLLOWED_SELLER` | Seller | 50 active followers | Aggregate | `SellerFollow` | 75 | 90 days | Async | Deferred | Aggregate task not implemented |
@@ -151,7 +163,7 @@ Cashback is not loyalty points. Cashback remains in `apps.promotions` through `C
 
 ## 13. Shared/Campaign Badge Stories
 
-| Code | Role | Story | Trigger | Source model/event | Points | Badge validity | Sync/Async | Status | Reason |
+| Code | Role | Story | Trigger | Source model/event | Event points (paid by the event, not the badge) | Badge validity | Sync/Async | Status | Reason |
 | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |
 | `WEEKLY_PARTICIPANT` | Shared | Weekly activity recognition | Weekly aggregate | Bids/purchases/sales/listings | Optional | 7 days | Async | Deferred | Weekly scheduler not implemented |
 | `MONTHLY_TOP_SELLER` | Seller | Monthly top seller | Monthly leaderboard | Approved requests | Optional | 30 days | Async | Deferred | Leaderboard policy not implemented |
@@ -210,7 +222,8 @@ Shipping/receipt-based rewards are deferred because there is no shipping/handoff
 
 Added and updated tests cover:
 
-- welcome buyer/seller one-time rewards
+- welcome buyer/seller one-time badges
+- account onboarding PP once per `UserAccount` across customer/seller modes (`tests/loyalty/test_account_onboarding_reward.py`)
 - first bid idempotency
 - last-minute badge timing and expiry
 - active badge filtering

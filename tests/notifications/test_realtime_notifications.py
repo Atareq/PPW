@@ -784,3 +784,341 @@ def test_notification_recovery_created_after_filter():
     results = response.data.get("results", response.data)
     assert len(results) == 1
     assert results[0]["id"] == new_notif.pk
+
+
+# ============================================================================
+# 7. HARDENING SPRINT: FCM ERROR CLASSIFICATION, LOCALIZATION & PROFILE RESOLUTION
+# ============================================================================
+
+
+def test_fcm_invalid_registration_token_deactivates_device(monkeypatch):
+    """Verify that InvalidArgumentError specifically mentioning token deactivates PushDevice."""
+    user = create_user_with_profile()
+    profile = user.active_profile
+    device = PushDevice.objects.create(
+        user=user,
+        profile=profile,
+        token="malformed-token",
+        platform="android",
+        is_active=True,
+    )
+    notif = Notification.objects.create(
+        recipient_profile=profile,
+        notification_type=NotificationType.AUCTION_WON,
+        title="Won",
+        body="Won auction",
+    )
+
+    fake_app = MagicMock()
+    monkeypatch.setattr("apps.notifications.fcm._firebase_app", lambda: fake_app)
+
+    from firebase_admin import exceptions as fb_exceptions
+
+    fake_response = MagicMock()
+    fake_response.success_count = 0
+    fake_result = MagicMock()
+    fake_result.success = False
+    fake_result.exception = fb_exceptions.InvalidArgumentError(
+        "The registration token is not a valid FCM registration token"
+    )
+    fake_response.responses = [fake_result]
+
+    monkeypatch.setattr(
+        "firebase_admin.messaging.send_each_for_multicast",
+        lambda msg, app: fake_response,
+    )
+
+    send_notification_to_devices(notif, [device])
+
+    device.refresh_from_db()
+    assert device.is_active is False
+
+
+def test_fcm_malformed_payload_error_does_not_deactivate_device(monkeypatch):
+    """Verify that message/payload/configuration InvalidArgumentError does NOT deactivate PushDevice."""
+    user = create_user_with_profile()
+    profile = user.active_profile
+    device = PushDevice.objects.create(
+        user=user,
+        profile=profile,
+        token="valid-token-good-device",
+        platform="android",
+        is_active=True,
+    )
+    notif = Notification.objects.create(
+        recipient_profile=profile,
+        notification_type=NotificationType.AUCTION_WON,
+        title="Won",
+        body="Won auction",
+    )
+
+    fake_app = MagicMock()
+    monkeypatch.setattr("apps.notifications.fcm._firebase_app", lambda: fake_app)
+
+    from firebase_admin import exceptions as fb_exceptions
+
+    fake_response = MagicMock()
+    fake_response.success_count = 0
+    fake_result = MagicMock()
+    fake_result.success = False
+    # Error message is about payload size / data format, NOT token validity
+    fake_result.exception = fb_exceptions.InvalidArgumentError(
+        "Payload size exceeds maximum allowable limit of 4096 bytes"
+    )
+    fake_response.responses = [fake_result]
+
+    monkeypatch.setattr(
+        "firebase_admin.messaging.send_each_for_multicast",
+        lambda msg, app: fake_response,
+    )
+
+    # Should not raise TransientPushError (unrecoverable payload issue) and should NOT deactivate device
+    send_notification_to_devices(notif, [device])
+
+    device.refresh_from_db()
+    assert device.is_active is True
+
+
+def test_notification_localization_arabic_first_and_consistency():
+    """Verify that stored msgid produces Arabic by default and matches across WebSocket/FCM/REST."""
+    from django.utils.translation import gettext_lazy as _
+    from apps.notifications.payload import NotificationPayload
+    from apps.notifications.serializers import NotificationSerializer
+
+    user = create_user_with_profile()
+    profile = user.active_profile
+
+    # Create notification with standard gettext_lazy msgids
+    notif = NotificationService.create_notification(
+        recipient_profile=profile,
+        notification_type=NotificationType.AUCTION_BID_PLACED,
+        title=_("New auction bid"),
+        body=_("A customer placed a bid on your auction item."),
+    )
+
+    # Canonical msgid stored in DB
+    assert notif.title == "New auction bid"
+    assert notif.body == "A customer placed a bid on your auction item."
+
+    # 1. WebSocket / FCM default (Arabic-first)
+    ws_payload = NotificationPayload.build(notif)
+    assert ws_payload["title"] == "مزايدة جديدة على المزاد"
+    assert ws_payload["body"] == "قدّم عميل مزايدة على عنصر المزاد الخاص بك."
+
+    # 2. FCM Multicast message
+    fcm_msg = build_fcm_message(notif, ["token-1"])
+    assert fcm_msg.notification.title == "مزايدة جديدة على المزاد"
+    assert fcm_msg.notification.body == "قدّم عميل مزايدة على عنصر المزاد الخاص بك."
+
+    # 3. REST Serializer in default Arabic locale
+    from django.utils import translation
+    with translation.override("ar"):
+        rest_data_ar = NotificationSerializer(notif).data
+        assert rest_data_ar["title"] == "مزايدة جديدة على المزاد"
+        assert rest_data_ar["body"] == "قدّم عميل مزايدة على عنصر المزاد الخاص بك."
+
+    # All three representations match in Arabic!
+    assert ws_payload["title"] == fcm_msg.notification.title == rest_data_ar["title"]
+    assert ws_payload["body"] == fcm_msg.notification.body == rest_data_ar["body"]
+
+    # 4. REST Serializer when English is requested (?lang=en)
+    with translation.override("en"):
+        rest_data_en = NotificationSerializer(notif).data
+        assert rest_data_en["title"] == "New auction bid"
+        assert rest_data_en["body"] == "A customer placed a bid on your auction item."
+
+    # 5. Arbitrary custom text (e.g. manager manual notification in Arabic)
+    custom_notif = NotificationService.create_notification(
+        recipient_profile=profile,
+        notification_type=NotificationType.MANUAL_MANAGER_NOTIFICATION,
+        title="إشعار مخصص من الإدارة",
+        body="نص رسالة مخصصة لا تتغير",
+    )
+    custom_payload = NotificationPayload.build(custom_notif)
+    assert custom_payload["title"] == "إشعار مخصص من الإدارة"
+    assert custom_payload["body"] == "نص رسالة مخصصة لا تتغير"
+
+
+def test_concrete_profile_resolution():
+    """Verify resolve_concrete_profile returns concrete subclass without mutating active_profile."""
+    from apps.notifications.websocket import resolve_concrete_profile
+    from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile, Profile
+    from tests.factories import CustomerProfileFactory, SellerProfileFactory, ManagerProfileFactory
+
+    user = UserAccountFactory(with_profile=False)
+    customer = CustomerProfileFactory(user=user, is_active=True)
+    seller = SellerProfileFactory(user=user, is_active=False)
+
+    # Base Profile instances
+    base_customer = Profile.objects.get(pk=customer.pk)
+    base_seller = Profile.objects.get(pk=seller.pk)
+
+    concrete_cust = resolve_concrete_profile(base_customer)
+    concrete_sel = resolve_concrete_profile(base_seller)
+
+    assert isinstance(concrete_cust, CustomerProfile)
+    assert isinstance(concrete_sel, SellerProfile)
+    assert concrete_cust.pk == customer.pk
+    assert concrete_sel.pk == seller.pk
+
+    # Verify user.active_profile was NOT mutated
+    user.refresh_from_db()
+    assert user.active_profile.pk == customer.pk
+
+
+def test_notification_id_stable_across_transports():
+    """Verify that notification.pk is identical in WebSocket, FCM data payload, and REST."""
+    from apps.notifications.payload import NotificationPayload
+    from apps.notifications.serializers import NotificationSerializer
+
+    user = create_user_with_profile()
+    profile = user.active_profile
+
+    notif = NotificationService.create_notification(
+        recipient_profile=profile,
+        notification_type=NotificationType.AUCTION_WON,
+        title="Won",
+        body="Won auction",
+    )
+
+    # WebSocket payload
+    ws_payload = NotificationPayload.build(notif)
+    # FCM message data
+    fcm_msg = build_fcm_message(notif, ["token-test"])
+    # REST data
+    rest_data = NotificationSerializer(notif).data
+
+    assert ws_payload["id"] == notif.pk
+    assert int(fcm_msg.data["notification_id"]) == notif.pk
+    assert rest_data["id"] == notif.pk
+
+
+def test_fcm_profile_isolation(monkeypatch):
+    """Verify FCM delivery targets only the recipient profile's devices and strictly isolates profiles."""
+    user_a = create_user_with_profile()
+    profile_a = user_a.active_profile
+    device_a = PushDevice.objects.create(
+        user=user_a,
+        profile=profile_a,
+        token="token-device-a",
+        platform="android",
+        is_active=True,
+    )
+
+    user_b = create_user_with_profile()
+    profile_b = user_b.active_profile
+    device_b = PushDevice.objects.create(
+        user=user_b,
+        profile=profile_b,
+        token="token-device-b",
+        platform="ios",
+        is_active=True,
+    )
+
+    notif_a = Notification.objects.create(
+        recipient_profile=profile_a,
+        notification_type=NotificationType.AUCTION_WON,
+        title="Notification A",
+        body="For Profile A only",
+    )
+    notif_b = Notification.objects.create(
+        recipient_profile=profile_b,
+        notification_type=NotificationType.AUCTION_BID_PLACED,
+        title="Notification B",
+        body="For Profile B only",
+    )
+
+    send_mock = MagicMock(return_value=1)
+    monkeypatch.setattr(
+        "apps.notifications.fcm.send_notification_to_devices",
+        send_mock,
+    )
+
+    # Delivery for Notification A must target ONLY device_a
+    deliver_notification_push(notif_a.pk)
+    send_mock.assert_called_once()
+    called_notif, called_devices = send_mock.call_args[0]
+    assert called_notif.pk == notif_a.pk
+    assert [d.pk for d in called_devices] == [device_a.pk]
+
+    send_mock.reset_mock()
+
+    # Delivery for Notification B must target ONLY device_b
+    deliver_notification_push(notif_b.pk)
+    send_mock.assert_called_once()
+    called_notif, called_devices = send_mock.call_args[0]
+    assert called_notif.pk == notif_b.pk
+    assert [d.pk for d in called_devices] == [device_b.pk]
+
+
+def test_fcm_multi_device_delivery_and_filtering(monkeypatch):
+    """Verify that multiple active devices receive notifications, inactive devices are skipped, and invalid tokens deactivate individually."""
+    user = create_user_with_profile()
+    profile = user.active_profile
+
+    device_active_1 = PushDevice.objects.create(
+        user=user,
+        profile=profile,
+        token="token-active-1",
+        platform="android",
+        is_active=True,
+    )
+    device_active_2 = PushDevice.objects.create(
+        user=user,
+        profile=profile,
+        token="token-active-2",
+        platform="ios",
+        is_active=True,
+    )
+    device_inactive = PushDevice.objects.create(
+        user=user,
+        profile=profile,
+        token="token-inactive",
+        platform="android",
+        is_active=False,
+    )
+
+    notif = Notification.objects.create(
+        recipient_profile=profile,
+        notification_type=NotificationType.AUCTION_WON,
+        title="Multi-Device Notification",
+        body="Delivered to all active devices",
+    )
+
+    fake_app = MagicMock()
+    monkeypatch.setattr("apps.notifications.fcm._firebase_app", lambda: fake_app)
+
+    from firebase_admin import exceptions as fb_exceptions
+
+    # Mock response: device 1 succeeds, device 2 fails with UnregisteredError
+    fake_response = MagicMock()
+    fake_response.success_count = 1
+
+    res_1 = MagicMock()
+    res_1.success = True
+
+    res_2 = MagicMock()
+    res_2.success = False
+    res_2.exception = fb_exceptions.InvalidArgumentError("The registration token is not a valid FCM registration token")
+
+    fake_response.responses = [res_1, res_2]
+
+    monkeypatch.setattr(
+        "firebase_admin.messaging.send_each_for_multicast",
+        lambda msg, app: fake_response,
+    )
+
+    delivered = deliver_notification_push(notif.pk)
+    assert delivered == 1
+
+    device_active_1.refresh_from_db()
+    device_active_2.refresh_from_db()
+    device_inactive.refresh_from_db()
+
+    # Device 1 remains active
+    assert device_active_1.is_active is True
+    # Device 2 was deactivated due to permanent token error
+    assert device_active_2.is_active is False
+    # Device inactive remains inactive
+    assert device_inactive.is_active is False
+

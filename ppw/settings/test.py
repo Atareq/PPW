@@ -55,5 +55,3 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     }
 }
-
-LANGUAGE_CODE = "en"

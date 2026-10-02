@@ -76,6 +76,12 @@ def _firebase_app():
 
 def _is_permanent_error(exc) -> bool:
     """Determine whether an FCM exception indicates an invalid/unregistered token."""
+def _is_permanent_token_error(exc) -> bool:
+    """Determine whether an FCM exception indicates an invalid/unregistered registration token.
+
+    Only deactivates PushDevice when Firebase clearly indicates the token is invalid or unregistered.
+    General request, payload, or configuration errors MUST NOT deactivate devices.
+    """
     if exc is None:
         return False
 
@@ -84,17 +90,64 @@ def _is_permanent_error(exc) -> bool:
         (
             messaging.UnregisteredError,
             messaging.SenderIdMismatchError,
-            fb_exceptions.InvalidArgumentError,
         ),
     ):
         return True
 
     code = getattr(exc, "code", "")
-    if code in ("NOT_FOUND", "UNREGISTERED", "INVALID_ARGUMENT"):
+    if code in ("NOT_FOUND", "UNREGISTERED"):
         return True
 
     message = str(exc).lower()
-    if "registration-token-not-registered" in message or "invalid-argument" in message:
+    if "registration-token-not-registered" in message or "requested entity was not found" in message:
+        return True
+
+    # For InvalidArgumentError, ONLY treat as permanent if Firebase specifically flagged the token
+    if isinstance(exc, fb_exceptions.InvalidArgumentError) or code == "INVALID_ARGUMENT":
+        if any(
+            token_phrase in message
+            for token_phrase in (
+                "registration token",
+                "registration-token",
+                "invalid registration",
+                "not a valid fcm registration token",
+            )
+        ):
+            return True
+
+    return False
+
+
+def _is_transient_error(exc) -> bool:
+    """Determine whether an FCM exception is temporary and should be retried."""
+    if exc is None:
+        return False
+
+    if isinstance(
+        exc,
+        (
+            fb_exceptions.UnavailableError,
+            fb_exceptions.DeadlineExceededError,
+            messaging.QuotaExceededError,
+        ),
+    ):
+        return True
+
+    code = getattr(exc, "code", "")
+    if code in ("UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED", "INTERNAL"):
+        return True
+
+    message = str(exc).lower()
+    if any(
+        phrase in message
+        for phrase in (
+            "temporarily unavailable",
+            "timeout",
+            "deadline exceeded",
+            "too many requests",
+            "internal error",
+        )
+    ):
         return True
 
     return False
@@ -127,6 +180,14 @@ def send_notification_to_devices(notification, devices) -> int:
 
     Deactivates devices on permanent token errors.
     Raises TransientPushError on transient failures so Celery can retry.
+    - Deactivates devices ONLY on permanent token errors (e.g. Unregistered, token invalid).
+    - Message, configuration, or payload errors do NOT deactivate devices.
+    - Raises TransientPushError on transient failures so Celery can retry with backoff.
+
+    V1 Partial Failure & Deduplication Architecture Note:
+    To keep V1 simple without a delivery ledger table, if Celery retries after partial
+    delivery failures, it may resend to already-delivered devices. Clients (e.g. Flutter)
+    rely on the stable `notification_id` field in the FCM data payload for local deduplication.
     """
     app = _firebase_app()
     if app is None or not devices:
@@ -160,7 +221,7 @@ def send_notification_to_devices(notification, devices) -> int:
     for device, result in zip(active_devices, response.responses):
         if not result.success:
             exc = result.exception
-            if _is_permanent_error(exc):
+            if _is_permanent_token_error(exc):
                 device.is_active = False
                 device.save(update_fields=["is_active", "modified"])
                 logger.info(
@@ -168,10 +229,16 @@ def send_notification_to_devices(notification, devices) -> int:
                     device.pk,
                     exc,
                 )
-            else:
+            elif _is_transient_error(exc):
                 has_transient_error = True
                 logger.warning(
                     "Transient FCM error for PushDevice #%s: %s",
+                    device.pk,
+                    exc,
+                )
+            else:
+                logger.error(
+                    "Non-token / request FCM error for PushDevice #%s: %s (device NOT deactivated)",
                     device.pk,
                     exc,
                 )

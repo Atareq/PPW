@@ -1,7 +1,9 @@
+from django.utils import translation
 from django.utils.translation import gettext as _
 from rest_framework import serializers
 
 from apps.notifications.models import Notification
+from apps.notifications.payload import localize_notification_text
 from apps.users.models import Profile
 
 
@@ -48,10 +50,14 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_title(self, obj):
-        return _(obj.title)
+        request = getattr(self, "context", {}).get("request") if hasattr(self, "context") else None
+        lang = getattr(request, "LANGUAGE_CODE", None) or translation.get_language() or "ar"
+        return localize_notification_text(obj.title, language=lang)
 
     def get_body(self, obj):
-        return _(obj.body)
+        request = getattr(self, "context", {}).get("request") if hasattr(self, "context") else None
+        lang = getattr(request, "LANGUAGE_CODE", None) or translation.get_language() or "ar"
+        return localize_notification_text(obj.body, language=lang)
 
 
 class UnreadCountSerializer(serializers.Serializer):

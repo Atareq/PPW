@@ -1,3 +1,8 @@
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -8,10 +13,18 @@ from rest_framework.exceptions import ValidationError
 
 from apps.loyalty.constants import (
     BADGE_DEFINITIONS,
+    DEFAULT_REWARD_RULES,
+    REWARD_RULE_TUNABLE_FIELDS,
     BadgeType,
     PointTransactionType,
+    RewardRuleCode,
 )
-from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
+from apps.loyalty.models import (
+    BadgeAward,
+    PointTransaction,
+    PointWallet,
+    RewardRuleConfig,
+)
 from apps.loyalty.validators import BadgeValidator, PointValidator
 
 
@@ -392,6 +405,113 @@ class BadgeService:
                 },
                 idempotency_key=f"badge_awarded:{award.pk}",
             )
+        )
+
+
+@dataclass(frozen=True)
+class RewardRule:
+    code: str
+    label: str
+    enabled: bool
+    points: int | None
+    multiplier: Decimal | None
+    threshold: int | None
+    configuration: dict
+    required_fields: tuple
+    is_implemented: bool
+    is_overridden: bool
+    updated_by_id: int | None = None
+    updated_at: datetime | None = None
+
+
+class RewardRuleService:
+    """Resolve reward rule values: manager override row, else canonical default.
+
+    Codes are system-defined in ``RewardRuleCode``; unknown codes raise instead
+    of silently resolving to zero. Changes only affect rewards granted after
+    the change, because awarded ``PointTransaction`` rows are never rewritten.
+    """
+
+    @staticmethod
+    def is_known_code(code):
+        return code in RewardRuleCode.values
+
+    @staticmethod
+    def list_rules():
+        overrides = {row.code: row for row in RewardRuleConfig.objects.all()}
+        return [
+            RewardRuleService._build_rule(code, overrides.get(code))
+            for code in RewardRuleCode.values
+        ]
+
+    @staticmethod
+    def get_rule(code):
+        code = RewardRuleService._require_known_code(code)
+        override = RewardRuleConfig.objects.filter(code=code).first()
+        return RewardRuleService._build_rule(code, override)
+
+    @staticmethod
+    def is_enabled(code):
+        return RewardRuleService.get_rule(code).enabled
+
+    @staticmethod
+    def get_points(code):
+        return RewardRuleService.get_rule(code).points
+
+    @staticmethod
+    def get_threshold(code):
+        return RewardRuleService.get_rule(code).threshold
+
+    @staticmethod
+    @transaction.atomic
+    def update_rule(code, *, updated_by, **changes):
+        """Create or update the override row, starting from the current default."""
+
+        code = RewardRuleService._require_known_code(code)
+        default = DEFAULT_REWARD_RULES[code]
+        config, _created = (
+            RewardRuleConfig.objects.select_for_update().get_or_create(
+                code=code,
+                defaults={
+                    field: deepcopy(default[field])
+                    for field in REWARD_RULE_TUNABLE_FIELDS
+                },
+            )
+        )
+        for field, value in changes.items():
+            if field not in REWARD_RULE_TUNABLE_FIELDS:
+                raise ValidationError({field: _("This field cannot be changed.")})
+            setattr(config, field, value)
+        config.updated_by = updated_by
+        config.save()
+        return RewardRuleService._build_rule(code, config)
+
+    @staticmethod
+    def _require_known_code(code):
+        if not RewardRuleService.is_known_code(code):
+            raise ValidationError({"code": _("Unknown reward rule code.")})
+        return str(code)
+
+    @staticmethod
+    def _build_rule(code, override):
+        default = DEFAULT_REWARD_RULES[code]
+        if override is None:
+            values = {
+                field: deepcopy(default[field]) for field in REWARD_RULE_TUNABLE_FIELDS
+            }
+        else:
+            values = {
+                field: getattr(override, field) for field in REWARD_RULE_TUNABLE_FIELDS
+            }
+        return RewardRule(
+            code=code,
+            label=str(RewardRuleCode(code).label),
+            required_fields=default["required_fields"],
+            is_implemented=default["is_implemented"],
+            is_overridden=override is not None,
+            updated_by_id=getattr(override, "updated_by_id", None),
+            updated_at=getattr(override, "modified", None),
+            **values,
         )
 
 

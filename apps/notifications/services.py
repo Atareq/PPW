@@ -70,8 +70,20 @@ class NotificationService:
             return None
 
         actor = NotificationService._resolve_optional_profile(actor_profile)
-        title = str(title).strip()
-        body = str(body).strip()
+
+        from django.utils.functional import Promise
+
+        if isinstance(title, Promise):
+            raw_title = getattr(title, "_proxy____args", (title,))[0]
+        else:
+            raw_title = title
+        if isinstance(body, Promise):
+            raw_body = getattr(body, "_proxy____args", (body,))[0]
+        else:
+            raw_body = body
+
+        title = str(raw_title).strip()
+        body = str(raw_body).strip()
         if not title:
             raise ValidationError({"title": _("Title is required.")})
         if not body:

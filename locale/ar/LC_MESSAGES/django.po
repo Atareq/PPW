@@ -2848,6 +2848,135 @@ msgstr "البائع الملف الشخصي created successfully"
 msgid "Manager accounts cannot create customer profiles"
 msgstr "المدير accounts cannot create العميل الملفات الشخصية"
 
+#: apps/loyalty/constants.py
+msgid "Account Onboarding"
+msgstr "تسجيل الحساب"
+
+#: apps/loyalty/constants.py
+msgid "Active Auction Bidder"
+msgstr "مزايد نشط في المزاد"
+
+#: apps/loyalty/constants.py
+msgid "Deal Completed"
+msgstr "إتمام صفقة"
+
+#: apps/loyalty/constants.py
+msgid "Positive Rating"
+msgstr "تقييم إيجابي"
+
+#: apps/loyalty/constants.py
+msgid "Mutual Rating"
+msgstr "تقييم متبادل"
+
+#: apps/loyalty/constants.py
+msgid "Referral Approved"
+msgstr "قبول الإحالة"
+
+#: apps/loyalty/constants.py
+msgid "Referral First Bid"
+msgstr "أول مزايدة للمُحال"
+
+#: apps/users/manager_permissions.py
+msgid "Reward Rules"
+msgstr "قواعد المكافآت"
+
+#: apps/users/manager_permissions.py
+msgid "List reward rules"
+msgstr "عرض قواعد المكافآت"
+
+#: apps/users/manager_permissions.py
+msgid "View reward rule configuration."
+msgstr "عرض إعدادات قواعد المكافآت."
+
+#: apps/users/manager_permissions.py
+msgid "View reward rule details"
+msgstr "عرض تفاصيل قاعدة المكافأة"
+
+#: apps/users/manager_permissions.py
+msgid "View one reward rule configuration."
+msgstr "عرض إعدادات قاعدة مكافأة واحدة."
+
+#: apps/users/manager_permissions.py
+msgid "Update reward rules"
+msgstr "تحديث قواعد المكافآت"
+
+#: apps/users/manager_permissions.py
+msgid "Tune values of system-defined reward rules."
+msgstr "ضبط قيم قواعد المكافآت المعرّفة في النظام."
+
+#: apps/loyalty/services.py
+msgid "This field cannot be changed."
+msgstr "لا يمكن تغيير هذا الحقل."
+
+#: apps/loyalty/services.py
+msgid "Unknown reward rule code."
+msgstr "رمز قاعدة المكافأة غير معروف."
+
+#: apps/loyalty/serializers.py
+msgid "Configuration must be a JSON object."
+msgstr "يجب أن تكون الإعدادات كائن JSON."
+
+#: apps/loyalty/serializers.py
+#, python-format
+msgid "Configuration can have at most %(count)d keys."
+msgstr "يمكن أن تحتوي الإعدادات على %(count)d مفتاح كحد أقصى."
+
+#: apps/loyalty/serializers.py
+msgid "Configuration values must be plain values or lists of them."
+msgstr "يجب أن تكون قيم الإعدادات قيمًا بسيطة أو قوائم منها."
+
+#: apps/loyalty/serializers.py
+msgid "This field is required for this reward rule."
+msgstr "هذا الحقل مطلوب لقاعدة المكافأة هذه."
+
+#: apps/loyalty/views.py
+msgid "Reward rule was not found."
+msgstr "لم يتم العثور على قاعدة المكافأة."
+
+#: apps/deals/models.py
+msgid "Auction Item"
+msgstr "عنصر المزاد"
+
+#: apps/deals/models.py
+msgid "Order Item"
+msgstr "عنصر الطلب"
+
+#: apps/deals/validators.py
+msgid "Buyer profile must belong to the buyer account."
+msgstr "يجب أن ينتمي ملف المشتري إلى حساب المشتري."
+
+#: apps/deals/validators.py
+msgid "Seller profile must belong to the seller account."
+msgstr "يجب أن ينتمي ملف البائع إلى حساب البائع."
+
+#: apps/deals/models.py
+msgid "Completed deals cannot be changed."
+msgstr "لا يمكن تعديل الصفقات المكتملة."
+
+#: apps/deals/models.py
+msgid "Completed deals cannot be deleted."
+msgstr "لا يمكن حذف الصفقات المكتملة."
+
+#: apps/deals/services.py
+msgid "Order item is not completed."
+msgstr "عنصر الطلب غير مكتمل."
+
+#: apps/deals/services.py
+msgid "Deal has no approved confirmation."
+msgstr "لا يوجد تأكيد معتمد لهذه الصفقة."
+
+#: apps/deals/services.py
+msgid "Auction item is not sold to a winner."
+msgstr "عنصر المزاد غير مباع لفائز."
+
+#: apps/deals/services.py
+msgid "Deal confirmation parties do not match the source."
+msgstr "أطراف تأكيد الصفقة لا تطابق المصدر."
+
+#: apps/deals/services.py
+msgid "Deal confirmation has no approval time."
+msgstr "تأكيد الصفقة لا يحتوي على وقت الاعتماد."
+
 #~ msgid "SECRET_KEY is not set"
 #~ msgstr "لم يتم ضبط SECRET_KEY"
 

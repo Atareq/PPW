@@ -152,6 +152,7 @@ Current major apps:
 - `apps.lucky_wheel`
 - `apps.notifications`
 - `apps.payments`
+- `apps.deals`
 - `apps.loft_subscriptions`
 - `apps.promotions`
 - `apps.referrals`
@@ -594,6 +595,26 @@ Current payment behavior:
 - seller approval does not transfer ownership for supply, accessory, feed, or supplement assets
 - seller rejection marks the request rejected and does not transfer ownership, complete order items, or mutate stock
 - `PaymentRequestEvent` records are written only for created, updated, approved, and rejected events
+- seller approval records exactly one `apps.deals.CompletedDeal` for the order item or auction item inside the same approval transaction, after finalization; recording the deal emits the `DEAL_COMPLETED` reward event, so `apps.payments` no longer calls the reward engine
+
+### `apps.deals`
+
+Current responsibilities:
+
+- `CompletedDeal`: the canonical, immutable record that a buyer/seller deal completed (`auction` or `market`)
+- `CompletedDealService.create_from_market_completion()` / `create_from_auction_completion()` and buyer/seller query helpers
+
+Important note:
+
+`CompletedDeal` is business history, not a payment or proof of electronic payment. `PaymentRequest` stays the manual confirmation workflow; its seller approval is the current input that completes a deal. There is no API; Django admin is read-only.
+
+Current behavior:
+
+- the source is the business unit (`order_item` or `auction_item` + id), unique per deal at the database level; the confirming `payment_request_id` is kept in `metadata`
+- buyer/seller are stored as both account (`UserAccount`) and mode (`Profile`); each profile must belong to its account
+- `amount` snapshots `OrderItem.total_price` or `AuctionItem.current_price`; `currency` snapshots the seller profile currency; `completed_at` is the confirmation approval time
+- creation is idempotent and rolls back with the approval transaction; the model refuses updates and deletes
+- deals approved before this app existed have no `CompletedDeal` (no backfill yet)
 
 ### `apps.loft_subscriptions`
 
@@ -1459,6 +1480,11 @@ Current loyalty API:
 - `/api/loyalty/badges/my/`
   - `GET`: authenticated user retrieves active badge awards for the current active profile
   - `GET ?include_expired=true`: authenticated user includes expired historical badge awards
+- `/api/loyalty/admin/reward-rules/`
+  - `GET`: manager lists every system-defined reward rule with effective values, with `reward_rules.list`
+- `/api/loyalty/admin/reward-rules/<code>/`
+  - `GET`: manager retrieves one reward rule by code, with `reward_rules.retrieve`
+  - `PATCH`: manager tunes `enabled`, `points`, `multiplier`, `threshold`, or `configuration`, with `reward_rules.update`; there is no create or delete
 
 Current point behavior:
 
@@ -1506,6 +1532,8 @@ Current badge behavior:
   - `TRUSTED_BUYER`
   - `TRUSTED_SELLER`
 - badge metadata, names, descriptions, eligibility, criteria type, criteria value, and icon URL live in `apps.loyalty.constants`
+- badge definitions are presentation/eligibility only and never define PP Coins; events grant points (`RewardEngine._grant_points`, amounts from `RewardRuleService` or explicit `*_POINTS` constants) and badges (`RewardEngine._award_badge`) separately, or both explicitly via `_grant_points_and_badge`
+- welcome badges are badge-only; the badge catalog `criteria_value` contains no `points`, and deal badges use neutral completed-deal wording
 - `BadgeAwardCreateSerializer` owns submitted `badge_type` choice validation for the manager award API
 - badge eligibility is enforced by `BadgeService.award_badge()`
 - `first_order` is eligible for `Customer` profiles
@@ -1520,16 +1548,24 @@ Current badge behavior:
 - `/api/loyalty/badges/my/` returns only the current active profile's active badge awards unless `include_expired=true`
 - `RewardEngine.handle_event()` is the central synchronous reward dispatcher
 - reward idempotency keys use `reward:{reward_code}:{event_type}:{source_type}:{source_id}:profile:{profile_id}`
-- implemented synchronous reward events include customer profile creation, seller profile creation, auction creation/publishing, market product listing, bid placement, seller-approved auction payment requests, seller-approved market payment requests, rating creation, and seller follow creation/reactivation
-- sale-completion rewards are granted only after seller approval of `AuctionPaymentRequest` or `MarketPaymentRequest`
+- the 100 PP onboarding reward is account-level: `RewardEngine.grant_account_onboarding_reward()` awards it once per `UserAccount` with key `reward:onboarding:user:{user_id}` and `source_type=onboarding`, attributed to the first triggering profile; later customer/seller profile creation awards `+0` onboarding PP
+- the onboarding amount comes from the `ACCOUNT_ONBOARDING` reward rule (default 100 PP); if that rule is disabled or pays 0, no onboarding PP is awarded
+- reward rule values resolve through `RewardRuleService`: an optional `RewardRuleConfig` override row, otherwise the canonical default in `DEFAULT_REWARD_RULES`; codes are the closed `RewardRuleCode` list, there is no seed data migration, and config changes never rewrite existing `PointTransaction` rows
+- only `ACCOUNT_ONBOARDING` is currently read by backend code; the other rule codes (`AUCTION_PUBLISHED`, `ACTIVE_AUCTION_BIDDER`, `DEAL_COMPLETED`, `POSITIVE_RATING`, `MUTUAL_RATING`, `REFERRAL_APPROVED`, `REFERRAL_FIRST_BID`) are configuration only and marked `is_implemented=false`
+- `WELCOME_BUYER` and `WELCOME_SELLER` remain profile-specific badges and carry no points; legacy pre-BE-REW-02 welcome-badge point transactions count as proof that the account was already onboarded
+- implemented synchronous reward events include account onboarding (`account_onboarded`), customer profile creation, seller profile creation, auction creation/publishing, market product listing, bid placement, deal completion (`deal_completed`), rating creation, and seller follow creation/reactivation
+- sale-completion rewards run only from `DEAL_COMPLETED`, which `CompletedDealService` emits once when it records a new `CompletedDeal` (currently after seller approval of an `AuctionPaymentRequest` or `MarketPaymentRequest`); `RewardEngine` reads the deal, never `apps.payments`
+- `auction_payment_request_approved` and `market_payment_request_approved` are no longer dispatched as events; they remain only as labels inside historical reward idempotency keys
+- deal rewards confirmed by a payment request keep the historical identity (`reward:{code}:{legacy_event}:PaymentRequest:{payment_request_id}:profile:{id}`, same `source_type`/`source_id`/metadata), rebuilt from `CompletedDeal.metadata.payment_request_id`, so no historical sale can be rewarded twice
 - auction posting now also awards 50 PP with source `auction_posted`
-- market order-item completion through an approved `MarketPaymentRequest` awards amount-based PP plus a 100 PP bonus to both customer and seller using order-item idempotency keys
-- seller-approved auction payment completion grants the winning customer one Lucky Wheel attempt and a one-time 200 PP `first_bid_completed` reward
+- a completed market deal awards `int(CompletedDeal.amount)` PP plus a 100 PP bonus to both customer and seller using order-item idempotency keys
+- a completed auction deal grants the winning customer one Lucky Wheel attempt and a one-time 200 PP `first_bid_completed` reward
+- first-sale badges (`FIRST_AUCTION_SALE_CONFIRMED`, `FIRST_MARKET_SALE_CONFIRMED`) pay only for the seller's first recorded deal of that type and only if the seller does not already hold the badge (protects sellers whose first sale predates `CompletedDeal`)
 - receiving an asset or seller rating awards 30 PP to the rated profile owner with source `rating_received`
 - `OrderItem` seller approval, payment request creation/update/rejection, cashback redemption/earning, complaint creation, shipping, handoff, and buyer receipt confirmation do not grant sale-completion rewards
 - `LAST_MINUTE_FIGHTER` is a 7-day temporary badge and uses the bid's pre-auto-extend final-window state
-- `TRUSTED_BUYER` and `TRUSTED_SELLER` aggregate checks exist as Celery task entry points and are enqueued with `transaction.on_commit()` after payment approval
-- the detailed implementation/status report lives at `docs/rewards/rewarding-system-report.md`
+- `TRUSTED_BUYER` and `TRUSTED_SELLER` aggregate checks count `CompletedDeal` rows per buyer/seller profile; they are Celery task entry points enqueued with `transaction.on_commit()` after a deal completes
+- `docs/rewards/REWARDS_SOURCE_OF_TRUTH.md` is the canonical rewards architecture/status document; the original MVP implementation report lives at `docs/rewards/rewarding-system-report.md`
 
 ### `apps.lucky_wheel`
 
@@ -1559,8 +1595,8 @@ Current Lucky Wheel API:
 Current Lucky Wheel behavior:
 
 - PP Coin wallet remains user-account-level; spin profile is only the context profile
-- onboarding customer/seller profile creation grants one idempotent onboarding attempt
-- seller-approved auction payment completion grants the winner one idempotent `auction_completed` attempt
+- onboarding customer/seller profile creation grants one idempotent onboarding attempt per created profile (key `lucky_wheel:onboarding:{profile_id}`); this is independent of the account-level onboarding PP
+- a completed auction deal grants the winner one idempotent `auction_completed` attempt
 - frontend clients cannot submit `prize_id`; the backend chooses from active weighted prizes
 - prize types are `pp_coins`, `discount_offer`, `cashback_offer`, `badge`, and `no_prize`
 - discount/cashback prizes require offers whose `trigger_type` is `lucky_wheel`
@@ -2366,6 +2402,7 @@ Current permission resources:
 - `SEASONS_ADMIN`
 - `PEDIGREE_DOCUMENT`
 - `FEED_BLOCK`
+- `REWARD_RULE_ADMIN`
 
 Permission implementation rule:
 
@@ -2464,7 +2501,8 @@ Current reward admin permission pattern:
 - Lucky Wheel prize admin endpoints use `HasAppAccess` with `LUCKY_WHEEL_PRIZE_ADMIN`
 - Lucky Wheel spin admin listing uses `HasAppAccess` with `LUCKY_WHEEL_SPIN_ADMIN`
 - seasons endpoints use `HasAppAccess` with `SEASONS_ADMIN`
-- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, and `seasons.insights.list`
+- reward rule admin endpoints use `HasAppAccess` with `REWARD_RULE_ADMIN`
+- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, `seasons.insights.list`, `reward_rules.list`, `reward_rules.retrieve`, and `reward_rules.update`
 - user-triggered Lucky Wheel spin, referral redeem, and cashback-to-points conversion do not require manager permission codes
 
 Current pedigree permission pattern:
@@ -2633,7 +2671,7 @@ These risks are important and should be respected during future work.
 Current completion MVP:
 
 - buyer-created `PaymentRequest` records complete won auction items and approved market order items after seller approval
-- loyalty sale-completion rewards are granted only on seller-approved `PaymentRequest` records, after the relevant auction or market finalization succeeds
+- loyalty sale-completion rewards are granted only from `CompletedDeal` (`DEAL_COMPLETED`), which is recorded after seller approval of a `PaymentRequest` and the relevant auction or market finalization succeed
 - related buyers and sellers can create simple complaints for approved or rejected payment requests; managers resolve or reject them manually
 
 Important remaining gaps:

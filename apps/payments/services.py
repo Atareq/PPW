@@ -5,6 +5,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Asset, AssetCategory, AssetStatus
 from apps.auctions.models import AuctionItem, AuctionItemStatus
+from apps.deals.services import CompletedDealService
 from apps.feed.services import BlockService
 from apps.orders.models import OrderItem, OrderItemStatus
 from apps.orders.services import OrderService
@@ -232,9 +233,11 @@ class PaymentRequestService:
             raise ValidationError(_("Only pending requests can be approved."))
 
         if payment_request.request_type == PaymentRequestType.MARKET:
-            PaymentRequestService._approve_market_request(payment_request)
+            order_item = PaymentRequestService._approve_market_request(payment_request)
         elif payment_request.request_type == PaymentRequestType.AUCTION:
-            PaymentRequestService._approve_auction_request(payment_request)
+            auction_item = PaymentRequestService._approve_auction_request(
+                payment_request
+            )
         else:
             raise ValidationError(_("Unsupported payment request type."))
 
@@ -249,6 +252,13 @@ class PaymentRequestService:
                 "modified",
             ]
         )
+        # The approved confirmation completes the deal. Recording it emits the
+        # DEAL_COMPLETED rewards, all in this transaction so a later failure
+        # rolls everything back.
+        if payment_request.request_type == PaymentRequestType.MARKET:
+            CompletedDealService.create_from_market_completion(order_item)
+        else:
+            CompletedDealService.create_from_auction_completion(auction_item)
         PaymentRequestService._log_event(
             payment_request,
             PaymentRequestEventType.APPROVED,
@@ -263,7 +273,6 @@ class PaymentRequestService:
             body=_("The seller approved your payment request."),
             idempotency_key=f"payment_request_approved:{payment_request.pk}",
         )
-        PaymentRequestService._handle_approved_rewards(payment_request)
         return PaymentRequestService.get_request(payment_request.pk)
 
     @staticmethod
@@ -382,6 +391,7 @@ class PaymentRequestService:
         order_item.save(update_fields=["status", "modified"])
         CashbackService.earn_for_completed_order_item(order_item)
         OrderService.refresh_order_status(order_item.order_id)
+        return order_item
 
     @staticmethod
     def _approve_auction_request(payment_request):
@@ -429,6 +439,7 @@ class PaymentRequestService:
                 from_profile_id=payment_request.seller_id,
                 to_profile_id=payment_request.buyer_id,
             )
+        return auction_item
 
     @staticmethod
     def _get_locked_asset(asset_id):
@@ -473,29 +484,6 @@ class PaymentRequestService:
             event_type=event_type,
             actor=actor,
             metadata=metadata or {},
-        )
-
-    @staticmethod
-    def _handle_approved_rewards(payment_request):
-        from apps.loyalty.constants import RewardEventType
-        from apps.loyalty.reward_engine import RewardEngine
-
-        event_type = {
-            PaymentRequestType.AUCTION: (
-                RewardEventType.AUCTION_PAYMENT_REQUEST_APPROVED
-            ),
-            PaymentRequestType.MARKET: (
-                RewardEventType.MARKET_PAYMENT_REQUEST_APPROVED
-            ),
-        }.get(payment_request.request_type)
-        if event_type is None:
-            return
-
-        RewardEngine.handle_event(
-            event_type,
-            actor=payment_request.seller,
-            profile=payment_request.seller,
-            context={"payment_request": payment_request},
         )
 
     @staticmethod

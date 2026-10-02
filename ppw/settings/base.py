@@ -60,6 +60,7 @@ APPS = [
     "apps.lucky_wheel",
     "apps.notifications",
     "apps.payments",
+    "apps.deals",
     "apps.promotions",
     "apps.referrals",
     "apps.complaints",

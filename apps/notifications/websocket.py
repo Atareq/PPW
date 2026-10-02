@@ -15,6 +15,39 @@ from apps.users.models import Profile
 logger = logging.getLogger(__name__)
 
 
+def resolve_concrete_profile(profile):
+    """Safely resolve concrete Profile subclass without mutating active_profile.
+
+    Directly queries/resolves the concrete subclass (CustomerProfile, SellerProfile,
+    or ManagerProfile) without calling switch_user_profile() or mutating state.
+    """
+    if profile is None:
+        return None
+    from apps.users.constants import ProfileType
+    from apps.users.models import CustomerProfile, ManagerProfile, SellerProfile
+
+    if isinstance(profile, (CustomerProfile, SellerProfile, ManagerProfile)):
+        return profile
+
+    if profile.type == ProfileType.CUSTOMER:
+        try:
+            return profile.customerprofile
+        except (CustomerProfile.DoesNotExist, AttributeError):
+            return CustomerProfile.objects.filter(pk=profile.pk).first() or profile
+    elif profile.type == ProfileType.SELLER:
+        try:
+            return profile.sellerprofile
+        except (SellerProfile.DoesNotExist, AttributeError):
+            return SellerProfile.objects.filter(pk=profile.pk).first() or profile
+    elif profile.type == ProfileType.MANAGER:
+        try:
+            return profile.managerprofile
+        except (ManagerProfile.DoesNotExist, AttributeError):
+            return ManagerProfile.objects.filter(pk=profile.pk).first() or profile
+
+    return profile
+
+
 class JWTAuthMiddleware:
     """Authenticate notification WebSockets strictly with Authorization: Bearer <token>."""
 
@@ -63,6 +96,7 @@ class JWTAuthMiddleware:
                 f"{profile_type.lower()}profile",
                 profile,
             )
+            concrete_profile = resolve_concrete_profile(profile)
             return user, concrete_profile
         except (TokenError, UserAccount.DoesNotExist):
             return None, None
