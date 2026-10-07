@@ -2849,6 +2849,24 @@ msgstr "Seller profile created successfully"
 msgid "Manager accounts cannot create customer profiles"
 msgstr "Manager accounts cannot create customer profiles"
 
+msgid "Congratulations! Points earned"
+msgstr "Congratulations! Points earned"
+
+#, python-format
+msgid "Congratulations! You earned %(points)s PP Coins."
+msgstr "Congratulations! You earned %(points)s PP Coins."
+
+#, python-format
+msgid "Congratulations! You earned the %(badge_name)s badge."
+msgstr "Congratulations! You earned the %(badge_name)s badge."
+
+msgid "Congratulations! You are a winner"
+msgstr "Congratulations! You are a winner"
+
+#, python-format
+msgid "Congratulations! You won a prize: %(prize_title)s."
+msgstr "Congratulations! You won a prize: %(prize_title)s."
+
 #~ msgid "SECRET_KEY is not set"
 #~ msgstr "SECRET_KEY is not set"
 

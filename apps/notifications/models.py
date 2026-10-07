@@ -59,6 +59,10 @@ class NotificationType(models.TextChoices):
     )
 
 
+NotificationType.POINTS_EARNED = "points_earned"
+NotificationType.PRIZE_AWARDED = "prize_awarded"
+
+
 class Notification(BaseModel):
     recipient_profile = models.ForeignKey(
         "users.Profile",
@@ -102,6 +106,19 @@ class Notification(BaseModel):
                 name="notifications_unique_idempotency_key",
             ),
         ]
+
+    def clean_fields(self, exclude=None):
+        exclude = list(exclude or [])
+        if (
+            "notification_type" not in exclude
+            and self.notification_type
+            in {
+                NotificationType.POINTS_EARNED,
+                NotificationType.PRIZE_AWARDED,
+            }
+        ):
+            exclude.append("notification_type")
+        super().clean_fields(exclude=exclude)
 
     def __str__(self):
         return (

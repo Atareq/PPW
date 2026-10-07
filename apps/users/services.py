@@ -353,3 +353,47 @@ class ManagerPermissionService:
         if not is_manager_permission_allowed(permission_code):
             return None
         return permission_code
+
+
+class AccountOnboardingService:
+    """Shared account-level first-profile onboarding boundary (BE-PRO-03A / BE-DRW-01)."""
+
+    @staticmethod
+    def has_prior_customer_seller_profile_history(
+        user,
+        *,
+        current_profile=None,
+    ) -> bool:
+        """Return True unless `user` has at most one historical Customer/Seller profile (live, non-deleted).
+
+        Evaluates `Profile.all_objects` (including soft-deleted rows) so that:
+        - Fresh customer-first or seller-first onboarding has no prior history (`False`).
+        - Creating a second mode later (`Customer -> Seller` or `Seller -> Customer`) has prior history (`True`).
+        - Recreating a profile after soft-deleting a prior profile has prior history (`True`).
+        """
+
+        user_id = getattr(user, "pk", user)
+        current_profile_id = (
+            getattr(current_profile, "pk", current_profile)
+            if current_profile is not None
+            else None
+        )
+        historical_profiles = list(
+            Profile.all_objects.filter(
+                user_id=user_id,
+                type__in=(ProfileType.CUSTOMER, ProfileType.SELLER),
+            )
+            .order_by("created", "pk")
+            .values("pk", "deleted")
+        )
+        if len(historical_profiles) != 1:
+            return True
+        only_profile = historical_profiles[0]
+        if only_profile["deleted"] is not None:
+            return True
+        if (
+            current_profile_id is not None
+            and only_profile["pk"] != int(current_profile_id)
+        ):
+            return True
+        return False

@@ -24,7 +24,7 @@ from apps.promotions.models import (
     UserPromotionGrant,
 )
 from apps.referrals.models import LinkSharingCode
-from apps.referrals.services import REFERRAL_INVITER_POINTS
+from apps.referrals.models import Referral, ReferralStatus
 from apps.users.constants import ProfileType
 from tests.factories import (
     CashbackOfferFactory,
@@ -216,6 +216,8 @@ def test_customer_lucky_wheel_spin_list_uses_customer_serializer():
 
 
 def test_registration_grants_one_onboarding_lucky_wheel_attempt():
+    from apps.draws.models import WeeklyDrawEntry, WeeklyDrawEntrySource
+
     payload = customer_registration_payload(phone_number="+201001234999")
     payload["username"] = "onboarding-customer"
 
@@ -226,14 +228,18 @@ def test_registration_grants_one_onboarding_lucky_wheel_attempt():
     )
 
     assert response.status_code == status.HTTP_201_CREATED
-    grant = LuckyWheelGrant.objects.get(
+    # BE-DRW-01 replaced the misimplemented onboarding Lucky Wheel attempt with
+    # an account-level WeeklyDrawEntry.
+    assert not LuckyWheelGrant.objects.filter(
         source_type=LuckyWheelGrantSourceType.ONBOARDING
+    ).exists()
+    entry = WeeklyDrawEntry.objects.get(
+        source=WeeklyDrawEntrySource.ONBOARDING
     )
-    assert grant.remaining_attempts == 1
-    assert grant.total_attempts == 1
+    assert entry.user.username == "onboarding-customer" 
 
 
-def test_referral_redeem_awards_inviter_points_once():
+def test_referral_redeem_creates_pending_referral_without_points():
     inviter = CustomerProfileFactory(is_active=True)
     redeemer_user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     redeemer = redeemer_user.active_profile
@@ -252,11 +258,11 @@ def test_referral_redeem_awards_inviter_points_once():
     code.refresh_from_db()
     assert code.is_used is True
     assert code.used_by_profile_id == redeemer.pk
-    assert PointTransaction.objects.filter(
-        user=inviter.user,
-        source_type=RewardSourceType.REFERRAL_ACCEPTED,
-        points=REFERRAL_INVITER_POINTS,
-    ).count() == 1
+    # BE-REF-01: redemption only creates a pending referral; the inviter is
+    # paid after a manager approves it.
+    assert response.data["referral"]["status"] == ReferralStatus.PENDING
+    assert Referral.objects.get(code=code).status == ReferralStatus.PENDING
+    assert not PointTransaction.objects.filter(user=inviter.user).exists()
 
 
 def test_customer_buys_points_with_cashback_idempotently():

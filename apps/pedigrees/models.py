@@ -1,11 +1,13 @@
 import uuid
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
+from django_extensions.db.models import TimeStampedModel
 
-from apps.general.models import OwnerBaseModel
+from apps.general.models import BaseModel, OwnerBaseModel
 
 
 class PedigreeBirdSex(models.TextChoices):
@@ -227,3 +229,59 @@ class PedigreeDocument(OwnerBaseModel):
 
     def __str__(self):
         return f"PedigreeDocument #{self.pk} ({self.status})"
+
+
+class RegisteredPedigree(BaseModel):
+    """A FastReport pedigree (`pdf_id` / `shape`) that PPW users may use.
+
+    Public pedigrees are visible to every pedigree user; private ones only to
+    UserAccounts with an explicit assignment row.
+    """
+
+    pedigree_id = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        help_text=_("FastReport pdf_id / shape."),
+    )
+    is_public = models.BooleanField(default=True)
+    users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through="RegisteredPedigreeUser",
+        related_name="registered_pedigrees",
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["pedigree_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pedigree_id"],
+                condition=Q(deleted__isnull=True),
+                name="uniq_live_registered_pedigree_id",
+            ),
+        ]
+
+    def __str__(self):
+        return f"RegisteredPedigree {self.pedigree_id}"
+
+
+class RegisteredPedigreeUser(TimeStampedModel):
+    """Grants one UserAccount visibility of one private registered pedigree."""
+
+    pedigree = models.ForeignKey(
+        RegisteredPedigree,
+        on_delete=models.CASCADE,
+        related_name="assignments",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="registered_pedigree_assignments",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pedigree", "user"],
+                name="uniq_registered_pedigree_user",
+            ),
+        ]

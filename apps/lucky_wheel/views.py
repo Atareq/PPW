@@ -4,10 +4,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
+from apps.loyalty.services import PointService
 from apps.lucky_wheel.models import LuckyWheelPrize, LuckyWheelSpin
 from apps.lucky_wheel.serializers import (
     AdminLuckyWheelSpinSerializer,
     LuckyWheelCurrentSerializer,
+    LuckyWheelGrantSerializer,
     LuckyWheelPrizeSerializer,
     LuckyWheelSegmentSerializer,
     LuckyWheelSpinRequestSerializer,
@@ -17,9 +19,9 @@ from apps.lucky_wheel.serializers import (
 )
 from apps.lucky_wheel.services import (
     LuckyWheelGrantService,
+    LuckyWheelService,
     LuckyWheelSpinService,
 )
-from apps.loyalty.services import PointService
 from apps.promotions.serializers import UserPromotionGrantSerializer
 from apps.promotions.services import UserPromotionGrantService
 from apps.users.constants import ProfileType
@@ -36,33 +38,28 @@ class LuckyWheelCurrentViewSet(viewsets.GenericViewSet):
     @extend_schema(tags=["Lucky Wheel"], responses={200: LuckyWheelCurrentSerializer})
     def list(self, request, *args, **kwargs):
         profile = request.user.active_profile
-        grants = list(LuckyWheelGrantService.active_grants(request.user, profile))
-        remaining = sum(grant.remaining_attempts for grant in grants)
-        segments = LuckyWheelPrize.objects.filter(is_active=True).order_by("id")
+        availability = LuckyWheelService.get_availability(
+            user=request.user,
+            profile=profile,
+        )
+        grants = availability["active_grants"]
+        segments = availability["segments"]
         promotion_grants = UserPromotionGrantService.get_active_grants_for_user(
             request.user,
             profile,
         )
         return Response(
             {
-                "eligible": remaining > 0,
-                "remaining_attempts": remaining,
-                "cooldown_until": None,
+                "available": availability["available"],
+                "eligible": availability["eligible"],
+                "has_active_wheel": availability["has_active_wheel"],
+                "remaining_attempts": availability["remaining_attempts"],
+                "cooldown_until": availability["cooldown_until"],
                 "segments": LuckyWheelSegmentSerializer(segments, many=True).data,
-                "active_grants": [
-                    {
-                        "id": grant.pk,
-                        "source_type": grant.source_type,
-                        "source_id": grant.source_id,
-                        "total_attempts": grant.total_attempts,
-                        "remaining_attempts": grant.remaining_attempts,
-                        "expires_at": grant.expires_at,
-                        "is_active": grant.is_active,
-                        "metadata": grant.metadata,
-                        "created": grant.created,
-                    }
-                    for grant in grants
-                ],
+                "active_grants": LuckyWheelGrantSerializer(
+                    grants,
+                    many=True,
+                ).data,
                 "user_promotion_grants": UserPromotionGrantSerializer(
                     promotion_grants,
                     many=True,
@@ -95,7 +92,7 @@ class LuckyWheelSpinViewSet(viewsets.GenericViewSet):
         )
         promotion_grant = grant_for_spin(spin)
         balances = {"points": PointService.get_balance(request.user)}
-        if profile.type == ProfileType.CUSTOMER:
+        if profile is not None and profile.type == ProfileType.CUSTOMER:
             customer = CustomerProfile.objects.get(pk=profile.pk)
             balances["cashback"] = str(customer.cashback_balance)
         return Response(

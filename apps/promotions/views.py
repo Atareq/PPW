@@ -1,9 +1,11 @@
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import OrderingFilter
 from rest_framework.response import Response
 
@@ -13,6 +15,9 @@ from apps.promotions.models import (
     CashbackTransaction,
     DiscountOffer,
     OfferTriggerType,
+    PromotionCampaign,
+    PromotionCampaignEffect,
+    PromotionCampaignStatus,
     UserPromotionGrant,
 )
 from apps.promotions.serializers import (
@@ -21,9 +26,20 @@ from apps.promotions.serializers import (
     CashbackOfferSerializer,
     CashbackTransactionSerializer,
     DiscountOfferSerializer,
+    OnboardingHighlightBenefitSerializer,
+    PromotionCampaignEffectSerializer,
+    PromotionCampaignSerializer,
+    PublicPromotionCampaignSerializer,
     UserPromotionGrantSerializer,
 )
-from apps.promotions.services import CashbackOfferService, DiscountOfferService, UserPromotionGrantService
+from apps.promotions.services import (
+    CashbackOfferService,
+    DiscountOfferService,
+    OnboardingHighlightBenefitService,
+    PromotionCampaignEffectService,
+    PromotionCampaignService,
+    UserPromotionGrantService,
+)
 from apps.users.constants import ProfileType
 from apps.users.models import CustomerProfile
 
@@ -337,3 +353,208 @@ class MyPromotionGrantViewSet(
             user=self.request.user,
             profile=self.request.user.active_profile,
         )
+
+
+
+def _get_optional_creator_profile(user):
+    return PromotionCampaignService._resolve_creator_profile(user)
+
+
+def promotion_campaign_queryset():
+    return PromotionCampaign.objects.select_related("created_by").order_by(
+        "starts_at",
+        "id",
+    )
+
+
+class AdminPromotionCampaignViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Manager CRUD for scheduled promotion campaigns (BE-PRO-01)."""
+
+    permission_classes = [IsAuthenticated, HasAppAccess]
+    permission_resource = "PROMOTION_CAMPAIGN_ADMIN"
+    manager_permission_map = {
+        "list": "promotions.campaigns.list",
+        "retrieve": "promotions.campaigns.retrieve",
+        "create": "promotions.campaigns.create",
+        "partial_update": "promotions.campaigns.update",
+        "update": "promotions.campaigns.update",
+    }
+    serializer_class = PromotionCampaignSerializer
+    queryset = PromotionCampaign.objects.all()
+
+    def get_queryset(self):
+        queryset = promotion_campaign_queryset()
+        campaign_type = self.request.query_params.get("campaign_type")
+        if campaign_type:
+            queryset = queryset.filter(campaign_type=campaign_type)
+
+        is_enabled_param = self.request.query_params.get("is_enabled")
+        if is_enabled_param is not None and is_enabled_param != "":
+            lowered = is_enabled_param.strip().lower()
+            if lowered in {"true", "1"}:
+                queryset = queryset.filter(is_enabled=True)
+            elif lowered in {"false", "0"}:
+                queryset = queryset.filter(is_enabled=False)
+
+        effective_status = self.request.query_params.get("effective_status")
+        if effective_status:
+            now = timezone.now()
+            if effective_status == PromotionCampaignStatus.DISABLED:
+                queryset = queryset.filter(is_enabled=False)
+            elif effective_status == PromotionCampaignStatus.SCHEDULED:
+                queryset = queryset.filter(is_enabled=True, starts_at__gt=now)
+            elif effective_status == PromotionCampaignStatus.ACTIVE:
+                queryset = queryset.filter(
+                    is_enabled=True,
+                    starts_at__lte=now,
+                    ends_at__gt=now,
+                )
+            elif effective_status == PromotionCampaignStatus.ENDED:
+                queryset = queryset.filter(is_enabled=True, ends_at__lte=now)
+            else:
+                raise ValidationError(
+                    {"effective_status": [_("Invalid effective status filter.")]}
+                )
+
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.instance = PromotionCampaignService.create(
+            serializer.validated_data,
+            created_by=_get_optional_creator_profile(self.request.user),
+        )
+
+    def perform_update(self, serializer):
+        serializer.instance = PromotionCampaignService.update(
+            serializer.instance,
+            serializer.validated_data,
+        )
+
+
+@extend_schema_view(
+    create=extend_schema(
+        request=None,
+        responses={200: PromotionCampaignSerializer},
+    )
+)
+class AdminPromotionCampaignActivationViewSet(viewsets.GenericViewSet):
+    """Enable or disable a scheduled promotion campaign (BE-PRO-01)."""
+
+    permission_classes = [IsAuthenticated, HasAppAccess]
+    permission_resource = "PROMOTION_CAMPAIGN_ADMIN"
+    serializer_class = PromotionCampaignSerializer
+    queryset = PromotionCampaign.objects.all()
+    enable = True
+
+    def get_required_manager_permission(self):
+        return (
+            "promotions.campaigns.enable"
+            if self.enable
+            else "promotions.campaigns.disable"
+        )
+
+    def get_queryset(self):
+        return promotion_campaign_queryset()
+
+    def create(self, request, *args, **kwargs):
+        campaign = self.get_object()
+        campaign = (
+            PromotionCampaignService.enable(campaign)
+            if self.enable
+            else PromotionCampaignService.disable(campaign)
+        )
+        serializer = self.get_serializer(campaign)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ActivePromotionCampaignViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """List currently active scheduled promotion campaigns (BE-PRO-01)."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = PublicPromotionCampaignSerializer
+    queryset = PromotionCampaign.objects.none()
+
+    def get_queryset(self):
+        campaign_type = self.request.query_params.get("campaign_type")
+        return PromotionCampaignService.active_campaigns(
+            campaign_type=campaign_type or None
+        )
+
+
+
+class AdminPromotionCampaignEffectViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Manager CRUD for service-level promotion campaign effects (BE-PRO-02)."""
+
+    permission_classes = [IsAuthenticated, HasAppAccess]
+    permission_resource = "PROMOTION_CAMPAIGN_EFFECT_ADMIN"
+    manager_permission_map = {
+        "list": "promotions.campaign_effects.list",
+        "retrieve": "promotions.campaign_effects.retrieve",
+        "create": "promotions.campaign_effects.create",
+        "partial_update": "promotions.campaign_effects.update",
+        "update": "promotions.campaign_effects.update",
+        "destroy": "promotions.campaign_effects.delete",
+    }
+    serializer_class = PromotionCampaignEffectSerializer
+    queryset = PromotionCampaignEffect.objects.all()
+
+    def get_queryset(self):
+        return PromotionCampaignEffectService.list_for_campaign(
+            self.kwargs["campaign_id"]
+        )
+
+    def perform_create(self, serializer):
+        serializer.instance = PromotionCampaignEffectService.create(
+            self.kwargs["campaign_id"],
+            serializer.validated_data,
+            created_by=_get_optional_creator_profile(self.request.user),
+        )
+
+    def perform_update(self, serializer):
+        serializer.instance = PromotionCampaignEffectService.update(
+            serializer.instance,
+            serializer.validated_data,
+            campaign=self.kwargs["campaign_id"],
+        )
+
+    def perform_destroy(self, instance):
+        PromotionCampaignEffectService.delete(
+            instance,
+            campaign=self.kwargs["campaign_id"],
+        )
+
+
+
+class OnboardingHighlightBenefitViewSet(viewsets.GenericViewSet):
+    """Read-only eligibility status for the calling user's 20% first highlight benefit (BE-PRO-03)."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = OnboardingHighlightBenefitSerializer
+    queryset = UserPromotionGrant.objects.none()
+
+    @extend_schema(
+        tags=["Promotions"],
+        responses={200: OnboardingHighlightBenefitSerializer},
+    )
+    def retrieve(self, request, *args, **kwargs):
+        status_payload = OnboardingHighlightBenefitService.get_benefit_status(
+            request.user
+        )
+        serializer = self.get_serializer(status_payload)
+        return Response(serializer.data, status=status.HTTP_200_OK)

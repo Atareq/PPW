@@ -113,8 +113,9 @@ Cashback is not loyalty points. Cashback remains in `apps.promotions` through `C
 | `auction_published` | `Auction` | Sync | Yes |
 | `market_item_listed` | `Asset` product subtype | Sync | Yes |
 | `bid_placed` | `Bid` | Sync | Yes |
-| `deal_completed` | `CompletedDeal` (`auction` or `market`) | Sync + async aggregate enqueue | Yes (replaces the two payment-approved events, BE-REW-05) |
+| `deal_completed` | `CompletedDeal` (`auction` or `market`) | Sync + async aggregate enqueue | Yes (replaces the two payment-approved events, BE-REW-05). Since BE-REW-08 also pays both parties `floor(amount × rate) × 2` PP plus a 100 PP bonus (section 9), and since BE-REW-09 the seller a recurring 100 PP successful-sale reward (section 10) |
 | `rating_created` | `AssetRating` / `SellerRating` | Sync | Yes |
+| `mutual_rating_completed` | `DealRating` pair on one `CompletedDeal` | Sync | Yes (BE-REW-10): buyer and seller 20 PP each, points only; does not emit `rating_created` |
 | `seller_followed` | `SellerFollow` | Sync + future aggregate | Yes |
 | `payment_request_created` | `PaymentRequest` | None | Deferred |
 | `payment_request_rejected` | `PaymentRequest` | None | Deferred |
@@ -131,6 +132,7 @@ Since BE-REW-06 a badge never implies PP Coins. The points column shows what the
 | `WELCOME_BUYER` | Buyer | New customer starter badge | `customer_profile_created` | `CustomerProfile` | 0 (onboarding PP is account-level, once per `UserAccount`; default 100 via the `ACCOUNT_ONBOARDING` reward rule) | Permanent | Sync | Implemented | Customer registration hook exists |
 | `FIRST_BIDDER` | Buyer | First accepted bid | `bid_placed` | `Bid` | 10 | Permanent | Sync | Implemented | Bid service hook exists |
 | `LAST_MINUTE_FIGHTER` | Buyer | Bid in final five minutes | `bid_placed` | `Bid` | 5 | 7 days | Sync | Implemented | Uses pre-auto-extend last-minute flag |
+| (no badge) `ACTIVE_AUCTION_BIDDER` | Buyer | Auction reaches 5 distinct bidder accounts | `bid_placed` | `Bid` (auction level) | 50 per auction (rule-configurable) | n/a | Sync | Implemented (BE-REW-07) | Points only; see `REWARDS_SOURCE_OF_TRUTH.md` section 8 |
 | `AUCTION_PURCHASE_CONFIRMED` | Buyer | Confirmed auction purchase | `deal_completed` (auction) | `CompletedDeal` | 50 | Permanent | Sync | Implemented | Seller approval is sale confirmation |
 | `MARKET_PURCHASE_CONFIRMED` | Buyer | Confirmed market purchase | `deal_completed` (market) | `CompletedDeal` | 30 | Permanent | Sync | Implemented | Runs after market finalization succeeds |
 | `REVIEWER_BUYER` | Buyer | First valid rating | `rating_created` | `AssetRating` / `SellerRating` | 10 | Permanent | Sync | Implemented | Rating services already validate completed sale |
@@ -168,8 +170,8 @@ Since BE-REW-06 a badge never implies PP Coins. The points column shows what the
 | `WEEKLY_PARTICIPANT` | Shared | Weekly activity recognition | Weekly aggregate | Bids/purchases/sales/listings | Optional | 7 days | Async | Deferred | Weekly scheduler not implemented |
 | `MONTHLY_TOP_SELLER` | Seller | Monthly top seller | Monthly leaderboard | Approved requests | Optional | 30 days | Async | Deferred | Leaderboard policy not implemented |
 | `MONTHLY_TOP_BUYER` | Buyer | Monthly top buyer | Monthly leaderboard | Approved requests | Optional | 30 days | Async | Deferred | Leaderboard policy not implemented |
-| `REFERRAL_CHALLENGE` | Shared | Referral progress | Missing | Referral system | TBD | TBD | TBD | Blocked | Referral system does not exist |
-| `SEASONAL_BADGE` | Shared | Admin seasonal campaigns | Missing | Campaign engine | TBD | TBD | TBD | Deferred | Campaign engine not requested |
+| `REFERRAL_CHALLENGE` | Shared | Referral progress | Challenge finalization | `ReferralChallenge` / `ReferralChallengeWinner` (BE-REF-03) | None | TBD | Sync | Deferred | The monthly referral challenge exists since BE-REF-03 (approved-referral score, Top 10, Top 3 prize winners), records `CLAIM_REQUIRED` / `PENDING` `PrizeAward` rows for canonical in-kind winners (`IPHONE`, `AIRPODS`) in `apps.prizes` (BE-PRZ-01), and supports winner claim submission (`full_name`, `address`, `identity_number`) and manager review/delivery (`PrizeClaim`, BE-PRZ-02); it awards no badge and no PP |
+| `SEASONAL_BADGE` | Shared | Admin seasonal campaigns | Missing | Campaign engine | TBD | TBD | TBD | Deferred | Campaign engine not requested; seller reward seasons (`apps.seasons`, BE-SEA-01/02/03) score sellers, pay configured Top-3 `SeasonPrize.pp_points` (default `100,000 / 50,000 / 25,000`) on finalization, and record `DIGITAL_AUTOMATIC` / `FULFILLED` `PrizeAward` rows in `apps.prizes` (BE-PRZ-01) without awarding badges or fulfilling physical trophies |
 | `PAID_BADGE` | Shared | Buy a badge | Missing | In-app payment gateway | TBD | TBD | TBD | Blocked | No in-app payment gateway exists |
 
 ## 14. Implemented Rewards
@@ -215,7 +217,7 @@ Shipping/receipt-based rewards are deferred because there is no shipping/handoff
 
 - `FAST_RESPONDER`: chat messages exist, but reliable first-response-time semantics are not modeled.
 - `MULTI_ROOM_SELLER`: seller rooms do not exist.
-- `REFERRAL_CHALLENGE`: referral system does not exist.
+- `REFERRAL_CHALLENGE`: the monthly challenge exists (BE-REF-03, see `REWARDS_SOURCE_OF_TRUTH.md` section 14), records `CLAIM_REQUIRED` / `PENDING` `PrizeAward` rows for `IPHONE` and `AIRPODS` winners (BE-PRZ-01, section 25), and supports winner claim submission and manager review/delivery via `PrizeClaim` (BE-PRZ-02, section 26), but awards no badge or PP.
 - `PAID_BADGE`: paid badges are blocked because PPW has no in-app payment gateway.
 
 ## 17. Test Coverage
@@ -248,13 +250,20 @@ PYENV_VERSION=ppw-env pyenv exec python manage.py makemigrations --check --dry-r
 
 - Should buyer purchase-confirmed points be awarded for every confirmed purchase, or only once per profile? The MVP awards points per approved `PaymentRequest` and keeps one profile badge per purchase-confirmed badge type.
 - Should temporary aggregate badges be renewable with new points after expiry? The MVP supports temporary badge expiry and historical records, but trusted aggregate rewards are idempotent per profile/code.
-- Should reward results be exposed in API responses or notifications? The MVP stores points and badges only.
+- Should reward results be exposed in API responses or notifications? Congratulatory notifications for PP Coin earnings (`points_earned`), badge awards (`badge_awarded`), and claim-required prize wins (`prize_awarded`) are implemented in `BE-NOT-01` using `apps.notifications`.
 
 ## 19. Future Enhancements
 
 - Add scheduled Celery Beat entries for aggregate recalculations.
 - Add leaderboard reward policies.
 - Add renewable temporary aggregate reward periods.
-- Add notification/event delivery for awarded rewards.
+- Add notification grouping/digests and Do-Not-Disturb / per-category preferences (`BE-NOT-02`).
 - Add safe response-time metrics before implementing `FAST_RESPONDER`.
-- Add admin campaign models before implementing seasonal badges.
+- Scheduled promotion campaign types (`PromotionCampaign`: `MONTHLY`, `SEASONAL`, `FLASH`), `[starts_at, ends_at)` scheduling (BE-PRO-01), service-level `PERCENT_DISCOUNT` campaign effects (`PromotionCampaignEffect` + `PromotionPricingService.resolve_service_discount` integrated with Seller Packages and Loft Subscriptions, BE-PRO-02), and the account-level onboarding 20% first auction-highlight discount entitlement, campaign comparison quote, and trusted atomic consumption service (`OnboardingHighlightBenefitService`, BE-PRO-03; actual highlight purchase wiring deferred pending a canonical highlight domain) are implemented in `apps.promotions`; executable `POINTS_MULTIPLIER` campaign effects remain deferred pending canonical reward-event scope definition, and seasonal campaign badge automation remains separate.
+- Weekly onboarding draw domain, automatic account-level entry, and post-`ends_at` participant-freeze foundation (`apps.draws`: `WeeklyDraw`, `WeeklyDrawEntry`, `WeeklyDrawService`, `WeeklyDrawFinalizationService`, `WeeklyDrawEntryService`, BE-DRW-01 & BE-DRW-02) are implemented and separated from the Lucky Wheel (`apps.lucky_wheel`); actual winner selection and transition to `FINALIZED` remain blocked pending product confirmation of winner count, selection algorithm, and prize definition.
+- Lucky Wheel eligibility, attempt lifecycle, spin outcome selection, and prize execution (`apps.lucky_wheel`: `LuckyWheelService.get_availability`, `LuckyWheelGrantService`, `LuckyWheelPrizeSelector`, and `LuckyWheelSpinService`, BE-LW-01, BE-LW-01A & BE-LW-02) are hardened and separated from Weekly Onboarding Draws (`apps.draws`); `available`/`eligible` require both an active non-exhausted prize segment (`weight > 0`) and `remaining_attempts > 0`, usable grants are ordered by `expires_at ASC NULLS LAST, created ASC, id ASC`, attempt grants use a savepoint-guarded create with collision validation on `IntegrityError` recovery, weighted prize selection uses `secrets.SystemRandom()` behind injectable `LuckyWheelPrizeSelector.select()`, finite prize inventory uses `select_for_update()` with bounded stale-candidate re-resolution, `LuckyWheelPrize.clean()` enforces strict one-of reward fields and `quantity_total >= quantity_awarded`, spin-time offer/badge/point validation rolls back the entire transaction on failure, `prize_snapshot` preserves immutable prize/offer details, public endpoints strip internal `metadata` / `source_id` / `weight` / `idempotency_key` fields, and spin requests reject client-supplied outcome/prize fields.
+- Shared prize award and fulfillment foundation and claim workflow (`apps.prizes`: `PrizeAward`, `PrizeClaim`, `PrizeAwardService`, `PrizeClaimService`, BE-PRZ-01 & BE-PRZ-02) record immutable `UserAccount`-owned prize awards across `LUCKY_WHEEL` (`DIGITAL_AUTOMATIC` / `FULFILLED` for `PP_COINS`, `DISCOUNT_OFFER`, `CASHBACK_OFFER`, and `BADGE`; `0` rows for `NO_PRIZE`), `SEASON` (`DIGITAL_AUTOMATIC` / `FULFILLED` for Top-3 `pp_points > 0` winners), and `REFERRAL_CHALLENGE` (`CLAIM_REQUIRED` / `PENDING` for canonical in-kind `IPHONE` and `AIRPODS` winners) without double-executing rewards or storing claim PII on `PrizeAward`, and support winner claim submission (`full_name`, `address`, `identity_number` on `PrizeClaim`) and manager review/delivery (`SUBMITTED -> REVIEWED -> DELIVERED`, fulfilling `PrizeAward` on delivery).
+- Reward and prize congratulatory notifications (`BE-NOT-01`) emit `points_earned` on newly created positive `PointTransaction` rows (`PointService._create_transaction`), `badge_awarded` on newly created `BadgeAward` rows (`BadgeService.award_badge`), and `prize_awarded` on newly created `CLAIM_REQUIRED` `PrizeAward` rows (`PrizeAwardService._record_award`, with `0` generic prize notifications on `record_digital_fulfilled`), reusing `NotificationService.create_notification` and post-commit WebSocket/FCM delivery; notification grouping/digests and DND preferences are deferred to `BE-NOT-02`.
+
+
+

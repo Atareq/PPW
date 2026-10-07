@@ -42,6 +42,8 @@ urlpatterns = [
     path("api/pedigrees/", include("apps.pedigrees.urls")),
     path("api/loft-subscriptions/", include("apps.loft_subscriptions.urls")),
     path("api/seasons/", include("apps.seasons.urls")),
+    path("api/draws/", include("apps.draws.urls")),
+    path("api/prizes/", include("apps.prizes.urls")),
     path(
         "api/schema/",
         InternalSchemaAPIView.as_view(),

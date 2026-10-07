@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.loyalty.constants import (
     BADGE_DEFINITIONS,
+    DEAL_POINTS_RATE_KEY_PREFIX,
     REWARD_RULE_CONFIGURATION_MAX_KEYS,
     BadgeType,
 )
@@ -223,6 +224,15 @@ class RewardRuleUpdateSerializer(serializers.ModelSerializer):
             if any(isinstance(entry, (dict, list)) for entry in items):
                 raise serializers.ValidationError(
                     _("Configuration values must be plain values or lists of them.")
+                )
+        for key, item in value.items():
+            if str(key).startswith(DEAL_POINTS_RATE_KEY_PREFIX) and (
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or item < 0
+            ):
+                raise serializers.ValidationError(
+                    _("Points-per-unit rates must be non-negative numbers.")
                 )
         return value
 

@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from apps.lucky_wheel.models import (
@@ -31,6 +33,22 @@ class LuckyWheelPrizeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "quantity_awarded", "created", "modified"]
 
+    def validate(self, attrs):
+        instance = (
+            LuckyWheelPrize.objects.get(pk=self.instance.pk)
+            if self.instance is not None
+            else LuckyWheelPrize()
+        )
+        for field, value in attrs.items():
+            setattr(instance, field, value)
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                raise serializers.ValidationError(exc.message_dict) from exc
+            raise serializers.ValidationError({"detail": exc.messages}) from exc
+        return attrs
+
 
 class LuckyWheelSegmentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,7 +60,6 @@ class LuckyWheelSegmentSerializer(serializers.ModelSerializer):
             "prize_type",
             "points_amount",
             "badge_type",
-            "metadata",
         ]
         read_only_fields = fields
 
@@ -53,12 +70,10 @@ class LuckyWheelGrantSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "source_type",
-            "source_id",
             "total_attempts",
             "remaining_attempts",
             "expires_at",
             "is_active",
-            "metadata",
             "created",
         ]
         read_only_fields = fields
@@ -74,14 +89,15 @@ class LuckyWheelSpinSerializer(serializers.ModelSerializer):
             "status",
             "prize_snapshot",
             "awarded_at",
-            "metadata",
             "created",
         ]
         read_only_fields = fields
 
 
 class LuckyWheelCurrentSerializer(serializers.Serializer):
+    available = serializers.BooleanField(read_only=True)
     eligible = serializers.BooleanField(read_only=True)
+    has_active_wheel = serializers.BooleanField(read_only=True)
     remaining_attempts = serializers.IntegerField(read_only=True)
     cooldown_until = serializers.DateTimeField(read_only=True, allow_null=True)
     segments = LuckyWheelSegmentSerializer(many=True, read_only=True)
@@ -90,7 +106,25 @@ class LuckyWheelCurrentSerializer(serializers.Serializer):
 
 
 class LuckyWheelSpinRequestSerializer(serializers.Serializer):
-    idempotency_key = serializers.CharField()
+    ALLOWED_FIELDS = {"idempotency_key"}
+
+    idempotency_key = serializers.CharField(allow_blank=False, trim_whitespace=True)
+
+    def validate(self, attrs):
+        if isinstance(self.initial_data, dict):
+            forbidden = sorted(set(self.initial_data.keys()) - self.ALLOWED_FIELDS)
+            if forbidden:
+                raise serializers.ValidationError(
+                    {
+                        field: [
+                            _(
+                                "Client cannot specify prize, outcome, slot, or grant parameters."
+                            )
+                        ]
+                        for field in forbidden
+                    }
+                )
+        return attrs
 
 
 class LuckyWheelSpinResponseSerializer(serializers.Serializer):

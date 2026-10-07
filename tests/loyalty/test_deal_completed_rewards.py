@@ -102,10 +102,13 @@ def test_market_completion_grants_current_market_rewards_once():
             seller.pk,
             50,
         ),
-        (f"points:order_item:{item.pk}:customer:amount", buyer.pk, 66),
-        (f"points:order_item:{item.pk}:customer:bonus", buyer.pk, 100),
-        (f"points:order_item:{item.pk}:seller:amount", seller.pk, 66),
-        (f"points:order_item:{item.pk}:seller:bonus", seller.pk, 100),
+        # BE-REW-08: floor(66.80) × 2 = 132 each, plus the 100 PP bonus each.
+        (f"reward:completed_deal:order_item:{item.pk}:buyer", buyer.pk, 132),
+        (f"reward:completed_deal_bonus:order_item:{item.pk}:buyer", buyer.pk, 100),
+        (f"reward:completed_deal:order_item:{item.pk}:seller", seller.pk, 132),
+        (f"reward:completed_deal_bonus:order_item:{item.pk}:seller", seller.pk, 100),
+        # BE-REW-09: seller-only successful-sale reward.
+        (f"reward:successful_sale:order_item:{item.pk}:seller", seller.pk, 100),
     }
     assert CompletedDeal.objects.count() == 1
 
@@ -130,6 +133,16 @@ def test_auction_completion_grants_current_auction_rewards_once():
             seller.pk,
             75,
         ),
+        # BE-REW-08: floor(150.00) × 2 = 300 each, plus the 100 PP bonus each.
+        (f"reward:completed_deal:auction_item:{item.pk}:buyer", buyer.pk, 300),
+        (f"reward:completed_deal_bonus:auction_item:{item.pk}:buyer", buyer.pk, 100),
+        (f"reward:completed_deal:auction_item:{item.pk}:seller", seller.pk, 300),
+        (
+            f"reward:completed_deal_bonus:auction_item:{item.pk}:seller",
+            seller.pk,
+            100,
+        ),
+        (f"reward:successful_sale:auction_item:{item.pk}:seller", seller.pk, 100),
     }
     grant = LuckyWheelGrant.objects.get(
         source_type=LuckyWheelGrantSourceType.AUCTION_COMPLETED
@@ -167,10 +180,10 @@ def test_deal_rewards_need_no_payment_request():
     fire(auction_deal)
 
     assert not PaymentRequest.objects.exists()
-    assert PointService.get_balance(buyer) == 30 + 40 + 100
-    assert PointService.get_balance(seller) == 50 + 40 + 100
-    assert PointService.get_balance(auction_buyer) == 50 + 200
-    assert PointService.get_balance(auction_seller) == 75
+    assert PointService.get_balance(buyer) == 30 + 80 + 100
+    assert PointService.get_balance(seller) == 50 + 80 + 100 + 100
+    assert PointService.get_balance(auction_buyer) == 50 + 200 + 300 + 100
+    assert PointService.get_balance(auction_seller) == 75 + 300 + 100 + 100
     assert PointTransaction.objects.filter(
         idempotency_key=(
             "reward:MARKET_PURCHASE_CONFIRMED:deal_completed:"
@@ -196,10 +209,12 @@ def test_repeated_deal_completed_event_is_idempotent():
         fire(deal)
         fire(market_deal)
 
-    assert PointTransaction.objects.count() == 1 + 1 + 1 + 1 + 1 + 4
+    # Auction: purchase, first bid, first sale, 2 deal, 2 bonus, sale = 8 rows.
+    # Market: purchase, first sale, 2 deal, 2 bonus, sale = 7 rows.
+    assert PointTransaction.objects.count() == 8 + 7
     assert BadgeAward.objects.count() == 4
     assert LuckyWheelGrant.objects.count() == 1
-    assert PointService.get_balance(buyer) == 50 + 200 + 30 + 10 + 100
+    assert PointService.get_balance(buyer) == (50 + 200 + 300 + 100) + (30 + 20 + 100)
 
 
 def test_deal_service_retry_does_not_emit_rewards_again():
@@ -421,9 +436,9 @@ def test_market_amount_reward_uses_deal_snapshot():
     fire(deal)
 
     amount_tx = PointTransaction.objects.get(
-        idempotency_key=f"points:order_item:{item.pk}:customer:amount"
+        idempotency_key=f"reward:completed_deal:order_item:{item.pk}:buyer"
     )
-    assert amount_tx.points == 40
+    assert amount_tx.points == 40 * 2
 
 
 def test_rewards_are_attributed_to_deal_accounts_and_modes():
@@ -437,7 +452,8 @@ def test_rewards_are_attributed_to_deal_accounts_and_modes():
     seller_rows = PointTransaction.objects.filter(user=seller)
     assert buyer_rows.count() == 3
     assert set(buyer_rows.values_list("profile_id", flat=True)) == {buyer_profile.pk}
-    assert seller_rows.count() == 3
+    # Deal points, bonus, first market sale, successful sale.
+    assert seller_rows.count() == 4
     assert set(seller_rows.values_list("profile_id", flat=True)) == {seller_profile.pk}
 
 

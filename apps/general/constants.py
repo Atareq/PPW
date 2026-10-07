@@ -67,6 +67,10 @@ SELLER_PERMISSIONS = {
     "SELLER_RATING": [
         "list",
     ],
+    "DEAL_RATING": [
+        "create",
+        "retrieve",
+    ],
     "RACE": [
         "list",
         "retrieve",
@@ -98,6 +102,10 @@ SELLER_PERMISSIONS = {
     "PEDIGREE_REPORT": [
         "list",
         "create",
+    ],
+    "REGISTERED_PEDIGREE": [
+        "list",
+        "retrieve",
     ],
     "LOFT_SUBSCRIPTION": [
         "list",
@@ -186,6 +194,10 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "DEAL_RATING": [
+        "create",
+        "retrieve",
+    ],
     "RACE": [
         "list",
         "retrieve",
@@ -220,6 +232,10 @@ CUSTOMER_PERMISSIONS = {
     "PEDIGREE_REPORT": [
         "list",
         "create",
+    ],
+    "REGISTERED_PEDIGREE": [
+        "list",
+        "retrieve",
     ],
     "LOFT_SUBSCRIPTION": [
         "list",

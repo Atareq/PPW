@@ -22,6 +22,7 @@ def seller_package_queryset():
         "owner",
         "owner__user",
         "package",
+        "promotion_snapshot",
     ).order_by("-created")
 
 
@@ -228,9 +229,28 @@ class SellerPackageService:
     """Seller package request and manager activation lifecycle."""
 
     @staticmethod
+    def quote_package(package_or_id, *, now=None):
+        """Resolve active service-level promotion discount for a SellerPackage plan (BE-PRO-02)."""
+        from apps.promotions.models import PromotionTargetType
+        from apps.promotions.services import PromotionPricingService
+
+        package = (
+            package_or_id
+            if isinstance(package_or_id, Package)
+            else Package.objects.get(pk=package_or_id)
+        )
+        return PromotionPricingService.resolve_service_discount(
+            target_type=PromotionTargetType.SELLER_PACKAGE,
+            target_package=package,
+            base_price=package.price,
+            now=now,
+        )
+
+    @staticmethod
     @transaction.atomic
-    def request_package(profile, package_id):
+    def request_package(profile, package_id, *, now=None):
         """Create one pending package request per seller/package pair."""
+        from apps.promotions.models import SellerPackagePromotionSnapshot
 
         seller = SellerPackageValidator.get_seller_profile(profile)
 
@@ -251,7 +271,8 @@ class SellerPackageService:
                 {"package_id": (_("A pending request for this package already exists."))}
             )
 
-        return AssetSellerPackage.objects.create(
+        resolution = SellerPackageService.quote_package(package, now=now)
+        seller_package = AssetSellerPackage.objects.create(
             owner=seller,
             package=package,
             remaining_points=package.points,
@@ -261,6 +282,17 @@ class SellerPackageService:
             expires_at=None,
             invalidated_at=None,
         )
+        SellerPackagePromotionSnapshot.objects.create(
+            seller_package=seller_package,
+            package=package,
+            promotion_campaign=resolution.campaign,
+            promotion_effect=resolution.effect,
+            base_price=resolution.base_price,
+            discount_percent=resolution.discount_percent,
+            discount_amount=resolution.discount_amount,
+            final_price=resolution.final_price,
+        )
+        return seller_package
 
     @staticmethod
     def get_active_package(profile):

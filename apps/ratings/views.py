@@ -1,5 +1,9 @@
 from django.db import transaction
+from drf_spectacular.utils import extend_schema
+from rest_framework import status, viewsets
+from rest_framework.response import Response
 
+from apps.general.authorizations import HasAppAccess
 from apps.general.viewsets import CreateListRetrieveDestroyViewSet
 from apps.ratings.filters import (
     AssetCommentFilter,
@@ -10,6 +14,7 @@ from apps.ratings.filters import (
 from apps.ratings.models import (
     AssetComment,
     AssetRating,
+    DealRating,
     SellerComment,
     SellerRating,
 )
@@ -22,8 +27,15 @@ from apps.ratings.serializers import (
     SellerCommentSerializer,
     SellerRatingCreateSerializer,
     SellerRatingSerializer,
+    DealRatingCreateSerializer,
+    DealRatingSerializer,
+    DealRatingStatusSerializer,
 )
-from apps.ratings.services import update_asset_rating, update_seller_rating
+from apps.ratings.services import (
+    DealRatingService,
+    update_asset_rating,
+    update_seller_rating,
+)
 
 
 class AssetCommentViewSet(CreateListRetrieveDestroyViewSet):
@@ -143,3 +155,50 @@ class SellerRatingViewSet(CreateListRetrieveDestroyViewSet):
         if comment and comment.is_rating_comment:
             comment.delete()
         update_seller_rating(seller)
+
+
+class DealRatingViewSet(viewsets.GenericViewSet):
+    """Deal participants rate each other; the rated profile is derived.
+
+    The caller rates as their active profile, which must be the deal's buyer
+    or seller profile; anyone else gets 404. One rating per party per deal,
+    no edits or deletes.
+    """
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "DEAL_RATING"
+    queryset = DealRating.objects.all()
+    serializer_class = DealRatingCreateSerializer
+
+    @extend_schema(
+        tags=["Ratings"],
+        request=DealRatingCreateSerializer,
+        responses={201: DealRatingSerializer},
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = DealRatingCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rating = DealRatingService.create(
+            request.user.active_profile,
+            serializer.validated_data["deal_id"],
+            serializer.validated_data["stars"],
+            serializer.validated_data["comment"],
+        )
+        return Response(
+            DealRatingSerializer(rating).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DealRatingStatusViewSet(viewsets.GenericViewSet):
+    """Mutual rating state of one deal for the active participant."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "DEAL_RATING"
+    queryset = DealRating.objects.all()
+    serializer_class = DealRatingStatusSerializer
+
+    @extend_schema(tags=["Ratings"], responses={200: DealRatingStatusSerializer})
+    def retrieve(self, request, deal_id=None, *args, **kwargs):
+        state = DealRatingService.status(request.user.active_profile, deal_id)
+        return Response(DealRatingStatusSerializer(state).data)

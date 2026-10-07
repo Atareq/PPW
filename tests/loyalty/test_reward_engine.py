@@ -161,6 +161,7 @@ def test_deferred_or_unknown_rule_does_not_crash():
         "badges_awarded": [],
         "already_awarded": [],
         "deferred_tasks": [],
+        "skipped": [],
     }
 
 

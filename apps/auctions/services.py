@@ -418,6 +418,7 @@ class AuctionService:
     def cancel_auction(
         auction: Auction,
         reason: str = "Cancelled by owner",
+        performer=None,
     ) -> Auction:
         """
         Cancel auction and refund all bids.
@@ -440,10 +441,14 @@ class AuctionService:
         # if auction.items.filter(bids__isnull=False).exists():
         #     raise ValidationError("Cannot cancel an auction that already has bids.")
 
+        now = timezone.now()
         auction.status = AuctionStatus.CANCELLED
         auction.save()
 
-        auction.items.all().update(status=AuctionItemStatus.CANCELLED)
+        auction.items.all().update(
+            status=AuctionItemStatus.CANCELLED,
+            modified=now,
+        )
 
         # Bid refund/payment handling is outside the current auction flow.
         Bid.objects.filter(item__auction=auction)
@@ -451,7 +456,7 @@ class AuctionService:
         AuctionService._log_event(
             auction=auction,
             event_type=AuctionItemStatus.CANCELLED,
-            performer=auction.owner,
+            performer=performer if performer is not None else auction.owner,
             item=None,
             bid=None,
             metadata={"reason": reason},

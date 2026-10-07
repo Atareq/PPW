@@ -34,10 +34,11 @@ The platform currently supports and will continue to expand around:
 - customer-to-seller block relationships that prevent new follow, feed, chat, and payment-request interactions
 - seller home-page insights summaries from current marketplace data
 - internal pedigree OCR extraction MVP with a null local OCR adapter
+- registered FastReport pedigree ids with public or `UserAccount`-assigned private visibility
 - Loft Manager subscriptions for pedigree template entitlement and AI quota access
 - loyalty reward automation for selected profile, bid, listing, rating, follow, and seller-approved payment-request events
 - ledger-backed Lucky Wheel attempts, backend-selected spins, and user-owned promotion prizes
-- link-sharing referral codes with inviter PP Coin rewards
+- link-sharing referral codes with manager-approved referrals, inviter PP Coin rewards, and a monthly referral challenge (Top 10 leaderboard, frozen Top 3 prize winners)
 - seller/customer level summaries derived from completed order counts
 - reward seasons with seller insight snapshots and idempotent top-seller PP Coin awards
 - future media, pedigree, expanded QR, reviews, expanded reward campaigns, realtime chat, and expanded promotion modules
@@ -162,6 +163,8 @@ Current major apps:
 - `apps.insights`
 - `apps.pedigrees`
 - `apps.seasons`
+- `apps.draws`
+- `apps.prizes`
 - `apps.general`
 
 ### Container Runtime / Deployment Shape
@@ -667,7 +670,7 @@ Current Loft Manager subscription behavior:
 - selected provider PDF ids are stored as positive integers; pricing and checkout never call the external FastReport provider
 - limited packages require at least one selected template id, `shapes_1` requires exactly one, other limited packages allow up to their limit, and unlimited packages allow any number of positive ids
 - active subscriptions store entitlement snapshots: template limit/unlimited flag, selected template ids, add-on codes, included AI operations per month, and purchased AI operations
-- `SubscriptionAccessService.require_pedigree_template()` gates `/api/pedigrees/generate/` after local subject access validation and before the external provider call
+- `SubscriptionAccessService.require_pedigree_template()` gates `/api/pedigrees/generate/` after the registered-pedigree visibility check and local subject access validation, and before the external provider call
 - `SubscriptionAccessService.require_addon(profile, "medical_records")` is the future medical-record endpoint gate; no medicine endpoint currently exists
 - `SubscriptionAccessService.require_addon(profile, "qr_code_pedigree")` is the future QR-generation endpoint gate; the current public asset QR payload URL is unchanged
 - Cloud Backup is exposed only as an entitlement code for now; no cloud-storage provider is implemented
@@ -858,8 +861,13 @@ Current notifications behavior:
   - new customer registration to active managers
   - complaint status updated
   - manual manager notifications
-  - badge awarded
-- badge-awarded notifications are created only when a new badge award row is created, not when an existing idempotent award is returned
+  - PP Coins earned (`points_earned`, BE-NOT-01)
+  - badge awarded (`badge_awarded`, BE-NOT-01)
+  - claim-required prize awarded (`prize_awarded`, BE-NOT-01)
+- `points_earned` congratulatory notifications are created atomically inside `PointService._create_transaction()` only when a new positive `PointTransaction` (`transaction_type=earn`, `points > 0`) is created (`idempotency_key=f"points_earned:{point_tx.id}"`); duplicate idempotent `earn_points()` calls, `spend_points()`, and `expire_points()` create `0` notifications
+- `badge_awarded` congratulatory notifications are created atomically inside `BadgeService.award_badge()` only when a new `BadgeAward` row (`created_new=True`) is created (`idempotency_key=f"badge_awarded:{award.id}"`); returning an existing idempotent award does not create another notification
+- `prize_awarded` congratulatory notifications are created atomically inside `PrizeAwardService._record_award()` only when a new `CLAIM_REQUIRED` `PrizeAward` (`created_new=True`) is created (`idempotency_key=f"prize_awarded:{award.id}"`); `PrizeAwardService.record_digital_fulfilled()` never creates a generic prize notification so digital PP Coin and badge prizes do not duplicate their `points_earned` or `badge_awarded` notifications
+- notification grouping/digests and Do-Not-Disturb / per-category preferences remain deferred to `BE-NOT-02`; weekly draw winner notifications remain deferred while `BE-DRW-02` winner selection is blocked
 - current notification types also reserve room for future cashback-earned, package-expiring-soon, auction-outbid, and complaint-created notifications, but those are not wired yet
 
 ### `apps.feed`
@@ -1024,10 +1032,11 @@ Current responsibilities:
 - document retrieval and manual review of extracted values
 - independent private `PedigreeBird` records owned by the active customer or seller profile
 - synchronous external FastReport reports-list and PDF/image generation proxying
+- `RegisteredPedigree` registry of FastReport pedigree ids (`pdf_id` / `shape`) with public/private visibility and `UserAccount` assignments; it is the PPW authorization source of truth for every user-facing endpoint that uses a pedigree id
 
 Important note:
 
-This app owns private pedigree-bird workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. `PedigreeBird` father/mother links are the canonical current pedigree graph. PPW does not persist report templates, generated certificates, generated files, report jobs, provider request history, or provider response history. Report generation is a synchronous proxy call to the external FastReport provider using current `PedigreeBird` data.
+This app owns private pedigree-bird workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. `PedigreeBird` father/mother links are the canonical current pedigree graph. PPW does not persist report templates, generated certificates, generated files, report jobs, provider request history, or provider response history; it stores only registered pedigree ids plus their visibility. Report generation is a synchronous proxy call to the external FastReport provider using current `PedigreeBird` data.
 
 Current pedigree API:
 
@@ -1036,14 +1045,22 @@ Current pedigree API:
   - `POST`: active customer or seller creates a private pedigree bird owned by the active profile
 - `/api/pedigrees/birds/<id>/`
   - `GET` / `PATCH` / `DELETE`: owner-scoped private pedigree bird detail, update, and soft delete; managers require explicit bird permissions
+- `/api/pedigrees/registered/`
+  - `GET`: customer/seller lists public registered pedigrees plus private ones assigned to their `UserAccount` (`id`, `pedigree_id`, `is_public`); manager lists every registration with `pedigrees.registered.list`, including `user_ids`, `created`, and `modified`; supports `pedigree_id`, `is_public`, and `ordering` (`pedigree_id`, `created`) filters that only narrow the authorized queryset
+  - `POST`: manager with `pedigrees.registered.create` registers `{"pedigree_id": <pdf_id>, "is_public": <bool, default true>, "user_ids": [<UserAccount id>, ...]}`
+- `/api/pedigrees/registered/<id>/`
+  - `GET`: customer/seller retrieves a visible registration (otherwise `404`); manager retrieves any with `pedigrees.registered.retrieve`
+  - `PATCH`: manager with `pedigrees.registered.update` changes `pedigree_id`, `is_public`, and/or `user_ids`
+  - `DELETE`: manager with `pedigrees.registered.delete` soft-deletes the registration
 - `/api/pedigrees/templates/`
-  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/reports`; returns upstream status/body/content type without local storage or reshaping
+  - `GET`: manager raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/reports`; returns upstream status/body/content type without local storage or reshaping
+  - `GET`: customer/seller receives `503` without any provider call (fails closed) because server-side filtering of the provider list is blocked until the real provider response shape is verified; clients use `/api/pedigrees/registered/` for the pedigree ids they may use
 - `/api/pedigrees/templates/<shape>/schema/`
-  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/schema/{shape}?generation=<generation>`; validates only the integer generation query locally and leaves shape/generation availability to the provider
+  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/schema/{shape}?generation=<generation>`; validates the integer generation query, then returns `404` for customer/seller unless `shape` is a visible registered pedigree, before any provider call
 - `/api/pedigrees/templates/<shape>/style-parameters/`
-  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/style-parameters?pedigreeType=<shape>&generation=<generation>`; returns provider-owned style metadata without local persistence or reshaping
+  - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/style-parameters?pedigreeType=<shape>&generation=<generation>`; same registry gate as schema; returns provider-owned style metadata without local persistence or reshaping
 - `/api/pedigrees/generate/`
-  - `POST`: synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
+  - `POST`: returns `404` for customer/seller unless `pdf_id` is a visible registered pedigree, then synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
 - `/api/pedigrees/provider-test/`
   - `POST`: manager-only dashboard diagnostic that calls provider `/health`, renders one deterministic in-memory Shape 04 Generation 6 synthetic PDF through `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/4`, validates the returned PDF, discards the bytes, and returns compact JSON health/generation timing and status data
 - `/api/pedigrees/documents/`
@@ -1064,10 +1081,22 @@ Current pedigree behavior:
 - `PEDIGREE_REPORT_BASE_URL` is required for report proxy calls and must come from environment configuration; Python code must not default to the provider IP
 - `PEDIGREE_REPORT_API_KEY` is required for FastReport provider calls and must only be sent backend-to-provider as `X-Api-Key`; do not expose it through PPW APIs, serializers, logs, or frontend configuration
 - `PEDIGREE_REPORT_TIMEOUT` is the single report-provider timeout setting
-- `/api/pedigrees/templates/` does not read, parse, filter, cache, or save provider report definitions
+- `/api/pedigrees/templates/` does not read, parse, filter, cache, or save provider report definitions; for customers/sellers it currently fails closed with `503` instead of returning the unfiltered list
+- `RegisteredPedigree` (`BaseModel`, soft delete) stores `pedigree_id` (the FastReport `pdf_id` / `shape`, positive integer, unique among live rows) and `is_public` (default `true`, preserving the previous globally usable behavior for ids managers register)
+- `RegisteredPedigreeUser` is the only bridge: unique `(pedigree, user)` rows meaning "this `UserAccount` may see this private pedigree"; no roles, expiry, profile, or metadata
+- registered pedigree visibility is `Q(is_public=True) | Q(assignments__user=request.user)` (with `distinct()`), applied in `get_queryset()` before filters, ordering, and pagination; unauthorized private rows never enter the queryset, so detail lookups return `404`
+- visibility belongs to `UserAccount`, not `Profile`: switching Customer/Seller mode never changes it
+- for customer/seller requests, unregistered ids and private ids not assigned to the user return `404` on `/generate/`, `/templates/<shape>/schema/`, and `/templates/<shape>/style-parameters/` before any provider call; knowing a `pdf_id` never bypasses PPW authorization
+- managers and superusers are not limited by user visibility on provider endpoints and see every registered pedigree
+- manager `user_ids` is the full desired assignment set: omitted on `PATCH` keeps assignments, `[]` clears them, a list replaces them inside one transaction; duplicate ids collapse and unknown `UserAccount` ids are rejected
+- switching a pedigree between private and public never deletes assignments; public pedigrees ignore them and they apply again when made private
+- a private pedigree with no assignments is valid and visible only to managers
+- there is no generic ACL, separate bridge CRUD endpoint, profile-based entitlement, share token, expiry, or access-request workflow
+- registering a pedigree id does not check the provider; existence validation against FastReport is not currently available
+- Loft subscription checkout `template_ids` are not checked against the registry; generation still requires both a visible registration and subscription entitlement
 - `/api/pedigrees/templates/<shape>/schema/` and `/api/pedigrees/templates/<shape>/style-parameters/` validate `generation` as an integer between 2 and `PEDIGREE_MAX_GENERATION_DEPTH`; do not hardcode report availability matrices because provider reports metadata is authoritative
 - `/api/pedigrees/generate/` accepts `subject_bird_id`, `pdf_id`, `generation_depth`, frontend `report`, optional `owner`, and optional `customization`
-- report generation validates local subject-bird access, minimal request shape, and active subscription template entitlement; it does not validate `pdf_id`, `report.generation`, provider parameter names, file names, or report metadata against the external reports list
+- report generation validates registry visibility of `pdf_id`, local subject-bird access, minimal request shape, and active subscription template entitlement; it does not validate `pdf_id`, `report.generation`, provider parameter names, file names, or report metadata against the external reports list
 - generation depth counts total pedigree levels with the subject as depth `1`; depth `2` includes only direct parents and depth is capped by the platform pedigree maximum
 - `PedigreeReportMapper` deep-copies the frontend report object, preserves unknown report fields and unknown parameters, then overwrites only PPW-owned bird, owner, customization, and print-date parameters
 - `PedigreeReportClient` performs raw `GET /api/reports/fastreport/reports`, metadata `GET`, and `POST /api/reports/fastreport/pdf/{pdf_id}` calls with `X-Api-Key`, no MIME/file-signature validation, no generated-file storage, no Celery retry, and no response wrapping
@@ -1096,6 +1125,7 @@ Current pedigree service implementation names:
 - `PedigreeReportMapper` maps generation data into the irregular external report payload parameter names while preserving unrelated frontend report data
 - `PedigreeReportClient` owns raw external reports-list and PDF-generation HTTP calls
 - `PedigreeReportGenerationService` loads the accessible subject bird and builds the provider payload for synchronous generation
+- `RegisteredPedigreeService.visible_queryset()` returns registered pedigrees visible to a user (all for managers) and `require_visible()` raises `404` for customer/seller pedigree ids outside it
 - `PedigreeImageBoxDetectionService` detects OCR boxes in uploaded pedigree documents
 - `PedigreeBoxOCRService` extracts text lines for each detected document box
 - `PedigreeDocumentService.upload_and_process()` creates the document and stores OCR/extraction success or failure state
@@ -1111,6 +1141,7 @@ Current responsibilities:
 - immutable `CashbackTransaction` ledger records for every cashback balance movement
 - admin cashback balance adjustments with audit trail
 - customer/admin promotion and cashback APIs
+- admin-managed scheduled `PromotionCampaign` records (`MONTHLY`, `SEASONAL`, `FLASH`) with timezone-aware half-open `[starts_at, ends_at)` windows, derived `effective_status` (`DISABLED`, `SCHEDULED`, `ACTIVE`, `ENDED`), canonical `PromotionCampaignService.active_campaigns()` lookup (BE-PRO-01), service-level percentage discount effects (`PromotionCampaignEffect`) with non-stacking highest-discount resolution via `PromotionPricingService.resolve_service_discount()` integrated into Seller Package requests and Loft Subscription pricing/checkout (BE-PRO-02), and the account-level onboarding 20% first auction-highlight discount entitlement, campaign comparison quote, and trusted atomic consumption service (`OnboardingHighlightBenefitService`, BE-PRO-03; actual paid highlight purchase wiring is deferred pending a canonical auction highlight domain)
 
 Important note:
 
@@ -1118,6 +1149,25 @@ This app is not a payment gateway, withdrawal wallet, coupon-code system, cashba
 
 Current promotions API:
 
+- `/api/promotions/active/`
+  - `GET`: authenticated list of currently active (`is_enabled=True`, `starts_at <= now < ends_at`) scheduled promotion campaigns, with optional `?campaign_type=MONTHLY|SEASONAL|FLASH`
+- `/api/promotions/admin/campaigns/`
+  - `GET`: manager with `promotions.campaigns.list` lists scheduled promotion campaigns (filterable by `campaign_type`, `is_enabled`, `effective_status`)
+  - `POST`: manager with `promotions.campaigns.create` creates a scheduled promotion campaign
+- `/api/promotions/admin/campaigns/<id>/`
+  - `GET`: manager with `promotions.campaigns.retrieve` retrieves one scheduled promotion campaign
+  - `PATCH`: manager with `promotions.campaigns.update` updates a scheduled promotion campaign (`campaign_type`, `starts_at`, and `ends_at` are editable only before `starts_at`)
+- `/api/promotions/admin/campaigns/<id>/enable/`
+  - `POST`: manager with `promotions.campaigns.enable` idempotently enables a promotion campaign
+- `/api/promotions/admin/campaigns/<id>/disable/`
+  - `POST`: manager with `promotions.campaigns.disable` idempotently disables a promotion campaign
+- `/api/promotions/admin/campaigns/<campaign_id>/effects/`
+  - `GET`: manager with `promotions.campaign_effects.list` lists service-level discount effects for a campaign
+  - `POST`: manager with `promotions.campaign_effects.create` creates a `PERCENT_DISCOUNT` effect (`SELLER_PACKAGE`, `AUCTION_HIGHLIGHT`, `LOFT_SUBSCRIPTION`) before `campaign.starts_at`
+- `/api/promotions/admin/campaigns/<campaign_id>/effects/<id>/`
+  - `GET`: manager with `promotions.campaign_effects.retrieve` retrieves one campaign effect
+  - `PATCH`: manager with `promotions.campaign_effects.update` updates a campaign effect before `campaign.starts_at`
+  - `DELETE`: manager with `promotions.campaign_effects.delete` soft-deletes a campaign effect before `campaign.starts_at`
 - `/api/promotions/discount-offers/current/`
   - `GET`: customer-visible active discount offers
 - `/api/promotions/cashback-offers/current/`
@@ -1126,6 +1176,8 @@ Current promotions API:
   - `GET`: customer lists their own cashback transactions
 - `/api/promotions/my-grants/`
   - `GET`: authenticated user lists their own active, non-expired user promotion grants
+- `/api/promotions/onboarding/highlight-benefit/`
+  - `GET`: authenticated user reads their account-level onboarding 20% first auction-highlight discount status (`has_benefit`, `is_available`, `is_consumed`, `discount_percent`, `target_type`, `consumed_at`, `source_id`) without mutating or backfilling state
 - `/api/promotions/cashback/balance/`
   - `GET`: customer retrieves their current cashback balance
   - `GET ?customer=<id>`: manager with `cashback.balance.retrieve` retrieves one customer's cashback balance; manager without `customer` and non-manager use of `customer` return 403
@@ -1186,6 +1238,10 @@ Current promotions service implementation names:
 - `CashbackService.refund_redeemed_for_order_item()` refunds redeemed cashback idempotently when applicable
 - `CashbackService.admin_adjust()` applies manager-only manual balance adjustments
 - `UserPromotionGrantService.grant_discount()` and `grant_cashback()` create idempotent user-owned promotion grants
+- `PromotionCampaignService.create()`, `update()`, `enable()`, `disable()`, `effective_status()`, and `active_campaigns()` manage scheduled promotion campaigns (`MONTHLY`, `SEASONAL`, `FLASH`) and active-window queries (BE-PRO-01)
+- `PromotionCampaignEffectService.list_for_campaign()`, `create()`, `update()`, and `delete()` manage service-level `PromotionCampaignEffect` records and freeze effect mutations once `now >= campaign.starts_at` (BE-PRO-02)
+- `PromotionPricingService.resolve_service_discount()` (aliased as `PromotionEffectService`) resolves non-stacking highest-discount `PERCENT_DISCOUNT` effects across active campaigns (`-discount_percent`, `campaign.starts_at`, `campaign.id`, `effect.id`) for `SELLER_PACKAGE`, `LOFT_SUBSCRIPTION`, and `AUCTION_HIGHLIGHT` targets (BE-PRO-02)
+- `OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding()`, `ensure_for_onboarding()`, `has_prior_onboarding_profile_history()`, `get_benefit()`, `is_available()`, `get_benefit_status()`, `quote()`, and `consume_if_selected()` (`commit_highlight_benefit()`) manage the one-time `UserAccount`-level 20% first auction-highlight discount backed by `UserPromotionGrant` (`idempotency_key=promotion:onboarding_highlight:user:{user_id}`), grant it automatically only on the account's first-ever `Customer`/`Seller` profile in `Profile.all_objects` (so later mode creation or soft-deleted profile history never backfills historical accounts), compare it against active `AUCTION_HIGHLIGHT` campaign discounts without stacking (onboarding wins equal-value 20% ties; higher campaigns preserve the onboarding benefit), and atomically consume it on trusted commit (BE-PRO-03 / BE-PRO-03A)
 
 ### `apps.auctions`
 
@@ -1285,6 +1341,7 @@ Current responsibilities:
 - customer ratings for assets and sellers through separate concrete models
 - rating eligibility validation against completed order items
 - cached rating aggregate refresh for assets and seller profiles
+- deal-scoped `DealRating`: buyer and seller of one `CompletedDeal` rate each other once, separate from the public asset/seller ratings
 
 Current ratings/comment API:
 
@@ -1312,6 +1369,19 @@ Current ratings/comment API:
 - `/api/seller-ratings/<id>/`
   - `GET`: manager detail retrieval with `ratings.retrieve`
   - `DELETE`: manager moderation delete with `ratings.delete`
+- `/api/deal-ratings/`
+  - `POST`: the active buyer or seller profile of a `CompletedDeal` rates the other party with `deal_id`, `stars` (1-5), and optional `comment`; the direction and rated profile are derived, never submitted
+- `/api/deal-ratings/deals/<deal_id>/`
+  - `GET`: deal participant reads `role`, `has_rated`, `counterparty_has_rated`, `is_mutual`, `my_rating`, and `counterparty_rating` (hidden until both have rated); non-participants get 404
+
+Current deal rating behavior:
+
+- `DealRating` stores deal, direction (`buyer_to_seller` / `seller_to_buyer`), rater and rated `Profile`, `stars`, and `comment`
+- unique `(deal, rater_profile)` and `(deal, direction)` over all rows, including soft-deleted ones, so a rating cannot be recreated; rater cannot equal rated; stars 1-5 enforced in the database
+- creation locks the `CompletedDeal` row so the second of two concurrent submissions always sees the first; there is no update or delete API
+- the reciprocal (second) rating emits `MUTUAL_RATING_COMPLETED`; deal ratings never emit `RATING_CREATED`, do not change `avg_rating`/`ratings_count`, and trigger none of the public rating rewards
+- `DEAL_RATING` permission resource: customers and sellers have `create` and `retrieve`; managers have no access
+- no backfill from existing `SellerRating` rows
 
 Current comment behavior:
 
@@ -1495,13 +1565,14 @@ Current point behavior:
 - `PointTransaction` belongs to both `PointWallet` and `UserAccount`
 - `PointTransaction.profile` is optional and stores the active profile context that caused the transaction when applicable
 - point transaction types are `earn`, `spend`, and `expire`
-- reward source constants include `onboarding`, `lucky_wheel`, `auction_completed`, `order_completed_amount`, `order_completed_bonus`, `auction_posted`, `rating_received`, `referral_accepted`, `first_bid_completed`, `season_winner`, `cashback_points_purchase`, and `manager_adjustment`
+- reward source constants include `onboarding`, `lucky_wheel`, `auction_completed`, `order_completed_amount` and `order_completed_bonus` (pre-BE-REW-08 historical rows only), `deal_completed`, `deal_completion_bonus`, `successful_sale`, `mutual_rating`, `referral_approved`, `referral_first_bid`, `active_auction_bidder`, `auction_posted`, `rating_received`, `referral_accepted`, `first_bid_completed`, `season_winner`, `cashback_points_purchase`, and `manager_adjustment`
 - point transactions require positive points, non-negative `balance_after`, and a non-empty reason
 - `PointService.earn_points()`, `spend_points()`, and `expire_points()` run in DB transactions and lock the wallet row before changing balance
 - spending and expiring points cannot make wallet balance negative
 - optional nonblank `idempotency_key` values are unique across point transactions
 - reusing an idempotency key for the same logical transaction returns the existing transaction without changing balance again
 - reusing an idempotency key for a different logical transaction raises a validation error
+- creating a new positive `earn` `PointTransaction` (`points > 0`) atomically creates one `points_earned` congratulatory `Notification` (`idempotency_key=f"points_earned:{point_tx.id}"`, BE-NOT-01); duplicate idempotent `earn_points()`, `spend_points()`, and `expire_points()` calls create `0` notifications
 - non-manager transaction lists are always scoped to `request.user`
 - manager transaction lists are unscoped by default and support `user_id`, `profile_id`, `transaction_type`, and `source_type` filters
 
@@ -1541,7 +1612,7 @@ Current badge behavior:
 - `points_starter` is eligible for any profile type
 - manager-created badge awards remain idempotent per profile and badge type through `BadgeService.award_badge()`
 - reward-created badges use deterministic idempotency keys and service-level one-time or active-temporary checks
-- badge awards create a best-effort in-app notification only when a new `BadgeAward` row is created; returning an existing idempotent award does not create another notification
+- badge awards atomically create one `badge_awarded` congratulatory `Notification` (`idempotency_key=f"badge_awarded:{award.id}"`, BE-NOT-01) only when a new `BadgeAward` row (`created_new=True`) is created; returning an existing idempotent award does not create another notification
 - temporary badges are active only when `revoked_at IS NULL` and `expires_at` is null or in the future
 - expired badges are retained as history and hidden from active badge reads by default
 - different profiles under the same user can receive the same badge type independently
@@ -1551,14 +1622,19 @@ Current badge behavior:
 - the 100 PP onboarding reward is account-level: `RewardEngine.grant_account_onboarding_reward()` awards it once per `UserAccount` with key `reward:onboarding:user:{user_id}` and `source_type=onboarding`, attributed to the first triggering profile; later customer/seller profile creation awards `+0` onboarding PP
 - the onboarding amount comes from the `ACCOUNT_ONBOARDING` reward rule (default 100 PP); if that rule is disabled or pays 0, no onboarding PP is awarded
 - reward rule values resolve through `RewardRuleService`: an optional `RewardRuleConfig` override row, otherwise the canonical default in `DEFAULT_REWARD_RULES`; codes are the closed `RewardRuleCode` list, there is no seed data migration, and config changes never rewrite existing `PointTransaction` rows
-- only `ACCOUNT_ONBOARDING` is currently read by backend code; the other rule codes (`AUCTION_PUBLISHED`, `ACTIVE_AUCTION_BIDDER`, `DEAL_COMPLETED`, `POSITIVE_RATING`, `MUTUAL_RATING`, `REFERRAL_APPROVED`, `REFERRAL_FIRST_BID`) are configuration only and marked `is_implemented=false`
+- `ACCOUNT_ONBOARDING`, `ACTIVE_AUCTION_BIDDER`, `DEAL_COMPLETED`, `DEAL_COMPLETION_BONUS`, `SUCCESSFUL_SALE`, `MUTUAL_RATING`, `REFERRAL_APPROVED`, and `REFERRAL_FIRST_BID` are currently read by backend code; the other rule codes (`AUCTION_PUBLISHED`, `POSITIVE_RATING`) are configuration only and marked `is_implemented=false`
+- on each valid `BID_PLACED`, if the auction's non-deleted customer bids (across all its items) come from at least the `ACTIVE_AUCTION_BIDDER` threshold of distinct `UserAccount`s (default 5), every such account is paid the rule's points (default 50 PP) once per auction, points only, with key `reward:active_auction_bidder:auction:{auction_id}:user:{user_id}` and source `active_auction_bidder`; later new bidders are paid on their own bid; no historical backfill
+- when both parties of a `CompletedDeal` have a `DealRating`, `MUTUAL_RATING_COMPLETED` pays buyer and seller the `MUTUAL_RATING` rule points (default 20 PP each) once per deal, points only, keys `reward:mutual_rating:deal:{deal_id}:{buyer|seller}`, source `mutual_rating` with the deal id; a disabled rule pays nothing and is not topped up later
 - `WELCOME_BUYER` and `WELCOME_SELLER` remain profile-specific badges and carry no points; legacy pre-BE-REW-02 welcome-badge point transactions count as proof that the account was already onboarded
 - implemented synchronous reward events include account onboarding (`account_onboarded`), customer profile creation, seller profile creation, auction creation/publishing, market product listing, bid placement, deal completion (`deal_completed`), rating creation, and seller follow creation/reactivation
 - sale-completion rewards run only from `DEAL_COMPLETED`, which `CompletedDealService` emits once when it records a new `CompletedDeal` (currently after seller approval of an `AuctionPaymentRequest` or `MarketPaymentRequest`); `RewardEngine` reads the deal, never `apps.payments`
 - `auction_payment_request_approved` and `market_payment_request_approved` are no longer dispatched as events; they remain only as labels inside historical reward idempotency keys
 - deal rewards confirmed by a payment request keep the historical identity (`reward:{code}:{legacy_event}:PaymentRequest:{payment_request_id}:profile:{id}`, same `source_type`/`source_id`/metadata), rebuilt from `CompletedDeal.metadata.payment_request_id`, so no historical sale can be rewarded twice
 - auction posting now also awards 50 PP with source `auction_posted`
-- a completed market deal awards `int(CompletedDeal.amount)` PP plus a 100 PP bonus to both customer and seller using order-item idempotency keys
+- every completed deal (market and auction) pays both buyer and seller `floor(CompletedDeal.amount × rate) × multiplier` PP from the `DEAL_COMPLETED` rule (default multiplier 2; rates in its configuration as `points_per_unit_<CURRENCY>`, default EGP 1 and USD 1); a currency without a rate earns no deal points (never assumed 1:1), is logged as a warning, and is reported in the event result `skipped` list
+- every completed deal also pays both parties the separate `DEAL_COMPLETION_BONUS` rule (default 100 PP, not multiplied, not badge-coupled)
+- every completed deal also pays the seller only the separate `SUCCESSFUL_SALE` rule (default 100 PP, recurring, points only, key `reward:successful_sale:{source_type}:{source_id}:seller`, source `successful_sale`); it is independent of the one-time first-sale incentives and follows the same first-processing rule (no backfill or top-up)
+- deal reward keys are `reward:completed_deal:{source_type}:{source_id}:{buyer|seller}` and `reward:completed_deal_bonus:...`; both are paid only on a deal's first reward processing (no recalculation, compensation, or backfill), so deals rewarded under the pre-BE-REW-08 market formula (`points:order_item:{id}:{role}:amount|bonus`) are never paid again
 - a completed auction deal grants the winning customer one Lucky Wheel attempt and a one-time 200 PP `first_bid_completed` reward
 - first-sale badges (`FIRST_AUCTION_SALE_CONFIRMED`, `FIRST_MARKET_SALE_CONFIRMED`) pay only for the seller's first recorded deal of that type and only if the seller does not already hold the badge (protects sellers whose first sale predates `CompletedDeal`)
 - receiving an asset or seller rating awards 30 PP to the rated profile owner with source `rating_received`
@@ -1595,41 +1671,84 @@ Current Lucky Wheel API:
 Current Lucky Wheel behavior:
 
 - PP Coin wallet remains user-account-level; spin profile is only the context profile
-- onboarding customer/seller profile creation grants one idempotent onboarding attempt per created profile (key `lucky_wheel:onboarding:{profile_id}`); this is independent of the account-level onboarding PP
-- a completed auction deal grants the winner one idempotent `auction_completed` attempt
-- frontend clients cannot submit `prize_id`; the backend chooses from active weighted prizes
-- prize types are `pp_coins`, `discount_offer`, `cashback_offer`, `badge`, and `no_prize`
-- discount/cashback prizes require offers whose `trigger_type` is `lucky_wheel`
-- discount/cashback prizes create `UserPromotionGrant` rows instead of applying to every customer automatically
-- PP Coin, promotion grant, and badge rewards use spin-id-based idempotency keys
+- fresh customer/seller onboarding no longer grants a Lucky Wheel attempt (replaced in BE-DRW-01 by the account-level `WeeklyDrawEntry` in `apps.draws`); `LuckyWheelGrantSourceType.ONBOARDING` and `LuckyWheelGrantService.grant_onboarding_attempt` remain for historical records only
+- a completed auction deal grants the winner one idempotent `auction_completed` attempt (current implementation / technical decision supporting Scenario C-09 auction excitement)
+- `GET /api/lucky-wheel/current/` delegates to `LuckyWheelService.get_availability()` (read-only) and exposes `available`, `eligible`, `has_active_wheel`, `remaining_attempts`, `cooldown_until`, `segments` (`id`, `label`, `description`, `prize_type`, `points_amount`, `badge_type`), `active_grants` (`id`, `source_type`, `total_attempts`, `remaining_attempts`, `expires_at`, `is_active`, `created`), and `user_promotion_grants`; `available`/`eligible` are `True` only when both `has_active_wheel` (at least one active, non-exhausted prize segment) and `remaining_attempts > 0` hold, and internal `metadata`, `source_id`, `idempotency_key`, `weight`, and inventory fields are omitted from public responses (BE-LW-01 / BE-LW-01A)
+- `LuckyWheelGrantService.active_grants()` orders usable grants by `F("expires_at").asc(nulls_last=True), "created", "id"` (`expires_at ASC NULLS LAST, created ASC, id ASC`) so expiring grants are always consumed before non-expiring grants across both PostgreSQL and SQLite (BE-LW-01A)
+- `LuckyWheelGrantService.grant_attempt()` and `LuckyWheelSpinService.spin()` lock `UserAccount` (and the consumed `LuckyWheelGrant` on spin) with `select_for_update()` inside `transaction.atomic()`, wrap `LuckyWheelGrant.objects.create()` in an inner `transaction.atomic()` savepoint with full user/source/source_id collision validation on `IntegrityError` recovery, reject cross-user `idempotency_key` collisions, and exclude expired grants (`expires_at <= now`) (BE-LW-01 / BE-LW-01A)
+- `LuckyWheelSpinRequestSerializer` accepts only `idempotency_key` and rejects any client-supplied `prize_id`, `prize`, `outcome`, `status`, `slot`, `segment`, `weight`, `seed`, `random_value`, `points_amount`, `discount_offer`, `cashback_offer`, `badge_type`, `grant_id`, `remaining_attempts`, or `eligible` field with `400`; the backend chooses from active, non-deleted, non-exhausted weighted prizes (`weight > 0`) ordered by `id` via `LuckyWheelPrizeSelector.select()` using `secrets.SystemRandom()` (`LuckyWheelPrize.weight` is a current implementation / technical decision, BE-LW-02)
+- `LuckyWheelSpinService._choose_prize()` locks the selected `LuckyWheelPrize` row with `select_for_update()`, re-verifies `is_active`, `deleted is None`, `weight > 0`, and `quantity_awarded < quantity_total` under lock, and boundedly re-resolves from remaining valid candidates if a finite prize was concurrently exhausted or deactivated before lock acquisition (raising `400` and rolling back attempt consumption if no candidates remain, BE-LW-02)
+- concrete backend prize types are `pp_coins`, `discount_offer`, `cashback_offer`, `badge`, and `no_prize` (implementing the generic `Random points/discount/prize` product concept); `LuckyWheelPrize.clean()` enforces strict one-of reward payload fields per `prize_type`, positive `weight > 0`, and `quantity_total >= quantity_awarded` (BE-LW-02)
+- discount/cashback prizes require offers whose `trigger_type` is `lucky_wheel` and verify at spin time that the target `DiscountOffer` / `CashbackOffer` is still active and non-deleted; optional `prize.metadata["validity_days"]` sets `UserPromotionGrant.expires_at` (`awarded_at + timedelta(days=validity_days)`), while omitted `validity_days` preserves `expires_at=None` (BE-LW-02)
+- discount/cashback prizes create `UserPromotionGrant` rows instead of applying to every customer automatically or directly mutating `cashback_balance` on spin
+- `LuckyWheelSpin.prize_snapshot` captures immutable prize and offer display fields (`id`, `label`, `description`, `prize_type`, `points_amount`, `discount_offer_id`, `discount_offer`, `cashback_offer_id`, `cashback_offer`, `badge_type`) unaffected by later manager edits or deactivation (BE-LW-02)
+- PP Coin, promotion grant, and badge rewards use spin-id-based idempotency keys, and any failure during prize target validation or reward application rolls back attempt decrement, inventory increment, and spin creation atomically (BE-LW-02)
+- winning spins (`pp_coins`, `discount_offer`, `cashback_offer`, and `badge`) also record one `DIGITAL_AUTOMATIC` / `FULFILLED` `PrizeAward` in `apps.prizes` (`source_type=LUCKY_WHEEL`, `source_id=str(spin.id)`, key `prize:source:lucky_wheel:spin:{spin_id}`) inside the same transaction; `no_prize` spins create 0 `PrizeAward` rows (BE-PRZ-01)
 
 ### `apps.referrals`
 
 Current responsibilities:
 
-- one-time link-sharing referral codes
-- new-account referral redemption
-- inviter PP Coin reward
+- one-time link-sharing referral codes (`LinkSharingCode`)
+- new-account referral redemption into a pending `Referral`
+- manager approval or rejection of referrals (anti-bot review)
+- inviter PP Coin reward after approval (through `REFERRAL_APPROVED`)
+- inviter PP Coin reward on the approved referred account's first bid (through `REFERRAL_FIRST_BID`, evaluated by `RewardEngine` on `BID_PLACED`)
+- monthly referral challenges (`ReferralChallenge`, `ReferralChallengePrize`, `ReferralChallengeWinner`): account-level scoring of approved referrals, Top 10 leaderboard, countdown, personal progress, manager finalization into Top 3 winner snapshots
 
 Current referral API:
 
 - `/api/referrals/codes/`
   - `POST`: authenticated active profile creates a code expiring after 24 hours
 - `/api/referrals/redeem/`
-  - `POST`: authenticated active profile redeems a code when the account is at most 2 hours old
+  - `POST`: authenticated active profile redeems a code when the account is at most 2 hours old; responds with the code fields plus `referral` (`id`, `status`, `referred_profile_id`, `redeemed_at`); pays nothing
+- `/api/referrals/my/`
+  - `GET`: authenticated user lists referrals their account invited, with `status`; supports `status` filter; no reviewer details
+- `/api/referrals/admin/`
+  - `GET`: manager lists referrals with `referrals.list`; filters `status`, `inviter_user`, `referred_user`
+- `/api/referrals/admin/<id>/approve/`
+  - `POST`: manager approves a pending referral with `referrals.approve`; repeating returns the approved referral unchanged
+- `/api/referrals/admin/<id>/reject/`
+  - `POST`: manager rejects a pending referral with `referrals.reject` and optional `reason`; repeating returns it unchanged
+- `/api/referrals/challenge/current/`
+  - `GET`: authenticated user reads the active challenge (else the nearest upcoming one; 404 when neither, never a review or finalized one) with `status`, `starts_at`, `ends_at`, `server_time`, `seconds_remaining`, `seconds_until_start`, `top_10` (`rank`, `username`, `challenge_score`, `is_me`), `me` (`challenge_score`, `rank`, `leader_score`, `gap_to_first`), and `prizes` (`rank`, `prize_code`, `title`)
+- `/api/referrals/admin/challenges/`
+  - `GET`: manager lists challenges with `referral_challenges.list`
+  - `POST`: manager creates a challenge (`name`, `starts_at`, `ends_at`, optional `prizes`) with `referral_challenges.create`
+- `/api/referrals/admin/challenges/<id>/`
+  - `GET`: manager reads a challenge with its live leaderboard (null once finalized), `pending_referrals_count`, prizes, and winners with `referral_challenges.retrieve`
+  - `PATCH`: manager edits it with `referral_challenges.update`
+- `/api/referrals/admin/challenges/<id>/finalize/`
+  - `POST`: manager freezes the Top 3 winners with `referral_challenges.finalize`; repeating returns the existing result
 
 Current referral behavior:
 
-- referral codes are locked on redeem and can be used once
-- users cannot redeem their own account/profile code
-- successful redemption marks the code used, stores the redeeming profile, and awards the inviter 30 PP with source `referral_accepted`
-- referral redemption currently does not create a Lucky Wheel attempt
+- `LinkSharingCode.is_used` means only that the code was consumed; `Referral.status` (`pending` / `approved` / `rejected`) is the verified relationship
+- referral codes are locked on redeem and can be used once; users cannot redeem their own account/profile code; the 24-hour TTL and 2-hour new-account window are unchanged
+- each code yields at most one `Referral` (one-to-one) and each referred `UserAccount` can be referred only once, ever (unique `referred_user` over all rows); a rejected account cannot redeem another code, and other profiles of the same account cannot claim again
+- `Referral` stores `inviter_user` / `inviter_profile` and `referred_user` / `referred_profile`, `redeemed_at`, `reviewed_at`, `reviewed_by` (user account), and `rejection_reason`
+- redemption pays no PP; approval (locked, pending only) emits `REFERRAL_APPROVED`, which pays the inviter the `REFERRAL_APPROVED` rule points (default 30 PP) once per referral, key `reward:referral_approved:referral:{referral_id}:inviter`, source `referral_approved`; rejection pays nothing; the referred user gets nothing
+- if the rule is disabled at approval, the referral is still approved and is not topped up later
+- `successful_invites_count` on profile serializers counts `approved` referrals of the inviter profile, not consumed codes
+- legacy used codes from before admin approval were backfilled reward-silently as `approved` referrals (earliest per referred account); their old `points:referral:{code_id}:inviter:{profile_id}` row marks them as already paid
+- on a valid regular `BID_PLACED`, if the bidder's account has a referral that was already `approved` when the bid was placed and this is the account's earliest bid ever (all its profiles, auctions, and items, soft-deleted bids included; buy-now rows, which never emit `BID_PLACED`, are not bid history), the inviter is paid the `REFERRAL_FIRST_BID` rule points (default 200 PP) once per referral, points only, key `reward:referral_first_bid:referral:{referral_id}:inviter`, source `referral_first_bid`, `user`/`profile` = `inviter_user`/`inviter_profile`; the referred bidder gets nothing from it
+- the first-bid referral reward is not retroactive: a bid placed while the referral was pending, a bid made while the rule was disabled, or bids that predate BE-REF-02 never pay later, and approval does not look back at earlier bids; there is no backfill
+- referral redemption and approval do not create a Lucky Wheel attempt
+- a challenge's score for an account is the count of its `approved` referrals (grouped by `Referral.inviter_user`, so customer and seller modes add up) with `starts_at <= redeemed_at < ends_at`; raw shares, clicks, consumed codes, pending, and rejected referrals never count; `redeemed_at` picks the challenge and approval (even during review) decides whether it counts; challenge score is not PP and creates no point transactions
+- challenge status is derived, not stored: `draft` before `starts_at`, `active` inside the window, `review` after `ends_at` until finalized, `finalized` once `finalized_at` is set; periods cannot overlap (adjacent periods are allowed) and `starts_at < ends_at` is a DB constraint
+- ranking is higher score, then the earlier time the account reached that score (latest counted `redeemed_at`), then lower account id (technical tie-break); only accounts with a score appear, Top 10 only
+- dates and prizes are editable only while `draft`; `active` and `review` challenges accept only `name`; finalized challenges are read-only; supplied `prizes` replace the set (ranks 1-3, codes `IPHONE`, `AIRPODS`, `ANNUAL_LOFT_SUBSCRIPTION`; default Top 3 prizes are created when none are supplied)
+- finalization locks the challenge, requires `now >= ends_at` and no pending referral redeemed in the window, then writes up to three immutable `ReferralChallengeWinner` rows (score, tie-break time, prize FK plus copied code and title) and sets `finalized_at` / `finalized_by`; winners are never recalculated
+- finalization also records a `CLAIM_REQUIRED` / `PENDING` `PrizeAward` in `apps.prizes` (`source_type=REFERRAL_CHALLENGE`, `source_id=str(winner.id)`, key `prize:source:referral_challenge:winner:{winner_id}`) for canonical non-digital in-kind winners (`IPHONE`, `AIRPODS`) inside the same transaction, which atomically triggers a `prize_awarded` congratulatory notification (BE-PRZ-01, BE-PRZ-02 & BE-NOT-01); winners claim and managers review/deliver those awards via `PrizeClaim` in `apps.prizes`, while `ANNUAL_LOFT_SUBSCRIPTION` fulfillment provisioning remains deferred (neither falsely marked `FULFILLED` nor classified as a physical shipment claim) and challenge PP payouts are not implemented
+
+- `successful_invites_count` still counts approved referrals per inviter profile, unlike the account-level challenge score (known inconsistency)
 
 ### `apps.seasons`
 
 Current responsibilities:
 
 - reward season records
+- configurable per-season Rank 1..3 prize definitions (`SeasonPrize`)
 - seller insight snapshots for a season window
 - deterministic winner ranking and idempotent PP Coin awards
 
@@ -1639,21 +1758,112 @@ Current seasons API:
   - `GET` / `POST`: manager list/create with `seasons.list` or `seasons.create`
 - `/api/seasons/<id>/`
   - `PATCH`: manager update with `seasons.update`
+- `/api/seasons/<season_pk>/prizes/`
+  - `GET` / `POST`: manager list/create season rank prizes with `seasons.prizes.list` or `seasons.prizes.create`
+- `/api/seasons/<season_pk>/prizes/<id>/`
+  - `PATCH` / `DELETE`: manager update/delete a season rank prize before season start with `seasons.prizes.update` or `seasons.prizes.delete`
 - `/api/seasons/<id>/calculate-winners/`
-  - `POST`: manager calculates seller insights and awards top sellers with `seasons.calculate`
+  - `POST`: manager calculates and ranks seller season insight snapshots without awarding points (`seasons.calculate`)
 - `/api/seasons/<id>/finalize/`
-  - `POST`: manager finalizes a calculated season with `seasons.finalize`
+  - `POST`: manager finalizes an ended season (`timezone.now() >= ends_at`), refreshes latest scores one final time, freezes rankings, snapshots winning prizes, and awards Top-3 winners once (`seasons.finalize`)
 - `/api/seasons/<id>/seller-insights/`
   - `GET`: manager reads snapshot insights with `seasons.insights.list`
 
 Current seasons behavior:
 
 - seasons require `starts_at < ends_at`
-- seller qualification currently requires at least 10 completed order items in the season window
-- ranking sorts by completed order count descending, average rating descending, total sales amount descending, then seller id ascending
-- top 3 rewards are 100000, 50000, and 25000 PP with source `season_winner`
-- repeated calculation recreates the insight snapshot but does not double-award points because winner rewards use deterministic idempotency keys
-- finalization only changes a `calculated` season to `finalized` and records `finalized_by`; it does not recalculate winners or award points
+- creating a new `Season` automatically creates default `SeasonPrize` rows for Ranks 1..3 (`100000`, `50000`, and `25000` PP, BE-SEA-03)
+- `SeasonPrize` configuration (`rank` 1..3, `pp_points >= 0`, optional `symbolic_prize_code`, `title`, and `metadata`) is editable only while `season.status == draft` and `timezone.now() < season.starts_at`; once a season starts, is calculated, or is finalized, prize configuration is frozen
+- seller qualification requires at least 1 `CompletedDeal` in `[starts_at, ends_at)` (`SeasonScoreService`, BE-SEA-01)
+- composite `season_score` (0..100, `Decimal("0.01")` `ROUND_HALF_UP`) weights normalized completed sales (`40%`), buyer-to-seller deal ratings (`30%`), seller reliability (`20%`), and verified-buyer chat reply rate (`10%`)
+- ranking sorts by `season_score` descending, then `SellerProfile.id` ascending
+- score calculation (`SeasonScoreService` / `calculate-winners`) is pure and creates 0 PP, 0 badges, 0 prizes, and 0 notifications
+- finalization (`SeasonService.finalize` / `SeasonPayoutService`, BE-SEA-02, BE-SEA-03 & BE-PRZ-01) requires `timezone.now() >= ends_at`, locks the season, refreshes scores one final time, verifies that every qualifying Top-3 rank has a configured `SeasonPrize` before any payout executes, snapshots the winning prize onto `SeasonSellerInsight.metadata["season_prize"]`, awards configured `pp_points` (`> 0`) once via `PointService.earn_points` (`source_type=season_winner`, rank-independent key `reward:season_winner:season:{season_id}:seller:{seller_id}`), records a corresponding `DIGITAL_AUTOMATIC` / `FULFILLED` `PrizeAward` in `apps.prizes` (`source_type=SEASON`, `source_id=str(insight.id)`, key `prize:source:season:{season_id}:seller:{seller_id}`), and sets `status=finalized`, `finalized_by`, and `finalized_at`
+- historical `season_winner` transactions (including legacy rank-based keys) are honored as already paid without top-ups, clawbacks, duplicate payouts, or retroactive `PrizeAward` backfill
+- once finalized, season rankings, `starts_at`/`ends_at`, and `SeasonPrize` rows are immutable and recalculation is rejected
+
+### `apps.draws`
+
+Current responsibilities:
+
+- weekly onboarding draw windows (`WeeklyDraw`)
+- account-level onboarding draw entries (`WeeklyDrawEntry`)
+- canonical eligible draw selection and atomic pending-entry assignment (`WeeklyDrawService`, `WeeklyDrawEntryService`)
+
+Current draws API:
+
+- `/api/draws/weekly/`
+  - `GET` / `POST`: manager list/create weekly draws with `draws.weekly.list` or `draws.weekly.create`
+- `/api/draws/weekly/<id>/`
+  - `GET` / `PATCH`: manager retrieve/update weekly draw with `draws.weekly.retrieve` or `draws.weekly.update`
+- `/api/draws/weekly/<id>/open/`
+  - `POST`: manager opens a draft draw and assigns pending entries with `draws.weekly.open`
+- `/api/draws/weekly/<id>/close/`
+  - `POST`: manager closes an ended open draw (`now >= ends_at`) and freezes its `ASSIGNED` participant set with `draws.weekly.close`
+- `/api/draws/weekly/<id>/finalize/`
+  - `POST`: manager executes the idempotent weekly draw finalization/freeze foundation (`now >= ends_at`) with `draws.weekly.finalize`
+- `/api/draws/weekly/<id>/entries/`
+  - `GET`: manager lists eligible (`ASSIGNED`) entries assigned to a draw with `draws.weekly.entries.list`
+- `/api/draws/my-weekly-entry/`
+  - `GET`: authenticated user reads their own non-mutating onboarding weekly draw entry status (`has_entry`, `status`, `draw_id`, `draw_starts_at`, `draw_ends_at`, `assigned_at`)
+
+Current draws behavior:
+
+- `WeeklyDrawEntry` is owned by `UserAccount` (one `ONBOARDING` entry per `UserAccount`, key `draw:onboarding:user:{user_id}`)
+- automatic onboarding entry creation (`WeeklyDrawEntryService.ensure_for_first_profile_onboarding`) uses `AccountOnboardingService.has_prior_customer_seller_profile_history` (`Profile.all_objects`, including soft-deleted rows) so only the account's first-ever `Customer` or `Seller` profile receives an entry; later mode creation, profile switching, soft-deleted profile recreation, and historical pre-BE-DRW-01 accounts are never backfilled
+- canonical active draw window is half-open `[starts_at, ends_at)`: `starts_at <= now < ends_at`
+- eligible draw resolution prefers a currently `OPEN` draw (`starts_at <= now < ends_at`), otherwise selects the earliest upcoming (`starts_at > now`) `OPEN` or `DRAFT` draw ordered by `starts_at ASC, id ASC`, and never assigns to ended (`ends_at <= now`), `CLOSED`, or `FINALIZED` draws
+- if no eligible draw exists at onboarding, the entry is created as `PENDING` (`draw=None`, `assigned_at=None`) and atomically assigned once when an eligible draw is created or opened (`WeeklyDrawService.assign_pending_entries`)
+- once assigned (`status=ASSIGNED`), an entry's `draw`, `status`, and ownership are immutable and cannot be deleted (`ProtectedError`); draws with assigned entries, `now >= starts_at`, or `status in (CLOSED, FINALIZED)` lock `starts_at` and `ends_at` and cannot be deleted (`ProtectedError`)
+- non-deleted `OPEN` draws cannot have overlapping `[starts_at, ends_at)` windows
+- closing or finalizing a draw (`WeeklyDrawService.close_draw` / `WeeklyDrawService.finalize_draw` / `WeeklyDrawFinalizationService.finalize_draw`, BE-DRW-02) requires `timezone.now() >= ends_at`, locks the `WeeklyDraw` row with `select_for_update()` inside `transaction.atomic()`, freezes the `ASSIGNED` participant set once into `metadata["execution_freeze"]`, and sets `status=CLOSED`
+- because weekly onboarding draw winner count, selection algorithm, and prize definition are not specified in the canonical product source, `finalize_draw` keeps `status=CLOSED` with `winner_selection_status="BLOCKED_PENDING_PRODUCT_DECISION"` and selects 0 winners rather than falsely marking `FINALIZED`; prizes, PP Coin payouts, and winner notifications remain out of scope until product rules are confirmed
+
+### `apps.prizes`
+
+Current responsibilities:
+
+- shared `UserAccount`-owned prize award ledger (`PrizeAward`) across integrated reward sources (`SEASON`, `REFERRAL_CHALLENGE`, `LUCKY_WHEEL`)
+- explicit fulfillment classification (`DIGITAL_AUTOMATIC` vs `CLAIM_REQUIRED`) and status tracking (`FULFILLED` vs `PENDING`)
+- idempotent, savepoint-safe prize recording (`PrizeAwardService`) without double-executing underlying digital rewards
+- claim submission (`PrizeClaim`) and manager review/delivery lifecycle (`PrizeClaimService`, `SUBMITTED -> REVIEWED -> DELIVERED`) for `CLAIM_REQUIRED` awards (BE-PRZ-02)
+- user read-only prize award history, user claim submission, and manager award/claim APIs
+
+Current prizes API:
+
+- `/api/prizes/my-awards/`
+  - `GET`: authenticated user lists their own `PrizeAward` rows across `Customer` and `Seller` modes
+- `/api/prizes/my-awards/<id>/`
+  - `GET`: authenticated user retrieves one of their own `PrizeAward` rows (`404` for another user's award)
+- `/api/prizes/my-awards/<id>/claim/`
+  - `POST`: authenticated owner submits a claim (`full_name`, `address`, `identity_number`) for a `PENDING` `CLAIM_REQUIRED` `PrizeAward`; returns `id`, `award_id`, `status`, and `submitted_at` without echoing PII
+- `/api/prizes/admin/awards/`
+  - `GET`: manager lists all `PrizeAward` rows with `prizes.awards.list`; supports `status`, `fulfillment_type`, `source_type`, and `user` filters
+- `/api/prizes/admin/awards/<id>/`
+  - `GET`: manager retrieves one `PrizeAward` row with `prizes.awards.retrieve`
+- `/api/prizes/admin/claims/`
+  - `GET`: manager lists submitted `PrizeClaim` rows with `prizes.claims.list`; supports `status` and `source_type` (`award__source_type`) filters
+- `/api/prizes/admin/claims/<id>/`
+  - `GET`: manager retrieves one `PrizeClaim` row (including `full_name`, `address`, `identity_number`, and linked award details) with `prizes.claims.retrieve`
+- `/api/prizes/admin/claims/<id>/review/`
+  - `POST`: manager marks a `SUBMITTED` claim as `REVIEWED` (`prizes.claims.review`); idempotent on repeat review
+- `/api/prizes/admin/claims/<id>/deliver/`
+  - `POST`: manager marks a `REVIEWED` claim as `DELIVERED` and atomically fulfills the linked `PrizeAward` (`prizes.claims.deliver`); idempotent on repeat deliver
+
+Current prizes behavior:
+
+- `PrizeAward` is owned by `UserAccount` (`user`), with optional `profile` as context only (`profile.user_id == user_id` enforced); switching between `Customer` and `Seller` modes does not hide or duplicate awards
+- `PrizeAwardSourceType` currently includes `SEASON`, `REFERRAL_CHALLENGE`, and `LUCKY_WHEEL` (`WEEKLY_DRAW` is excluded while `BE-DRW-02` winner selection remains blocked)
+- `DIGITAL_AUTOMATIC` awards (`PrizeAwardService.record_digital_fulfilled`) are always created with `status=FULFILLED` and `fulfilled_at` set, after the source service has already executed the digital reward (`PointService`, `UserPromotionGrantService`, or `BadgeService`); `PrizeAwardService` never re-executes point, promotion, or badge grants itself and creates `0` generic `prize_awarded` notifications so digital PP Coin / badge rewards do not emit duplicate notifications
+- `CLAIM_REQUIRED` awards (`PrizeAwardService.record_claim_required`) are created with `status=PENDING` and `fulfilled_at=None` for canonical non-digital in-kind prizes (`ReferralChallengePrizeCode.IPHONE`, `ReferralChallengePrizeCode.AIRPODS`) and atomically create one `prize_awarded` congratulatory `Notification` (`idempotency_key=f"prize_awarded:{award.id}"`, BE-NOT-01) when newly created (`created_new=True`)
+- `PrizeAward` rows are immutable after creation (except `CLAIM_REQUIRED` `status=PENDING -> FULFILLED` and `fulfilled_at` when their linked `PrizeClaim` is marked `DELIVERED`) and cannot be deleted (`ProtectedError`)
+- `PrizeAward` stores zero claimant PII (`FORBIDDEN_PRIZE_PII_KEYS` such as `name`, `address`, `shipping_address`, `national_id`, and `identity_number` are rejected in `prize_snapshot` and `metadata`)
+- `PrizeClaim` (`OneToOneField` to `PrizeAward`, `on_delete=PROTECT`) stores `full_name`, `address`, `identity_number`, `status` (`SUBMITTED`, `REVIEWED`, `DELIVERED`), `submitted_at`, `reviewed_at`/`reviewed_by`, and `delivered_at`/`delivered_by`; claimant fields are immutable after submission and `delete()` raises `ProtectedError`
+- `PrizeClaimService.submit_claim()` locks the `PrizeAward` row, requires `award.user_id == user.id`, `fulfillment_type=CLAIM_REQUIRED`, `status=PENDING`, and no existing claim, and creates a `SUBMITTED` claim while keeping `PrizeAward.status=PENDING` (`fulfilled_at=None`)
+- `PrizeClaimService.review_claim()` transitions `SUBMITTED -> REVIEWED` (idempotent if already `REVIEWED`) while keeping `PrizeAward.status=PENDING`
+- `PrizeClaimService.deliver_claim()` requires `claim.status == REVIEWED` (rejecting `SUBMITTED -> DELIVERED` with `400`), transitions `REVIEWED -> DELIVERED`, and atomically sets `PrizeAward.status = FULFILLED` and `PrizeAward.fulfilled_at = delivered_at` (idempotent if already `DELIVERED`)
+- public `MyPrizeAwardSerializer` exposes `id`, `source_type`, `source_id`, `fulfillment_type`, `status`, `title`, `description`, `prize_snapshot`, `awarded_at`, `fulfilled_at`, safe claim summary fields (`claim_status`, `claim_submitted_at`, `claim_reviewed_at`, `claim_delivered_at`), and `created`, hiding `idempotency_key`, internal `metadata`, and claimant PII (`full_name`, `address`, `identity_number`)
+
 
 ### `apps.general`
 
@@ -2052,6 +2262,7 @@ Mounted API roots:
 - `/api/seller-comments/`
 - `/api/asset-ratings/`
 - `/api/seller-ratings/`
+- `/api/deal-ratings/`
 - `/api/races/`
 - `/api/race-results/`
 - `/api/packages/`
@@ -2064,6 +2275,8 @@ Mounted API roots:
 - `/api/feed/`
 - `/api/insights/`
 - `/api/pedigrees/`
+- `/api/draws/`
+- `/api/prizes/`
 
 Current internal API docs endpoints:
 
@@ -2401,8 +2614,14 @@ Current permission resources:
 - `LUCKY_WHEEL_SPIN_ADMIN`
 - `SEASONS_ADMIN`
 - `PEDIGREE_DOCUMENT`
+- `REGISTERED_PEDIGREE`
 - `FEED_BLOCK`
 - `REWARD_RULE_ADMIN`
+- `DEAL_RATING`
+- `REFERRAL_ADMIN`
+- `REFERRAL_CHALLENGE_ADMIN`
+- `WEEKLY_DRAW_ADMIN`
+- `PRIZE_AWARD_ADMIN`
 
 Permission implementation rule:
 
@@ -2502,8 +2721,11 @@ Current reward admin permission pattern:
 - Lucky Wheel spin admin listing uses `HasAppAccess` with `LUCKY_WHEEL_SPIN_ADMIN`
 - seasons endpoints use `HasAppAccess` with `SEASONS_ADMIN`
 - reward rule admin endpoints use `HasAppAccess` with `REWARD_RULE_ADMIN`
-- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, `seasons.insights.list`, `reward_rules.list`, `reward_rules.retrieve`, and `reward_rules.update`
-- user-triggered Lucky Wheel spin, referral redeem, and cashback-to-points conversion do not require manager permission codes
+- referral admin endpoints use `HasAppAccess` with `REFERRAL_ADMIN`; referral challenge admin endpoints use `REFERRAL_CHALLENGE_ADMIN`
+- weekly draw admin endpoints use `HasAppAccess` with `WEEKLY_DRAW_ADMIN`
+- prize award admin endpoints use `HasAppAccess` with `PRIZE_AWARD_ADMIN`
+- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, `seasons.insights.list`, `seasons.prizes.list`, `seasons.prizes.create`, `seasons.prizes.update`, `seasons.prizes.delete`, `reward_rules.list`, `reward_rules.retrieve`, `reward_rules.update`, `referrals.list`, `referrals.approve`, `referrals.reject`, `referral_challenges.list`, `referral_challenges.retrieve`, `referral_challenges.create`, `referral_challenges.update`, `referral_challenges.finalize`, `draws.weekly.list`, `draws.weekly.retrieve`, `draws.weekly.create`, `draws.weekly.update`, `draws.weekly.open`, `draws.weekly.close`, `draws.weekly.finalize`, `draws.weekly.entries.list`, `prizes.awards.list`, and `prizes.awards.retrieve`
+- user-triggered Lucky Wheel spin, referral redeem, cashback-to-points conversion, and `my-awards` / `my-weekly-entry` read endpoints do not require manager permission codes
 
 Current pedigree permission pattern:
 
@@ -2512,6 +2734,8 @@ Current pedigree permission pattern:
 - managers can retrieve pedigree documents with `pedigrees.documents.retrieve` and review documents with `pedigrees.documents.review`; upload/create remains a profile-owned customer/seller flow
 - retrieve uses scoped read access only after `get_queryset()` limits non-manager reads to the active profile owner
 - review relies on profile ownership through `owner_id` and service-level actor validation
+- `RegisteredPedigreeViewSet` uses `HasAppAccess` with `permission_resource = "REGISTERED_PEDIGREE"` and `allow_scoped_read_access = True`; customers and sellers have `list` and `retrieve` only, scoped by `RegisteredPedigreeService.visible_queryset()`
+- managers use exact `pedigrees.registered.list`, `pedigrees.registered.retrieve`, `pedigrees.registered.create`, `pedigrees.registered.update`, and `pedigrees.registered.delete` permissions
 
 Current auction permission pattern:
 

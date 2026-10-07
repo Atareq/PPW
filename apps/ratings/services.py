@@ -1,11 +1,16 @@
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count
+from django.utils.translation import gettext_lazy as _
+from rest_framework.exceptions import NotFound, ValidationError
 
+from apps.deals.models import CompletedDeal
 from apps.ratings.models import (
     AssetComment,
     AssetRating,
+    DealRating,
+    DealRatingDirection,
     SellerComment,
     SellerRating,
 )
@@ -153,3 +158,114 @@ def _handle_rating_reward(customer_profile, rating):
         profile=customer_profile,
         context={"rating": rating},
     )
+
+
+class DealRatingService:
+    """Deal-scoped buyer <-> seller ratings and mutual-completion detection.
+
+    Only the two parties of a ``CompletedDeal`` can rate, each once, and each
+    rates the other party; the rated profile is never taken from the caller.
+    Creating the second, reciprocal rating emits ``MUTUAL_RATING_COMPLETED``.
+    """
+
+    @staticmethod
+    @transaction.atomic
+    def create(rater_profile, deal_id, stars, comment=""):
+        # Locking the deal serializes both parties' submissions, so whichever
+        # rating is saved second always sees the first and completes the pair.
+        deal = DealRatingService._get_participant_deal(
+            rater_profile,
+            deal_id,
+            lock=True,
+        )
+        direction, rated_profile_id = DealRatingService._direction_for(
+            deal,
+            rater_profile,
+        )
+        if DealRating.all_objects.filter(deal=deal, direction=direction).exists():
+            raise ValidationError({"deal": _("You have already rated this deal.")})
+        try:
+            with transaction.atomic():
+                rating = DealRating.objects.create(
+                    deal=deal,
+                    direction=direction,
+                    rater_profile_id=rater_profile.pk,
+                    rated_profile_id=rated_profile_id,
+                    stars=stars,
+                    comment=comment or "",
+                )
+        except IntegrityError as exc:
+            raise ValidationError(
+                {"deal": _("You have already rated this deal.")}
+            ) from exc
+
+        if DealRatingService.is_mutual(deal):
+            DealRatingService._emit_mutual_rating_completed(deal, rater_profile)
+        return rating
+
+    @staticmethod
+    def status(rater_profile, deal_id):
+        """Rating state of one deal from the active participant's side."""
+
+        deal = DealRatingService._get_participant_deal(rater_profile, deal_id)
+        direction, _rated = DealRatingService._direction_for(deal, rater_profile)
+        ratings = {rating.direction: rating for rating in deal.ratings.all()}
+        own = ratings.get(direction)
+        counterparty = next(
+            (rating for key, rating in ratings.items() if key != direction),
+            None,
+        )
+        is_mutual = own is not None and counterparty is not None
+        return {
+            "deal_id": deal.pk,
+            "role": "buyer"
+            if direction == DealRatingDirection.BUYER_TO_SELLER
+            else "seller",
+            "has_rated": own is not None,
+            "counterparty_has_rated": counterparty is not None,
+            "is_mutual": is_mutual,
+            "my_rating": own,
+            # Hidden until both have rated, so neither side can retaliate.
+            "counterparty_rating": counterparty if is_mutual else None,
+        }
+
+    @staticmethod
+    def is_mutual(deal):
+        return (
+            DealRating.objects.filter(deal=deal)
+            .values("direction")
+            .distinct()
+            .count()
+            == 2
+        )
+
+    @staticmethod
+    def _get_participant_deal(rater_profile, deal_id, lock=False):
+        queryset = CompletedDeal.objects.all()
+        if lock:
+            queryset = queryset.select_for_update()
+        deal = queryset.filter(pk=deal_id).first()
+        if deal is None or rater_profile.pk not in (
+            deal.buyer_profile_id,
+            deal.seller_profile_id,
+        ):
+            raise NotFound(_("Completed deal was not found."))
+        return deal
+
+    @staticmethod
+    def _direction_for(deal, rater_profile):
+        if rater_profile.pk == deal.buyer_profile_id:
+            return DealRatingDirection.BUYER_TO_SELLER, deal.seller_profile_id
+        return DealRatingDirection.SELLER_TO_BUYER, deal.buyer_profile_id
+
+    @staticmethod
+    def _emit_mutual_rating_completed(deal, actor_profile):
+        from apps.loyalty.constants import RewardEventType
+        from apps.loyalty.reward_engine import RewardEngine
+
+        RewardEngine.handle_event(
+            RewardEventType.MUTUAL_RATING_COMPLETED,
+            actor=actor_profile,
+            profile=actor_profile,
+            context={"deal": deal},
+        )

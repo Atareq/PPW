@@ -1,6 +1,18 @@
+import re
+
 from django.conf import settings
 from django.utils import translation
 from django.utils.translation import gettext as _
+
+_POINTS_EARNED_BODY_RE = re.compile(
+    r"^Congratulations! You earned (?P<points>\d+) PP Coins\.$"
+)
+_BADGE_AWARDED_BODY_RE = re.compile(
+    r"^(?:Congratulations! )?You earned the (?P<badge_name>.+) badge\.$"
+)
+_PRIZE_AWARDED_BODY_RE = re.compile(
+    r"^Congratulations! You won a prize: (?P<prize_title>.+)\.$"
+)
 
 
 def localize_notification_text(text, language=None) -> str:
@@ -19,7 +31,31 @@ def localize_notification_text(text, language=None) -> str:
         target_lang = "ar"
 
     with translation.override(target_lang):
-        return str(_(text))
+        translated = str(_(text))
+        if translated != text or target_lang == "en":
+            return translated
+
+        points_match = _POINTS_EARNED_BODY_RE.match(text)
+        if points_match:
+            return str(_("Congratulations! You earned %(points)s PP Coins.")) % {
+                "points": points_match.group("points"),
+            }
+
+        badge_match = _BADGE_AWARDED_BODY_RE.match(text)
+        if badge_match:
+            badge_name = str(_(badge_match.group("badge_name")))
+            return str(
+                _("Congratulations! You earned the %(badge_name)s badge.")
+            ) % {"badge_name": badge_name}
+
+        prize_match = _PRIZE_AWARDED_BODY_RE.match(text)
+        if prize_match:
+            prize_title = str(_(prize_match.group("prize_title")))
+            return str(
+                _("Congratulations! You won a prize: %(prize_title)s.")
+            ) % {"prize_title": prize_title}
+
+        return translated
 
 
 class NotificationPayload:

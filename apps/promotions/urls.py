@@ -1,9 +1,13 @@
 from django.urls import path
 
 from apps.promotions.views import (
+    ActivePromotionCampaignViewSet,
     AdminCashbackOfferViewSet,
     AdminCashbackTransactionViewSet,
     AdminDiscountOfferViewSet,
+    AdminPromotionCampaignActivationViewSet,
+    AdminPromotionCampaignEffectViewSet,
+    AdminPromotionCampaignViewSet,
     CashbackAdjustmentViewSet,
     CashbackBalanceViewSet,
     CashbackOfferActivationViewSet,
@@ -12,14 +16,26 @@ from apps.promotions.views import (
     DiscountOfferActivationViewSet,
     MyCashbackTransactionViewSet,
     MyPromotionGrantViewSet,
+    OnboardingHighlightBenefitViewSet,
 )
 
 LIST_ACTION = {"get": "list"}
 CREATE_ACTION = {"post": "create"}
 LIST_CREATE_ACTION = {"get": "list", "post": "create"}
 RETRIEVE_ACTION = {"get": "retrieve"}
+DETAIL_UPDATE_ACTION = {"get": "retrieve", "patch": "partial_update"}
+DETAIL_UPDATE_DESTROY_ACTION = {
+    "get": "retrieve",
+    "patch": "partial_update",
+    "delete": "destroy",
+}
 
 urlpatterns = [
+    path(
+        "active/",
+        ActivePromotionCampaignViewSet.as_view(LIST_ACTION),
+        name="active-promotion-campaign-list",
+    ),
     path(
         "discount-offers/current/",
         CurrentDiscountOfferViewSet.as_view(LIST_ACTION),
@@ -41,9 +57,50 @@ urlpatterns = [
         name="my-promotion-grant-list",
     ),
     path(
+        "onboarding/highlight-benefit/",
+        OnboardingHighlightBenefitViewSet.as_view(RETRIEVE_ACTION),
+        name="onboarding-highlight-benefit",
+    ),
+    path(
         "cashback/balance/",
         CashbackBalanceViewSet.as_view(RETRIEVE_ACTION),
         name="cashback-balance",
+    ),
+    path(
+        "admin/campaigns/",
+        AdminPromotionCampaignViewSet.as_view(LIST_CREATE_ACTION),
+        name="admin-promotion-campaign-list",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/",
+        AdminPromotionCampaignViewSet.as_view(DETAIL_UPDATE_ACTION),
+        name="admin-promotion-campaign-detail",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/enable/",
+        AdminPromotionCampaignActivationViewSet.as_view(
+            CREATE_ACTION,
+            enable=True,
+        ),
+        name="admin-promotion-campaign-enable",
+    ),
+    path(
+        "admin/campaigns/<int:pk>/disable/",
+        AdminPromotionCampaignActivationViewSet.as_view(
+            CREATE_ACTION,
+            enable=False,
+        ),
+        name="admin-promotion-campaign-disable",
+    ),
+    path(
+        "admin/campaigns/<int:campaign_id>/effects/",
+        AdminPromotionCampaignEffectViewSet.as_view(LIST_CREATE_ACTION),
+        name="admin-promotion-campaign-effect-list",
+    ),
+    path(
+        "admin/campaigns/<int:campaign_id>/effects/<int:pk>/",
+        AdminPromotionCampaignEffectViewSet.as_view(DETAIL_UPDATE_DESTROY_ACTION),
+        name="admin-promotion-campaign-effect-detail",
     ),
     path(
         "admin/discount-offers/",

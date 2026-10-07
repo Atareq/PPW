@@ -70,6 +70,8 @@ APPS = [
     "apps.pedigrees",
     "apps.loft_subscriptions",
     "apps.seasons",
+    "apps.draws",
+    "apps.prizes",
 ]
 
 DEBUG_APPS = []

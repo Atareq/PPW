@@ -98,11 +98,12 @@ def test_active_auction_bidder_default_has_points_and_threshold():
     assert rule.threshold == 5
     assert RewardRuleService.get_threshold(RewardRuleCode.ACTIVE_AUCTION_BIDDER) == 5
     assert rule.required_fields == ("points", "threshold")
-    assert rule.is_implemented is False
+    # Read by RewardEngine since BE-REW-07.
+    assert rule.is_implemented is True
 
 
 def test_pending_rules_have_no_invented_points():
-    for code in (RewardRuleCode.DEAL_COMPLETED, RewardRuleCode.POSITIVE_RATING):
+    for code in (RewardRuleCode.POSITIVE_RATING,):
         rule = RewardRuleService.get_rule(code)
         assert rule.points is None
         assert rule.threshold is None
@@ -157,9 +158,15 @@ def test_disabled_onboarding_awards_no_pp_but_keeps_welcome_badge():
         profile__user=user,
         badge_type=BadgeType.WELCOME_BUYER,
     ).count() == 1
+    from apps.draws.models import WeeklyDrawEntry, WeeklyDrawEntrySource
+
     assert LuckyWheelGrant.objects.filter(
         user=user,
         source_type=LuckyWheelGrantSourceType.ONBOARDING,
+    ).count() == 0
+    assert WeeklyDrawEntry.objects.filter(
+        user=user,
+        source=WeeklyDrawEntrySource.ONBOARDING,
     ).count() == 1
 
 

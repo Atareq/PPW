@@ -492,12 +492,11 @@ class ProfileBalanceAdjustmentSerializer(serializers.Serializer):
 
 
 def _successful_invites_count(profile):
-    from apps.referrals.models import LinkSharingCode
+    """Approved referrals only; a consumed code is not a successful invite."""
 
-    return LinkSharingCode.objects.filter(
-        owner_profile_id=profile.pk,
-        is_used=True,
-    ).count()
+    from apps.referrals.services import ReferralService
+
+    return ReferralService.approved_count(profile)
 
 
 def _completed_seller_orders_count(profile):

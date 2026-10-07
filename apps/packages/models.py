@@ -133,6 +133,47 @@ class SellerPackage(OwnerBaseModel):
             ),
         ]
 
+    def _get_promotion_snapshot(self):
+        try:
+            return self.promotion_snapshot
+        except Exception:
+            return None
+
+    @property
+    def pricing_snapshot(self):
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.as_dict() if snapshot is not None else None
+
+    @property
+    def base_price(self) -> Decimal:
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.base_price if snapshot is not None else self.package.price
+
+    @property
+    def discount_percent(self) -> Decimal:
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.discount_percent if snapshot is not None else Decimal("0.00")
+
+    @property
+    def discount_amount(self) -> Decimal:
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.discount_amount if snapshot is not None else Decimal("0.00")
+
+    @property
+    def final_price(self) -> Decimal:
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.final_price if snapshot is not None else self.package.price
+
+    @property
+    def promotion_campaign_id(self) -> int | None:
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.promotion_campaign_id if snapshot is not None else None
+
+    @property
+    def promotion_effect_id(self) -> int | None:
+        snapshot = self._get_promotion_snapshot()
+        return snapshot.promotion_effect_id if snapshot is not None else None
+
     def save(self, *args, **kwargs):
         if self.remaining_points is None and self.package_id:
             self.remaining_points = self.package.points

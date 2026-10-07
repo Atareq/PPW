@@ -212,9 +212,17 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
             actor=seller_profile,
             profile=seller_profile,
         )
-        from apps.lucky_wheel.services import LuckyWheelGrantService
+        from apps.draws.services import WeeklyDrawEntryService
+        from apps.promotions.services import OnboardingHighlightBenefitService
 
-        LuckyWheelGrantService.grant_onboarding_attempt(seller_profile)
+        OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding(
+            user=user,
+            profile=seller_profile,
+        )
+        WeeklyDrawEntryService.ensure_for_first_profile_onboarding(
+            user=user,
+            profile=seller_profile,
+        )
         return Response(
             {"message": _("Seller profile created successfully")},
             status=status.HTTP_201_CREATED,
@@ -251,6 +259,7 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
     queryset = CustomerProfile.objects.all().order_by("-created")
     permission_classes = [permissions.IsAuthenticated]
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         if request.user.profiles.filter(
             type=ProfileType.MANAGER,
@@ -260,20 +269,44 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
                 {"message": _("Manager accounts cannot create customer profiles")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if request.user.profiles.filter(type=ProfileType.CUSTOMER).exists():
+            return Response(
+                {"message": _("Profile already exists")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         response = super().create(request, *args, **kwargs)
         customer_profile = self.get_queryset().first()
         if customer_profile is not None:
+            from apps.draws.services import WeeklyDrawEntryService
             from apps.loyalty.constants import RewardEventType
             from apps.loyalty.reward_engine import RewardEngine
-            from apps.lucky_wheel.services import LuckyWheelGrantService
+            from apps.promotions.services import OnboardingHighlightBenefitService
 
             RewardEngine.handle_event(
                 RewardEventType.CUSTOMER_PROFILE_CREATED,
                 actor=customer_profile,
                 profile=customer_profile,
             )
-            LuckyWheelGrantService.grant_onboarding_attempt(customer_profile)
+            OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding(
+                user=request.user,
+                profile=customer_profile,
+            )
+            WeeklyDrawEntryService.ensure_for_first_profile_onboarding(
+                user=request.user,
+                profile=customer_profile,
+            )
         return response
+
+    def perform_create(self, serializer):
+        has_active_profile = self.request.user.profiles.filter(
+            is_active=True,
+            deleted__isnull=True,
+        ).exists()
+        serializer.save(
+            user=self.request.user,
+            is_active=not has_active_profile,
+            type=ProfileType.CUSTOMER,
+        )
 
     def get_queryset(self):
         return (

@@ -24,7 +24,7 @@ def create_draft_season():
     return Season.objects.create(
         title="Reward Season",
         starts_at=now - timedelta(days=30),
-        ends_at=now,
+        ends_at=now + timedelta(days=1),
         status=SeasonStatus.DRAFT,
     )
 
@@ -70,7 +70,7 @@ def test_response_detail_uses_active_locale():
     )
 
     assert response.status_code == 400
-    assert str(response.data["detail"]) == "يمكن إنهاء المواسم المحسوبة فقط."
+    assert str(response.data["detail"]) == "لا يمكن إنهاء الموسم قبل انتهائه."
 
     response = auth_client(manager).post(
         f"/api/seasons/{season.pk}/finalize/",
@@ -78,7 +78,7 @@ def test_response_detail_uses_active_locale():
     )
 
     assert response.status_code == 400
-    assert str(response.data["detail"]) == "Only calculated seasons can be finalized."
+    assert str(response.data["detail"]) == "Season cannot be finalized before it ends."
 
 
 def test_manager_permission_catalog_localizes_labels_without_changing_codes():

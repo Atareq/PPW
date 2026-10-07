@@ -713,8 +713,14 @@ class CancelAuctionSerializer(serializers.Serializer):
         if not request or not auction:
             raise serializers.ValidationError(_("Invalid request context"))
 
+        reason = validated_data.get("reason") or "Cancelled by owner"
         try:
-            auction = AuctionService.cancel_auction(auction)
+            auction = AuctionService.cancel_auction(
+                auction,
+                reason=reason,
+                performer=request.user.active_profile,
+            )
             return auction
         except serializers.ValidationError:
             raise
+

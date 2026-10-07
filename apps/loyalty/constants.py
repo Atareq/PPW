@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -14,11 +16,20 @@ class RewardSourceType(models.TextChoices):
     ONBOARDING = "onboarding", _("Onboarding")
     LUCKY_WHEEL = "lucky_wheel", _("Lucky Wheel")
     AUCTION_COMPLETED = "auction_completed", _("Auction Completed")
+    # Pre-BE-REW-08 market deal rewards; kept for historical ledger rows.
     ORDER_COMPLETED_AMOUNT = "order_completed_amount", _("Order Completed Amount")
     ORDER_COMPLETED_BONUS = "order_completed_bonus", _("Order Completed Bonus")
+    DEAL_COMPLETED = "deal_completed", _("Deal Completed")
+    DEAL_COMPLETION_BONUS = "deal_completion_bonus", _("Deal Completion Bonus")
+    SUCCESSFUL_SALE = "successful_sale", _("Successful Sale")
+    MUTUAL_RATING = "mutual_rating", _("Mutual Rating")
     AUCTION_POSTED = "auction_posted", _("Auction Posted")
+    ACTIVE_AUCTION_BIDDER = "active_auction_bidder", _("Active Auction Bidder")
     RATING_RECEIVED = "rating_received", _("Rating Received")
+    # Pre-BE-REF-01 redeem-time inviter reward; kept for historical rows.
     REFERRAL_ACCEPTED = "referral_accepted", _("Referral Accepted")
+    REFERRAL_APPROVED = "referral_approved", _("Referral Approved")
+    REFERRAL_FIRST_BID = "referral_first_bid", _("Referral First Bid")
     FIRST_BID_COMPLETED = "first_bid_completed", _("First Bid Completed")
     SEASON_WINNER = "season_winner", _("Season Winner")
     CASHBACK_POINTS_PURCHASE = (
@@ -254,6 +265,8 @@ class RewardEventType:
     MARKET_ITEM_LISTED = "market_item_listed"
     BID_PLACED = "bid_placed"
     DEAL_COMPLETED = "deal_completed"
+    MUTUAL_RATING_COMPLETED = "mutual_rating_completed"
+    REFERRAL_APPROVED = "referral_approved"
     AUCTION_PAYMENT_REQUEST_CREATED = "auction_payment_request_created"
     # Deprecated as events: deal rewards run on DEAL_COMPLETED. The two
     # *_APPROVED values stay because historical reward keys contain them.
@@ -274,6 +287,8 @@ class RewardRuleCode(models.TextChoices):
     AUCTION_PUBLISHED = "AUCTION_PUBLISHED", _("Auction Published")
     ACTIVE_AUCTION_BIDDER = "ACTIVE_AUCTION_BIDDER", _("Active Auction Bidder")
     DEAL_COMPLETED = "DEAL_COMPLETED", _("Deal Completed")
+    DEAL_COMPLETION_BONUS = "DEAL_COMPLETION_BONUS", _("Deal Completion Bonus")
+    SUCCESSFUL_SALE = "SUCCESSFUL_SALE", _("Successful Sale")
     POSITIVE_RATING = "POSITIVE_RATING", _("Positive Rating")
     MUTUAL_RATING = "MUTUAL_RATING", _("Mutual Rating")
     REFERRAL_APPROVED = "REFERRAL_APPROVED", _("Referral Approved")
@@ -288,21 +303,26 @@ REWARD_RULE_TUNABLE_FIELDS = (
     "configuration",
 )
 REWARD_RULE_CONFIGURATION_MAX_KEYS = 20
+# DEAL_COMPLETED configuration key prefix for PP per currency unit, e.g.
+# "points_per_unit_EGP". Currencies without a key earn no deal points.
+DEAL_POINTS_RATE_KEY_PREFIX = "points_per_unit_"
 
 
 def _reward_rule(
     *,
     points=None,
+    multiplier=None,
     threshold=None,
+    configuration=None,
     required_fields=(),
     implemented=False,
 ):
     return {
         "enabled": True,
         "points": points,
-        "multiplier": None,
+        "multiplier": multiplier,
         "threshold": threshold,
-        "configuration": {},
+        "configuration": configuration or {},
         # Fields a manager may not clear, because the rule needs them to run.
         "required_fields": required_fields,
         # Whether backend code currently reads this rule when awarding.
@@ -311,8 +331,8 @@ def _reward_rule(
 
 
 # Canonical defaults. RewardRuleConfig rows override them; nothing else should
-# hold these values. DEAL_COMPLETED and POSITIVE_RATING are pending product
-# values, so they have no points yet.
+# hold these values. POSITIVE_RATING is a pending product value, so it has no
+# points yet.
 DEFAULT_REWARD_RULES = {
     RewardRuleCode.ACCOUNT_ONBOARDING: _reward_rule(
         points=100,
@@ -327,20 +347,44 @@ DEFAULT_REWARD_RULES = {
         points=50,
         threshold=5,
         required_fields=("points", "threshold"),
+        implemented=True,
     ),
-    RewardRuleCode.DEAL_COMPLETED: _reward_rule(),
+    # deal points = floor(amount × rate[currency]) × multiplier, per party.
+    RewardRuleCode.DEAL_COMPLETED: _reward_rule(
+        multiplier=Decimal("2"),
+        configuration={
+            f"{DEAL_POINTS_RATE_KEY_PREFIX}EGP": 1,
+            f"{DEAL_POINTS_RATE_KEY_PREFIX}USD": 1,
+        },
+        required_fields=("multiplier",),
+        implemented=True,
+    ),
+    RewardRuleCode.DEAL_COMPLETION_BONUS: _reward_rule(
+        points=100,
+        required_fields=("points",),
+        implemented=True,
+    ),
+    # Seller only, every completed deal; separate from the first-sale incentive.
+    RewardRuleCode.SUCCESSFUL_SALE: _reward_rule(
+        points=100,
+        required_fields=("points",),
+        implemented=True,
+    ),
     RewardRuleCode.POSITIVE_RATING: _reward_rule(),
     RewardRuleCode.MUTUAL_RATING: _reward_rule(
         points=20,
         required_fields=("points",),
+        implemented=True,
     ),
     RewardRuleCode.REFERRAL_APPROVED: _reward_rule(
         points=30,
         required_fields=("points",),
+        implemented=True,
     ),
     RewardRuleCode.REFERRAL_FIRST_BID: _reward_rule(
         points=200,
         required_fields=("points",),
+        implemented=True,
     ),
 }
 

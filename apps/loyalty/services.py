@@ -57,6 +57,28 @@ def normalize_idempotency_key(value):
     return value or None
 
 
+def _resolve_reward_recipient_profile(user, profile=None):
+    if (
+        profile is not None
+        and profile.is_active
+        and profile.activated
+        and profile.is_valid
+        and getattr(profile, "deleted", None) is None
+    ):
+        return profile
+    if user is not None:
+        active = Profile.objects.filter(
+            user=user,
+            is_active=True,
+            activated=True,
+            is_valid=True,
+            deleted__isnull=True,
+        ).first()
+        if active is not None:
+            return active
+    return profile
+
+
 class PointService:
     """Ledger-style point wallet mutations with optional idempotency keys."""
 
@@ -198,7 +220,7 @@ class PointService:
         wallet.balance = next_balance
         wallet.save(update_fields=["balance", "modified"])
 
-        return PointTransaction.objects.create(
+        point_tx = PointTransaction.objects.create(
             wallet=wallet,
             user=user,
             profile=profile,
@@ -210,6 +232,37 @@ class PointService:
             source_id=source_id,
             idempotency_key=idempotency_key,
             metadata=metadata,
+        )
+        if transaction_type == PointTransactionType.EARN and point_tx.points > 0:
+            PointService._create_points_earned_notification(point_tx)
+        return point_tx
+
+    @staticmethod
+    def _create_points_earned_notification(point_tx):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        recipient_profile = _resolve_reward_recipient_profile(
+            point_tx.user,
+            point_tx.profile,
+        )
+        if recipient_profile is None:
+            return None
+
+        return NotificationService.create_notification(
+            recipient_profile=recipient_profile,
+            notification_type=NotificationType.POINTS_EARNED,
+            title=_("Congratulations! Points earned"),
+            body=f"Congratulations! You earned {point_tx.points} PP Coins.",
+            object_type="point_transaction",
+            object_id=point_tx.pk,
+            metadata={
+                "point_transaction_id": point_tx.pk,
+                "points": point_tx.points,
+                "source_type": point_tx.source_type,
+                "source_id": point_tx.source_id,
+            },
+            idempotency_key=f"points_earned:{point_tx.pk}",
         )
 
     @staticmethod
@@ -387,24 +440,30 @@ class BadgeService:
 
     @staticmethod
     def _schedule_badge_awarded_notification(award):
+        from apps.notifications.models import NotificationType
         from apps.notifications.services import NotificationService
 
+        recipient_profile = _resolve_reward_recipient_profile(
+            award.profile.user,
+            award.profile,
+        )
+        if recipient_profile is None:
+            return None
+
         badge_name = BADGE_DEFINITIONS[award.badge_type]["name"]
-        transaction.on_commit(
-            lambda: NotificationService.safe_create_notification(
-                recipient_profile=award.profile,
-                notification_type="badge_awarded",
-                title=_("Badge awarded"),
-                body=f"You earned the {badge_name} badge.",
-                object_type="badge_award",
-                object_id=award.pk,
-                metadata={
-                    "badge_award_id": award.pk,
-                    "profile_id": award.profile_id,
-                    "badge_type": award.badge_type,
-                },
-                idempotency_key=f"badge_awarded:{award.pk}",
-            )
+        return NotificationService.create_notification(
+            recipient_profile=recipient_profile,
+            notification_type=NotificationType.BADGE_AWARDED,
+            title=_("Badge awarded"),
+            body=f"Congratulations! You earned the {badge_name} badge.",
+            object_type="badge_award",
+            object_id=award.pk,
+            metadata={
+                "badge_award_id": award.pk,
+                "profile_id": award.profile_id,
+                "badge_type": award.badge_type,
+            },
+            idempotency_key=f"badge_awarded:{award.pk}",
         )
 
 

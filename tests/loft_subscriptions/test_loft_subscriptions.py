@@ -28,6 +28,7 @@ from apps.loft_subscriptions.services import (
     SubscriptionCheckoutService,
     SubscriptionPricingService,
 )
+from apps.pedigrees.models import RegisteredPedigree
 from apps.users.constants import ProfileType
 from tests.factories import (
     PedigreeBirdFactory,
@@ -539,6 +540,7 @@ def test_pedigree_generation_requires_subscription_before_provider_call(settings
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     subject = PedigreeBirdFactory(owner=user.active_profile)
+    RegisteredPedigree.objects.create(pedigree_id=7)
     client = authenticated_client(user)
 
     with patch("requests.post") as post:

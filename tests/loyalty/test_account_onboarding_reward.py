@@ -227,6 +227,8 @@ def test_onboarding_balance_is_shared_after_switching_to_seller_mode():
 
 
 def test_lucky_wheel_onboarding_attempts_are_unchanged():
+    from apps.draws.models import WeeklyDrawEntry, WeeklyDrawEntrySource
+
     user = register_customer()
     customer_profile = CustomerProfile.objects.get(user=user)
     seller_profile = create_seller_mode(user)
@@ -236,12 +238,17 @@ def test_lucky_wheel_onboarding_attempts_are_unchanged():
         profile=seller_profile,
     )
 
+    # BE-DRW-01: account onboarding grants one account-level WeeklyDrawEntry
+    # instead of a profile-scoped LuckyWheelGrant.
     grants = LuckyWheelGrant.objects.filter(
         user=user,
         source_type=LuckyWheelGrantSourceType.ONBOARDING,
     )
-    # Existing behavior: one onboarding attempt per created profile.
-    assert grants.filter(profile=customer_profile).count() == 1
-    assert grants.filter(profile=seller_profile).count() == 1
-    assert all(grant.remaining_attempts == 1 for grant in grants)
+    assert grants.count() == 0
+    entries = WeeklyDrawEntry.objects.filter(
+        user=user,
+        source=WeeklyDrawEntrySource.ONBOARDING,
+    )
+    assert entries.count() == 1
+    assert entries.get().metadata["onboarding_profile_id"] == customer_profile.pk
     assert PointService.get_balance(user) == 100

@@ -610,6 +610,7 @@ class CompletedDealFactory(factory.django.DjangoModelFactory):
         owner=factory.SelfAttribute("..seller_profile"),
     )
     amount = Decimal("10.00")
+    currency = CurrencyOptions.EGP
     completed_at = factory.LazyFunction(timezone.now)
 
 

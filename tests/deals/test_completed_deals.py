@@ -345,14 +345,14 @@ def test_market_rewards_are_unchanged_by_deal_recording():
 
     keys = set(
         PointTransaction.objects.filter(
-            idempotency_key__startswith="points:order_item:"
+            idempotency_key__startswith="reward:completed_deal"
         ).values_list("idempotency_key", flat=True)
     )
     assert keys == {
-        f"points:order_item:{item.pk}:customer:amount",
-        f"points:order_item:{item.pk}:customer:bonus",
-        f"points:order_item:{item.pk}:seller:amount",
-        f"points:order_item:{item.pk}:seller:bonus",
+        f"reward:completed_deal:order_item:{item.pk}:buyer",
+        f"reward:completed_deal:order_item:{item.pk}:seller",
+        f"reward:completed_deal_bonus:order_item:{item.pk}:buyer",
+        f"reward:completed_deal_bonus:order_item:{item.pk}:seller",
     }
     assert BadgeAward.objects.filter(
         profile=buyer.active_profile,
