@@ -2,10 +2,11 @@ from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
-from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.loyalty.constants import RewardSourceType
 from apps.users.constants import ProfileType
@@ -24,6 +25,8 @@ from apps.users.models import (
     ProfileDataChangeLog,
     ProfileDataChangeSource,
     SellerProfile,
+    SellerRoom,
+    SellerRoomFollow,
 )
 
 
@@ -46,6 +49,11 @@ LOCKED_PROFILE_FIELDS = {
     "loft_name",
     "loft_picture",
     "recoded_voice",
+}
+SENSITIVE_PROFILE_PAYMENT_FIELDS = {
+    "bank_account",
+    "wallet",
+    "transfer_phone",
 }
 
 
@@ -242,6 +250,8 @@ class ProfileDataChangeService:
         old_values = {}
         new_values = {}
         for field, value in submitted_data.items():
+            if field in SENSITIVE_PROFILE_PAYMENT_FIELDS:
+                continue
             old_value = getattr(instance, field)
             if cls._normalize_value(old_value) == cls._normalize_value(value):
                 continue
@@ -356,7 +366,7 @@ class ManagerPermissionService:
 
 
 class AccountOnboardingService:
-    """Shared account-level first-profile onboarding boundary (BE-PRO-03A / BE-DRW-01)."""
+    """Shared account-level first-profile onboarding boundary (BE-PRO-03A)."""
 
     @staticmethod
     def has_prior_customer_seller_profile_history(
@@ -397,3 +407,216 @@ class AccountOnboardingService:
         ):
             return True
         return False
+
+
+class SellerRoomService:
+    """Owner-scoped CRUD and public query helpers for SellerRoom (BE-ROOM-01)."""
+
+    @staticmethod
+    def require_active_seller(user) -> SellerProfile:
+        if user is None or not getattr(user, "is_authenticated", False):
+            raise PermissionDenied(_("Authentication credentials were not provided."))
+        try:
+            active_profile = user.active_profile
+        except DjangoPermissionDenied as exc:
+            raise PermissionDenied(str(exc)) from exc
+        if active_profile.type != ProfileType.SELLER:
+            raise PermissionDenied(_("Only seller profiles can manage seller rooms."))
+        return SellerProfile.objects.get(pk=active_profile.pk)
+
+    @staticmethod
+    def rooms_for_owner(seller_profile_or_id):
+        seller_id = getattr(seller_profile_or_id, "pk", seller_profile_or_id)
+        return (
+            SellerRoom.objects.filter(
+                seller_id=seller_id,
+                deleted__isnull=True,
+            )
+            .select_related("seller")
+            .order_by("-created", "-id")
+        )
+
+    @staticmethod
+    def public_rooms_for_seller(seller_profile_or_id):
+        seller_id = getattr(seller_profile_or_id, "pk", seller_profile_or_id)
+        return (
+            SellerRoom.objects.filter(
+                seller_id=seller_id,
+                deleted__isnull=True,
+                seller__deleted__isnull=True,
+                seller__is_active=True,
+                seller__activated=True,
+                seller__is_valid=True,
+            )
+            .select_related("seller")
+            .order_by("-created", "-id")
+        )
+
+    @classmethod
+    @transaction.atomic
+    def create_room(cls, *, user, validated_data: dict) -> SellerRoom:
+        seller_profile = cls.require_active_seller(user)
+        room = SellerRoom(
+            seller=seller_profile,
+            name=validated_data.get("name", ""),
+            description=validated_data.get("description") or "",
+        )
+        try:
+            room.save()
+        except DjangoValidationError as exc:
+            raise ValidationError(
+                exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}
+            ) from exc
+        return room
+
+    @classmethod
+    @transaction.atomic
+    def update_room(cls, *, room: SellerRoom, user, validated_data: dict) -> SellerRoom:
+        seller_profile = cls.require_active_seller(user)
+        locked_room = (
+            SellerRoom.objects.select_for_update()
+            .select_related("seller")
+            .filter(pk=room.pk, deleted__isnull=True)
+            .first()
+        )
+        if locked_room is None:
+            raise NotFound(_("Seller room was not found."))
+        if locked_room.seller_id != seller_profile.pk:
+            raise PermissionDenied(_("Sellers can only update their own rooms."))
+
+        for field in ("name", "description"):
+            if field in validated_data:
+                setattr(locked_room, field, validated_data[field])
+        try:
+            locked_room.save()
+        except DjangoValidationError as exc:
+            raise ValidationError(
+                exc.message_dict if hasattr(exc, "message_dict") else {"detail": exc.messages}
+            ) from exc
+        return locked_room
+
+    @classmethod
+    @transaction.atomic
+    def delete_room(cls, *, room: SellerRoom, user) -> None:
+        seller_profile = cls.require_active_seller(user)
+        locked_room = (
+            SellerRoom.objects.select_for_update()
+            .filter(pk=room.pk, deleted__isnull=True)
+            .first()
+        )
+        if locked_room is None:
+            raise NotFound(_("Seller room was not found."))
+        if locked_room.seller_id != seller_profile.pk:
+            raise PermissionDenied(_("Sellers can only delete their own rooms."))
+        locked_room.delete()
+
+
+class SellerRoomFollowService:
+    """UserAccount-scoped follow/unfollow service for SellerRoom (BE-ROOM-01)."""
+
+    @staticmethod
+    def _require_non_manager_user(user):
+        if user is None or not getattr(user, "is_authenticated", False):
+            raise PermissionDenied(_("Authentication credentials were not provided."))
+        if getattr(user, "role", None) == ProfileType.MANAGER or user.profiles.filter(
+            type=ProfileType.MANAGER,
+            deleted__isnull=True,
+        ).exists():
+            raise PermissionDenied(_("Manager accounts cannot follow seller rooms."))
+        return user
+
+    @staticmethod
+    def _get_followable_room(room_id: int, *, actor_user=None) -> SellerRoom:
+        room = (
+            SellerRoom.objects.select_related("seller")
+            .filter(
+                pk=room_id,
+                deleted__isnull=True,
+                seller__deleted__isnull=True,
+                seller__activated=True,
+                seller__is_valid=True,
+            )
+            .first()
+        )
+        if room is None:
+            raise NotFound(_("Seller room was not found."))
+        if actor_user is not None and room.seller.user_id == actor_user.pk:
+            raise ValidationError(
+                {"room": [_("Users cannot follow their own seller room.")]}
+            )
+        if not room.seller.is_active:
+            raise NotFound(_("Seller room was not found."))
+        return room
+
+    @classmethod
+    @transaction.atomic
+    def follow(cls, *, user, room_id: int) -> SellerRoomFollow:
+        actor_user = cls._require_non_manager_user(user)
+        room = cls._get_followable_room(room_id, actor_user=actor_user)
+
+        from apps.feed.models import SellerCustomerBlock
+
+        if SellerCustomerBlock.objects.filter(
+            customer__user_id=actor_user.pk,
+            seller_id=room.seller_id,
+            is_active=True,
+            deleted__isnull=True,
+        ).exists():
+            raise ValidationError(
+                {"room": [_("Cannot follow this seller room while a block is active.")]}
+            )
+
+        existing = (
+            SellerRoomFollow.all_objects.select_for_update()
+            .select_related("room", "room__seller")
+            .filter(room=room, user=actor_user)
+            .first()
+        )
+        if existing is not None:
+            if existing.deleted is not None:
+                existing.undelete()
+            return existing
+
+        try:
+            with transaction.atomic():
+                return SellerRoomFollow.objects.create(room=room, user=actor_user)
+        except IntegrityError:
+            existing = SellerRoomFollow.all_objects.select_related(
+                "room", "room__seller"
+            ).get(room=room, user=actor_user)
+            if existing.deleted is not None:
+                existing.undelete()
+            return existing
+
+    @classmethod
+    @transaction.atomic
+    def unfollow(cls, *, user, room_id: int) -> SellerRoom:
+        actor_user = cls._require_non_manager_user(user)
+        room = (
+            SellerRoom.objects.select_related("seller")
+            .filter(pk=room_id, deleted__isnull=True)
+            .first()
+        )
+        if room is None:
+            raise NotFound(_("Seller room was not found."))
+
+        follows = SellerRoomFollow.objects.select_for_update().filter(
+            room=room,
+            user=actor_user,
+            deleted__isnull=True,
+        )
+        for follow in follows:
+            follow.delete()
+        return room
+
+    @staticmethod
+    def is_following(*, user, room) -> bool:
+        if user is None or not getattr(user, "is_authenticated", False):
+            return False
+        room_id = getattr(room, "pk", room)
+        return SellerRoomFollow.objects.filter(
+            room_id=room_id,
+            user_id=user.pk,
+            deleted__isnull=True,
+        ).exists()
+

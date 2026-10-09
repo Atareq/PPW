@@ -277,6 +277,17 @@ Current user/profile API:
   - authenticated user-facing seller profile API
 - `/api/users/mobile/customers/`
   - authenticated user-facing customer profile API
+- `/api/seller-rooms/` and `/api/users/mobile/seller-rooms/`
+  - `GET`: authenticated seller/customer room list (`?seller=<id>` or `?seller_id=<id>` filters public active rooms for a seller; sellers with no filter see their own non-deleted rooms)
+  - `POST`: authenticated active seller creates a `SellerRoom` (`name`, optional `description`) owned by `request.user.active_profile`
+- `/api/seller-rooms/<id>/` and `/api/users/mobile/seller-rooms/<id>/`
+  - `GET`: authenticated seller/customer retrieves a public non-deleted seller room with `seller_id`, `seller_nickname`, `followers_count`, and `is_followed`
+  - `PATCH` / `PUT`: owning seller updates `name` and/or `description`
+  - `DELETE`: owning seller soft-deletes the room
+- `/api/seller-rooms/<id>/follow/` and `/api/users/mobile/seller-rooms/<id>/follow/`
+  - `POST`: authenticated non-manager `UserAccount` idempotently follows a specific `SellerRoom` (`SellerRoomFollow`)
+- `/api/seller-rooms/<id>/unfollow/` and `/api/users/mobile/seller-rooms/<id>/unfollow/`
+  - `POST`: authenticated non-manager `UserAccount` idempotently unfollows a specific `SellerRoom`
 
 Current profile behavior:
 
@@ -295,7 +306,10 @@ Current profile behavior:
 - all profile rows support optional private `national_id` and `address`; public feed/seller discovery serializers do not expose `national_id`
 - customer and seller self-updates to locked identity/profile fields are limited to once every 60 days; admin profile updates bypass the lock but reset the affected user/profile waiting period
 - locked identity fields are `username`, `phone_number`, `secondary_phone_number`, `email`, `first_name`, and `last_name`; locked profile fields are `nickname`, `country`, `currency`, `national_id`, `address`, `loft_name`, `loft_picture`, and `recoded_voice`
-- `ProfileDataChangeLog` records self/admin data changes with changed fields and old/new values; system fields such as activation, validity, permissions, balances, and rating aggregates are not part of this lock/audit policy
+- `ProfileDataChangeLog` records self/admin data changes with changed fields and old/new values; system fields such as activation, validity, permissions, balances, and rating aggregates, as well as sensitive seller payment coordination fields (`bank_account`, `wallet`, `transfer_phone`), are not part of this lock/audit snapshot policy
+- `SellerProfile` stores optional private off-platform payment coordination fields (`bank_account`, `wallet`, `transfer_phone`); these are editable only by the owning seller via `/api/users/mobile/sellers/<id>/`, are excluded from `SellerProfileAdminSerializer` and all public/discovery/feed/auction/payment/notification/prize serializers, never fall back to login `UserAccount.phone_number`, and are exposed to buyers only through the dedicated post-auction winner endpoint `GET /api/auctions/<id>/seller-payment-details/` (BE-PAY-PRIV-01)
+- `SellerRoom` (`apps.users.models.SellerRoom`) represents a seller-owned auction room (`seller -> SellerProfile`, `name`, `description`) allowing one `SellerProfile` to manage multiple rooms under the same seller identity without duplicating seller profiles, wallets, ratings, or payment coordination fields; room-specific package tiers are currently `BLOCKED` pending product specification of room-level vs `SellerProfile`-level package ownership (BE-ROOM-01)
+- `SellerRoomFollow` (`apps.users.models.SellerRoomFollow`) stores `UserAccount`-scoped room follows (`UniqueConstraint(fields=["room", "user"])`) so room follows survive `Customer` <-> `Seller` profile switching, remain independent from `SellerFollow`, and reject self-follows, manager accounts, and active customer-seller blocks (BE-ROOM-01)
 - `ProfileBalanceTransaction` is the ledger for normal `CustomerProfile.balance` and `SellerProfile.balance` manager adjustments
 - normal balance adjustments lock the target profile, reject zero amounts and negative resulting balances, and use unique idempotency keys
 - manager permissions are centrally defined in `apps.users.manager_permissions` as a static action catalog, not generated module levels
@@ -811,27 +825,36 @@ Current chat service implementation names:
 
 Current responsibilities:
 
-- internal in-app notification records
+- internal in-app notification records (`Notification`)
 - notification read/unread state
 - polling APIs for notification list and unread count
 - read-marking commands
+- post-commit WebSocket realtime broadcast (`broadcast_notification`) and Celery/FCM mobile push delivery (`deliver_notification_push`, `PushDevice`)
+- account-wide Do Not Disturb (DND) preference (`NotificationPreference`, `NotificationPreferenceService`) that suppresses mobile FCM push delivery only during one configured daily interval (BE-NOT-02A)
 - idempotent notification creation helpers for other business modules
 
 Important note:
 
-This app is the current source of truth for in-app notifications only. It does not implement Firebase Cloud Messaging, APNs, push delivery, WebSocket, Server-Sent Events, email, SMS, WhatsApp delivery, notification preferences, Do Not Disturb, or admin broadcast workflows.
+This app owns in-app notifications, post-commit WebSocket realtime delivery, FCM push delivery, and account-wide DND push suppression. It does not implement email, SMS, WhatsApp delivery, notification digests, delayed/catch-up push scheduling, per-category notification preferences, per-profile/per-device DND, or admin broadcast workflows.
 
 Current notifications API:
 
 - `/api/notifications/`
   - `GET`: authenticated active profile lists only its own notifications with optional `is_read` and `type` filters
   - `POST`: manager with `notifications.create` creates one manual in-app notification for a selected active recipient profile; broadcast is not implemented
+- `/api/notifications/preferences/`
+  - `GET`: authenticated user retrieves their `UserAccount`-owned DND settings (`dnd_enabled`, `dnd_start`, `dnd_end`; defaults to `{"dnd_enabled": false, "dnd_start": null, "dnd_end": null}` when no row exists)
+  - `PATCH`: authenticated user updates their `UserAccount`-owned DND settings (`dnd_enabled`, `dnd_start`, `dnd_end`); rejects client-supplied `user`, `user_id`, `profile`, or `profile_id`
 - `/api/notifications/unread-count/`
   - `GET`: authenticated active profile gets unread notification count
 - `/api/notifications/<id>/mark-read/`
   - `POST`: authenticated active profile marks one of its own notifications as read
 - `/api/notifications/mark-all-read/`
   - `POST`: authenticated active profile marks all of its unread notifications as read
+- `/api/notifications/devices/`
+  - `GET` / `POST`: authenticated user lists or registers active `PushDevice` rows (`token`, `platform`) for the current active profile
+- `/api/notifications/devices/<id>/`
+  - `DELETE`: authenticated user deactivates one of their active profile's `PushDevice` rows
 
 No notification delete endpoint is currently implemented.
 
@@ -846,7 +869,10 @@ Current notifications behavior:
 - inactive, invalid, unactivated, or deleted recipient profiles do not receive newly created notifications
 - mark-read is idempotent and only the recipient profile can mark one notification as read
 - mark-all-read uses a bulk update over the current active profile's unread rows
+- `NotificationService.create_notification()` creates the `Notification` DB row inside the active transaction and schedules WebSocket broadcast (`broadcast_notification`) and Celery/FCM push (`deliver_notification_push.delay`) strictly via `transaction.on_commit()`
 - `NotificationService.safe_create_notification()` is the best-effort helper for business integrations; notification failures are logged and must not roll back the main business transaction
+- `NotificationPreference` (`OneToOneField` to `UserAccount`) stores account-wide `dnd_enabled` (default `False`), `dnd_start` (`TimeField`, nullable), and `dnd_end` (`TimeField`, nullable) for one optional daily DND interval (supporting both same-day e.g. `13:00 -> 15:00` and overnight e.g. `23:00 -> 08:00` windows); rows are created lazily on first `PATCH` with no historical backfill, and switching between `Customer` and `Seller` profiles preserves the same DND settings (BE-NOT-02A)
+- during an active DND window, only mobile FCM push delivery (`deliver_notification_push` / `send_notification_to_devices`) is suppressed immediately (not delayed or queued for when DND ends); the `Notification` DB row is still created and visible in-app (`is_read=False` unchanged), and in-app WebSocket realtime broadcast (`broadcast_notification`) still runs normally (BE-NOT-02A)
 - current safe integrations create in-app notifications for:
   - received chat messages
   - payment request created, approved, and rejected
@@ -861,14 +887,16 @@ Current notifications behavior:
   - new customer registration to active managers
   - complaint status updated
   - manual manager notifications
-  - PP Coins earned (`points_earned`, BE-NOT-01)
+  - PP Coins earned (`points_earned`, BE-NOT-01 & BE-NOT-02A)
   - badge awarded (`badge_awarded`, BE-NOT-01)
   - claim-required prize awarded (`prize_awarded`, BE-NOT-01)
-- `points_earned` congratulatory notifications are created atomically inside `PointService._create_transaction()` only when a new positive `PointTransaction` (`transaction_type=earn`, `points > 0`) is created (`idempotency_key=f"points_earned:{point_tx.id}"`); duplicate idempotent `earn_points()` calls, `spend_points()`, and `expire_points()` create `0` notifications
+- `points_earned` congratulatory notifications are created atomically inside `PointService._create_transaction()` only when a new positive `PointTransaction` (`transaction_type=earn`, `points > 0`) is created (`idempotency_key=f"points_earned:{point_tx.id}"`), using short, localized source-specific copy when `source_type` identifies onboarding, referral, completed deal, season winner, or Lucky Wheel (`PointService._build_points_earned_body`, BE-NOT-01 & BE-NOT-02A); duplicate idempotent `earn_points()` calls, `spend_points()`, and `expire_points()` create `0` notifications
 - `badge_awarded` congratulatory notifications are created atomically inside `BadgeService.award_badge()` only when a new `BadgeAward` row (`created_new=True`) is created (`idempotency_key=f"badge_awarded:{award.id}"`); returning an existing idempotent award does not create another notification
-- `prize_awarded` congratulatory notifications are created atomically inside `PrizeAwardService._record_award()` only when a new `CLAIM_REQUIRED` `PrizeAward` (`created_new=True`) is created (`idempotency_key=f"prize_awarded:{award.id}"`); `PrizeAwardService.record_digital_fulfilled()` never creates a generic prize notification so digital PP Coin and badge prizes do not duplicate their `points_earned` or `badge_awarded` notifications
-- notification grouping/digests and Do-Not-Disturb / per-category preferences remain deferred to `BE-NOT-02`; weekly draw winner notifications remain deferred while `BE-DRW-02` winner selection is blocked
+- `prize_awarded` congratulatory notifications are created atomically inside `PrizeAwardService._record_award()` only when a new `CLAIM_REQUIRED` `PrizeAward` (`created_new=True`) is created (`idempotency_key=f"prize_awarded:{award.id}"`); `PrizeAwardService.record_digital_fulfilled()` never creates a generic prize notification so digital PP Coin and badge prizes do not duplicate their `points_earned` or `badge_awarded` notifications, and the cancelled weekly onboarding draw (`BE-DRW-CANCEL-01`) creates `0` notifications
+- because `Notification` is owned by `recipient_profile = ForeignKey("users.Profile")` and `/api/notifications/` filters by `request.user.active_profile.pk`, account-level reward/prize notifications (`ACCOUNT_ONBOARDING`, `FIRST_BID_COMPLETED`, `REFERRAL_CHALLENGE` `PRIZE_AWARDED`) are routed to the user's currently active valid profile at creation time and are visible only while that profile is active; cross-profile in-app notification history is intentionally not redesigned in `BE-NOT-02A`
+- notification grouping/digests and per-category enable/disable preferences are not implemented in `BE-NOT-02A`
 - current notification types also reserve room for future cashback-earned, package-expiring-soon, auction-outbid, and complaint-created notifications, but those are not wired yet
+
 
 ### `apps.feed`
 
@@ -894,7 +922,9 @@ This app is named `feed`, not `social`. It is not a recommendation engine, notif
 Current feed API:
 
 - `/api/feed/sellers/`
-  - `GET`: authenticated paginated active seller discovery list; excludes the requesting user's own seller profile and active customer/seller blocks where applicable; returns public-safe seller fields including `avatar_url`
+  - `GET`: authenticated paginated active seller discovery list; excludes the requesting user's own seller profile and active customer/seller blocks where applicable; returns public-safe seller fields including `avatar_url` and the seller's active non-deleted `rooms`
+- `/api/feed/sellers/<seller_id>/`
+  - `GET`: authenticated public-safe seller discovery detail including the seller's active non-deleted `rooms` (`SellerRoomPublicSerializer`)
 - `/api/feed/sellers/<seller_id>/follow/`
   - `POST`: authenticated active customer creates or reactivates a follow for an active seller
 - `/api/feed/sellers/<seller_id>/unfollow/`
@@ -1222,9 +1252,10 @@ Current promotions behavior:
 - cashback earning and redemption use idempotency keys based on `order_item.id`
 - admin adjustments use a system `CashbackOffer` titled `Manual Admin Adjustment`
 - every cashback balance change must create exactly one `CashbackTransaction`
-- cashback balance mutations use `transaction.atomic()` and `select_for_update()` on `CustomerProfile`
+- cashback balance mutations use `transaction.atomic()`, `select_for_update()` on `CustomerProfile` (and `OrderItem` where applicable), and post-lock idempotency re-checks before mutating balances
 - `CashbackService.refund_redeemed_for_order_item()` exists for future approved-item cancellation flows; current seller rejection and seller timeout paths do not call it because they only affect pending seller items
-- `CashbackService.buy_points_with_cashback()` atomically deducts customer cashback, writes a `points_purchase` cashback transaction, and awards PP Coins at 20 points per 1 cashback unit
+- `CashbackService.buy_points_with_cashback()` atomically locks `CustomerProfile`, validates idempotent replay payload consistency (`idempotency_key` conflict rejection) and minimum 1-PP conversion (`cashback_amount >= 0.05` at 20 PP per 1 cashback unit), deducts `CustomerProfile.cashback_balance`, writes a `points_purchase` `CashbackTransaction`, and credits `PointWallet` (`UserAccount`) via `PointService.earn_points(source_type=CASHBACK_POINTS_PURCHASE)` without creating `PrizeAward` rows
+- `BE-CB-01` product alignment status is `PARTIAL / BLOCKED`: current purchase cashback is earned as monetary units on `CustomerProfile.cashback_balance` from admin-configured `GLOBAL` `CashbackOffer` rows (which accept `0 < value <= 100%` or `fixed_amount`, not a canonical `1%–5%` rule) only after `MarketPaymentRequest` approval, can be manually converted to `UserAccount` PP Coins via `POST /api/loyalty/points/buy-with-cashback/` (at hardcoded `20 PP / 1 unit`), and cannot be withdrawn as cash; automatic `1%–5%` `CompletedDeal` PP conversion, canonical currency-to-PP conversion rates, and auction spending of cashback/PP Coins remain blocked pending product decisions
 
 Current promotions service implementation names:
 
@@ -1267,22 +1298,24 @@ Public auction chat/comments are still out of scope in the current backend. Ther
 Current auction API:
 
 - `/api/auctions/`
-  - `GET`: authenticated list of visible auctions for allowed roles
-  - `POST`: seller creates an auction with nested items
+  - `GET`: authenticated list of visible auctions for allowed roles (supports optional `?room=<id>` / `?room_id=<id>` filtering)
+  - `POST`: seller creates an auction with nested items (plus optional `room` / `room_id`, `shipping_method`, `min_shipping_days`, `max_shipping_days`, or convenience `shipping_days`)
 - `/api/auctions/<id>/`
-  - `GET`: retrieve auction detail, subject to current object permission behavior
-  - `PATCH`: owner or manager updates only `title`, `description`, and `tags` while editable
+  - `GET`: retrieve auction detail (`allow_scoped_read_access=True` for authenticated readers)
+  - `PATCH` / `PUT`: owner updates only `title`, `description`, `tags`, optional owner-scoped `room` / `room_id`, and optional per-auction shipping fields (`shipping_method`, `min_shipping_days`, `max_shipping_days`, `shipping_days`) while editable
   - `DELETE`: owner or manager soft-deletes through the default `ModelViewSet` destroy path
 - `/api/auctions/my_auctions/`
-  - `GET`: seller lists own auctions, optionally filtered by `status`
+  - `GET`: seller lists own auctions, optionally filtered by `status` and/or `room`
 - `/api/auctions/active/`
-  - `GET`: list visible auctions whose time window is currently active
+  - `GET`: list visible auctions whose time window is currently active (supports optional `?room=<id>` filtering)
 - `/api/auctions/ending_soon/`
   - `GET`: list visible auctions ending within the requested `minutes`
 - `/api/auctions/<id>/cancel/`
   - `POST`: owner or manager cancels an auction through `AuctionService.cancel_auction`
 - `/api/auctions/<id>/close/`
   - `POST`: admin/staff manually closes an auction and resolves item winners
+- `/api/auctions/<id>/seller-payment-details/`
+  - `GET`: authenticated winning buyer account retrieves private seller payment coordination details (`seller_id`, `auction_id`, `bank_account`, `wallet`, `transfer_phone`) after the auction has ended and a winning item (`status=sold`, `winner__user=request.user`) is settled
 - `/api/auctions/items/`
   - `GET`: read-only auction item list, optionally filtered by `auction_id`
 - `/api/auctions/items/<id>/place_bid/`
@@ -1303,17 +1336,21 @@ Current auction behavior:
 - auction statuses are `active`, `ended`, `cancelled`, and `closed`
 - auction item statuses are `active`, `sold`, `unsold`, `withdrawn`, and `cancelled`
 - `Auction.seller_package` is a nullable FK to `SellerPackage`; existing rows and manager-created rows can be null
+- `Auction.room` is a nullable FK to `users.SellerRoom` (`on_delete=SET_NULL`); legacy auctions keep `room=NULL`, and when `room` is supplied `AuctionCreateSerializer`, `AuctionUpdateSerializer`, `AuctionBusinessValidator`, and `AuctionService` enforce `auction.room.seller_id == auction.owner_id` (BE-ROOM-01)
+- `Auction` stores optional per-auction shipping settings (`shipping_method`, `min_shipping_days`, `max_shipping_days`) using `AuctionShippingMethod` (`PERSONAL_PICKUP`, `SHIPPING_COMPANY`, `INTERNATIONAL_SHIPPING`, `HAND_DELIVERY`); fixed durations (e.g. `7` days) are represented as `min_shipping_days=7, max_shipping_days=7`, ranges (e.g. `3–5` days) use `min_shipping_days=3, max_shipping_days=5`, and DB `CheckConstraint`s / model `clean()` / service / serializer validation enforce `min_shipping_days >= 1`, `max_shipping_days >= 1`, and `min_shipping_days <= max_shipping_days`; automated late-shipping warning/violation enforcement is `BLOCKED` pending product specification of shipment start/dispatch timestamps and violation records (BE-SHIP-01)
 - auction creation requires future `start_time`, later `end_time`, and nested item payloads
-- `AuctionCreateSerializer` owns auction creation field-shape checks such as future/later times, `bid_visibility`, optional per-item `reserve_price`, auto-extend minutes, deposit payment deadline, buy-now price, and required `paired_bird_id` for pair-style auctions
+- `AuctionCreateSerializer` owns auction creation field-shape checks such as future/later times, `bid_visibility`, optional per-item `reserve_price`, auto-extend minutes, deposit payment deadline, buy-now price, per-auction shipping fields, and required `paired_bird_id` for pair-style auctions
 - `AuctionItem.reserve_price` is optional; when supplied it must be greater than or equal to `starting_price`
-- `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, pair gender rules, duplicate bird rejection, and overlapping active-auction bird rejection
+- `AuctionBusinessValidator` enforces item counts by auction type, seller bird ownership for seller-created auctions, seller room ownership, per-auction shipping invariants, pair gender rules, duplicate bird rejection, and overlapping active-auction bird rejection
 - manager-created auctions bypass seller bird ownership validation because managers are using the administrative auction creation path
 - `AuctionService.create_auction()` writes a `created` event
 - seller auction creation requires `seller_package_id`, pre-validates that selected package, then creates the auction/items and consumes `Package.auction_cost` in the same DB transaction
 - seller-created auctions are linked to the consumed `SellerPackage`
 - manager-created auctions bypass seller package consumption and keep `seller_package=NULL`
 - auction update, cancellation, close, bidding, and buy-now do not consume package points
-- auction list/detail serializers expose FE-safe read-only fields including `is_active`, `is_ended`, `bid_visibility`, `buy_now_price`, `buy_now_enabled`, `min_bid_increment`, `current_price`, `thumbnail_url`, and `is_owner`; `chat_enabled` is not exposed because no such model field exists
+- auction list/detail serializers expose FE-safe read-only fields including `room`, `room_name`, `shipping_method`, `shipping_method_display`, `min_shipping_days`, `max_shipping_days`, `is_active`, `is_ended`, `bid_visibility`, `buy_now_price`, `buy_now_enabled`, `min_bid_increment`, `current_price`, `thumbnail_url`, and `is_owner`; `chat_enabled` is not exposed because no such model field exists
+- `AuctionEventSerializer` exposes only event audit metadata (`id`, `auction`, `event_type`, `event_type_display`, `item`, `bid`, `performer`, `metadata`, `created`, `modified`) and never exposes `performer.user.phone_number`
+- `AuctionService.get_seller_payment_details_for_winner()` enforces that only the authenticated `UserAccount` owning a settled winning `AuctionItem` (`status=sold`, `winner__user=request.user`) on an ended, non-cancelled, non-deleted `Auction` with an active/valid `SellerProfile` may read the seller's `bank_account`, `wallet`, and `transfer_phone` (with `Cache-Control: private, no-store`), without requiring a `PaymentRequest` or `CompletedDeal` precondition (BE-PAY-PRIV-01)
 - sealed-auction buyer-facing serializers hide active competitive data: bid lists, current highest bidder, reserve price, and current price; owner/manager views can see full bid and reserve details
 - auction item detail exposes `winner_payment_request_id` through the existing auction payment-request relation when present
 - `BidBusinessValidator` requires a customer profile, an active time window, an active item, and starting-price compliance; public auctions also require current-highest plus minimum increment compliance, while sealed auctions do not compare against or reveal the current highest bid
@@ -1671,7 +1708,7 @@ Current Lucky Wheel API:
 Current Lucky Wheel behavior:
 
 - PP Coin wallet remains user-account-level; spin profile is only the context profile
-- fresh customer/seller onboarding no longer grants a Lucky Wheel attempt (replaced in BE-DRW-01 by the account-level `WeeklyDrawEntry` in `apps.draws`); `LuckyWheelGrantSourceType.ONBOARDING` and `LuckyWheelGrantService.grant_onboarding_attempt` remain for historical records only
+- fresh customer/seller onboarding no longer grants a Lucky Wheel attempt (`BE-LW-01`) or a weekly onboarding draw entry (`BE-DRW-CANCEL-01`); `LuckyWheelGrantSourceType.ONBOARDING` and `LuckyWheelGrantService.grant_onboarding_attempt` remain for historical records only
 - a completed auction deal grants the winner one idempotent `auction_completed` attempt (current implementation / technical decision supporting Scenario C-09 auction excitement)
 - `GET /api/lucky-wheel/current/` delegates to `LuckyWheelService.get_availability()` (read-only) and exposes `available`, `eligible`, `has_active_wheel`, `remaining_attempts`, `cooldown_until`, `segments` (`id`, `label`, `description`, `prize_type`, `points_amount`, `badge_type`), `active_grants` (`id`, `source_type`, `total_attempts`, `remaining_attempts`, `expires_at`, `is_active`, `created`), and `user_promotion_grants`; `available`/`eligible` are `True` only when both `has_active_wheel` (at least one active, non-exhausted prize segment) and `remaining_attempts > 0` hold, and internal `metadata`, `source_id`, `idempotency_key`, `weight`, and inventory fields are omitted from public responses (BE-LW-01 / BE-LW-01A)
 - `LuckyWheelGrantService.active_grants()` orders usable grants by `F("expires_at").asc(nulls_last=True), "created", "id"` (`expires_at ASC NULLS LAST, created ASC, id ASC`) so expiring grants are always consumed before non-expiring grants across both PostgreSQL and SQLite (BE-LW-01A)
@@ -1739,7 +1776,7 @@ Current referral behavior:
 - ranking is higher score, then the earlier time the account reached that score (latest counted `redeemed_at`), then lower account id (technical tie-break); only accounts with a score appear, Top 10 only
 - dates and prizes are editable only while `draft`; `active` and `review` challenges accept only `name`; finalized challenges are read-only; supplied `prizes` replace the set (ranks 1-3, codes `IPHONE`, `AIRPODS`, `ANNUAL_LOFT_SUBSCRIPTION`; default Top 3 prizes are created when none are supplied)
 - finalization locks the challenge, requires `now >= ends_at` and no pending referral redeemed in the window, then writes up to three immutable `ReferralChallengeWinner` rows (score, tie-break time, prize FK plus copied code and title) and sets `finalized_at` / `finalized_by`; winners are never recalculated
-- finalization also records a `CLAIM_REQUIRED` / `PENDING` `PrizeAward` in `apps.prizes` (`source_type=REFERRAL_CHALLENGE`, `source_id=str(winner.id)`, key `prize:source:referral_challenge:winner:{winner_id}`) for canonical non-digital in-kind winners (`IPHONE`, `AIRPODS`) inside the same transaction, which atomically triggers a `prize_awarded` congratulatory notification (BE-PRZ-01, BE-PRZ-02 & BE-NOT-01); winners claim and managers review/deliver those awards via `PrizeClaim` in `apps.prizes`, while `ANNUAL_LOFT_SUBSCRIPTION` fulfillment provisioning remains deferred (neither falsely marked `FULFILLED` nor classified as a physical shipment claim) and challenge PP payouts are not implemented
+- finalization also records a `CLAIM_REQUIRED` / `PENDING` `PrizeAward` in `apps.prizes` (`source_type=REFERRAL_CHALLENGE`, `source_id=str(winner.id)`, key `prize:source:referral_challenge:winner:{winner_id}`) for canonical non-digital in-kind winners (`IPHONE`, `AIRPODS`) inside the same transaction, which atomically triggers a `prize_awarded` congratulatory notification (BE-PRZ-01, BE-PRZ-02 & BE-NOT-01); winners claim and managers review/deliver those awards via `PrizeClaim` in `apps.prizes`, while `ANNUAL_LOFT_SUBSCRIPTION` fulfillment provisioning remains `BLOCKED` (`BE-PRZ-03`, pending product/config decisions on `UserAccount` vs `Profile` subscription recipient, `PedigreeTemplatePackage` tier and `selected_template_ids`, add-ons/AI quota, and non-nullable `LoftSubscription.invoice` provisioning — neither falsely marked `FULFILLED` nor classified as a physical shipment claim) and challenge PP payouts are not implemented
 
 - `successful_invites_count` still counts approved referrals per inviter profile, unlike the account-level challenge score (known inconsistency)
 
@@ -1784,40 +1821,15 @@ Current seasons behavior:
 
 ### `apps.draws`
 
-Current responsibilities:
+Current product status (`BE-DRW-CANCEL-01`):
 
-- weekly onboarding draw windows (`WeeklyDraw`)
-- account-level onboarding draw entries (`WeeklyDrawEntry`)
-- canonical eligible draw selection and atomic pending-entry assignment (`WeeklyDrawService`, `WeeklyDrawEntryService`)
-
-Current draws API:
-
-- `/api/draws/weekly/`
-  - `GET` / `POST`: manager list/create weekly draws with `draws.weekly.list` or `draws.weekly.create`
-- `/api/draws/weekly/<id>/`
-  - `GET` / `PATCH`: manager retrieve/update weekly draw with `draws.weekly.retrieve` or `draws.weekly.update`
-- `/api/draws/weekly/<id>/open/`
-  - `POST`: manager opens a draft draw and assigns pending entries with `draws.weekly.open`
-- `/api/draws/weekly/<id>/close/`
-  - `POST`: manager closes an ended open draw (`now >= ends_at`) and freezes its `ASSIGNED` participant set with `draws.weekly.close`
-- `/api/draws/weekly/<id>/finalize/`
-  - `POST`: manager executes the idempotent weekly draw finalization/freeze foundation (`now >= ends_at`) with `draws.weekly.finalize`
-- `/api/draws/weekly/<id>/entries/`
-  - `GET`: manager lists eligible (`ASSIGNED`) entries assigned to a draw with `draws.weekly.entries.list`
-- `/api/draws/my-weekly-entry/`
-  - `GET`: authenticated user reads their own non-mutating onboarding weekly draw entry status (`has_entry`, `status`, `draw_id`, `draw_starts_at`, `draw_ends_at`, `assigned_at`)
-
-Current draws behavior:
-
-- `WeeklyDrawEntry` is owned by `UserAccount` (one `ONBOARDING` entry per `UserAccount`, key `draw:onboarding:user:{user_id}`)
-- automatic onboarding entry creation (`WeeklyDrawEntryService.ensure_for_first_profile_onboarding`) uses `AccountOnboardingService.has_prior_customer_seller_profile_history` (`Profile.all_objects`, including soft-deleted rows) so only the account's first-ever `Customer` or `Seller` profile receives an entry; later mode creation, profile switching, soft-deleted profile recreation, and historical pre-BE-DRW-01 accounts are never backfilled
-- canonical active draw window is half-open `[starts_at, ends_at)`: `starts_at <= now < ends_at`
-- eligible draw resolution prefers a currently `OPEN` draw (`starts_at <= now < ends_at`), otherwise selects the earliest upcoming (`starts_at > now`) `OPEN` or `DRAFT` draw ordered by `starts_at ASC, id ASC`, and never assigns to ended (`ends_at <= now`), `CLOSED`, or `FINALIZED` draws
-- if no eligible draw exists at onboarding, the entry is created as `PENDING` (`draw=None`, `assigned_at=None`) and atomically assigned once when an eligible draw is created or opened (`WeeklyDrawService.assign_pending_entries`)
-- once assigned (`status=ASSIGNED`), an entry's `draw`, `status`, and ownership are immutable and cannot be deleted (`ProtectedError`); draws with assigned entries, `now >= starts_at`, or `status in (CLOSED, FINALIZED)` lock `starts_at` and `ends_at` and cannot be deleted (`ProtectedError`)
-- non-deleted `OPEN` draws cannot have overlapping `[starts_at, ends_at)` windows
-- closing or finalizing a draw (`WeeklyDrawService.close_draw` / `WeeklyDrawService.finalize_draw` / `WeeklyDrawFinalizationService.finalize_draw`, BE-DRW-02) requires `timezone.now() >= ends_at`, locks the `WeeklyDraw` row with `select_for_update()` inside `transaction.atomic()`, freezes the `ASSIGNED` participant set once into `metadata["execution_freeze"]`, and sets `status=CLOSED`
-- because weekly onboarding draw winner count, selection algorithm, and prize definition are not specified in the canonical product source, `finalize_draw` keeps `status=CLOSED` with `winner_selection_status="BLOCKED_PENDING_PRODUCT_DECISION"` and selects 0 winners rather than falsely marking `FINALIZED`; prizes, PP Coin payouts, and winner notifications remain out of scope until product rules are confirmed
+- **CURRENT PRODUCT DECISION: Weekly onboarding draw cancelled.**
+- the weekly onboarding draw (`BE-DRW-01` / `BE-DRW-02`) is cancelled completely by product decision
+- `WeeklyDraw` and `WeeklyDrawEntry` remain in `apps.draws` only as dormant historical schema records so existing migration history (`apps/draws/migrations/0001_initial.py`) stays intact without destructive table drops (`0` new migrations)
+- no `/api/draws/...` runtime routes are mounted (`ppw/urls.py` does not include `apps.draws.urls`) and no `draws.weekly.*` manager permissions are registered
+- customer registration (`POST /api/auth/register/customer/`), seller profile creation (`POST /api/users/mobile/sellers/`), customer profile creation (`POST /api/users/mobile/customers/`), and profile switching (`POST /api/auth/switch-profile/`) create `0` `WeeklyDrawEntry` rows
+- `WeeklyDrawEntryService.ensure_for_onboarding` and `WeeklyDrawEntryService.ensure_for_first_profile_onboarding` are side-effect-free no-ops returning `None`
+- no weekly onboarding draw winners, `PrizeAward` rows, `PointTransaction` rows, or `Notification` rows are created
 
 ### `apps.prizes`
 
@@ -1853,7 +1865,7 @@ Current prizes API:
 Current prizes behavior:
 
 - `PrizeAward` is owned by `UserAccount` (`user`), with optional `profile` as context only (`profile.user_id == user_id` enforced); switching between `Customer` and `Seller` modes does not hide or duplicate awards
-- `PrizeAwardSourceType` currently includes `SEASON`, `REFERRAL_CHALLENGE`, and `LUCKY_WHEEL` (`WEEKLY_DRAW` is excluded while `BE-DRW-02` winner selection remains blocked)
+- `PrizeAwardSourceType` includes `SEASON`, `REFERRAL_CHALLENGE`, and `LUCKY_WHEEL` (`WEEKLY_DRAW` is excluded because the weekly onboarding draw is cancelled per `BE-DRW-CANCEL-01`)
 - `DIGITAL_AUTOMATIC` awards (`PrizeAwardService.record_digital_fulfilled`) are always created with `status=FULFILLED` and `fulfilled_at` set, after the source service has already executed the digital reward (`PointService`, `UserPromotionGrantService`, or `BadgeService`); `PrizeAwardService` never re-executes point, promotion, or badge grants itself and creates `0` generic `prize_awarded` notifications so digital PP Coin / badge rewards do not emit duplicate notifications
 - `CLAIM_REQUIRED` awards (`PrizeAwardService.record_claim_required`) are created with `status=PENDING` and `fulfilled_at=None` for canonical non-digital in-kind prizes (`ReferralChallengePrizeCode.IPHONE`, `ReferralChallengePrizeCode.AIRPODS`) and atomically create one `prize_awarded` congratulatory `Notification` (`idempotency_key=f"prize_awarded:{award.id}"`, BE-NOT-01) when newly created (`created_new=True`)
 - `PrizeAward` rows are immutable after creation (except `CLAIM_REQUIRED` `status=PENDING -> FULFILLED` and `fulfilled_at` when their linked `PrizeClaim` is marked `DELIVERED`) and cannot be deleted (`ProtectedError`)
@@ -1872,6 +1884,26 @@ Current responsibilities:
 - base models
 - permissions / authorization helpers
 - shared constants / helpers
+- admin announcement bar (`AdminAnnouncement`) and per-`UserAccount` dismissal tracking (`AnnouncementDismissal`) (BE-ANN-01)
+
+Current announcements API:
+
+- `/api/announcements/current/`
+  - `GET`: authenticated user lists currently active (`is_active=True`, `starts_at <= now < expires_at`, `deleted__isnull=True`) announcements not dismissed by `request.user`
+- `/api/announcements/<id>/dismiss/`
+  - `POST`: authenticated user records an idempotent dismissal for `request.user` (`UserAccount`); survives `Customer` <-> `Seller` profile switching and rejects client-supplied `user_id`/`profile_id`
+- `/api/announcements/admin/`
+  - `GET` / `POST`: manager list/create announcements with `announcements.list` or `announcements.create`
+- `/api/announcements/admin/<id>/`
+  - `GET` / `PATCH` / `DELETE`: manager retrieve/update/soft-delete an announcement with `announcements.retrieve`, `announcements.update`, or `announcements.delete`
+
+Current announcements behavior:
+
+- `AdminAnnouncement` stores `text`, `starts_at`, `expires_at`, and `is_active`; admin create/update accepts either `expires_at` directly or `duration_value` + `duration_unit` (`hours` / `days`) and persists `expires_at`
+- expired announcements disappear automatically via `starts_at <= now < expires_at` queryset filtering without a Celery task
+- `AnnouncementDismissal` enforces `unique(announcement, user)` on `UserAccount`; republishing is represented as a new `AdminAnnouncement` row so prior dismissals do not hide republished announcements
+- announcement operations do not create `Notification` rows or trigger push/WebSocket tasks
+
 
 ### Shared Abstractions
 
@@ -2275,8 +2307,8 @@ Mounted API roots:
 - `/api/feed/`
 - `/api/insights/`
 - `/api/pedigrees/`
-- `/api/draws/`
 - `/api/prizes/`
+- `/api/announcements/`
 
 Current internal API docs endpoints:
 
@@ -2620,8 +2652,9 @@ Current permission resources:
 - `DEAL_RATING`
 - `REFERRAL_ADMIN`
 - `REFERRAL_CHALLENGE_ADMIN`
-- `WEEKLY_DRAW_ADMIN`
 - `PRIZE_AWARD_ADMIN`
+- `ANNOUNCEMENT`
+- `ANNOUNCEMENT_ADMIN`
 
 Permission implementation rule:
 
@@ -2722,10 +2755,9 @@ Current reward admin permission pattern:
 - seasons endpoints use `HasAppAccess` with `SEASONS_ADMIN`
 - reward rule admin endpoints use `HasAppAccess` with `REWARD_RULE_ADMIN`
 - referral admin endpoints use `HasAppAccess` with `REFERRAL_ADMIN`; referral challenge admin endpoints use `REFERRAL_CHALLENGE_ADMIN`
-- weekly draw admin endpoints use `HasAppAccess` with `WEEKLY_DRAW_ADMIN`
 - prize award admin endpoints use `HasAppAccess` with `PRIZE_AWARD_ADMIN`
-- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, `seasons.insights.list`, `seasons.prizes.list`, `seasons.prizes.create`, `seasons.prizes.update`, `seasons.prizes.delete`, `reward_rules.list`, `reward_rules.retrieve`, `reward_rules.update`, `referrals.list`, `referrals.approve`, `referrals.reject`, `referral_challenges.list`, `referral_challenges.retrieve`, `referral_challenges.create`, `referral_challenges.update`, `referral_challenges.finalize`, `draws.weekly.list`, `draws.weekly.retrieve`, `draws.weekly.create`, `draws.weekly.update`, `draws.weekly.open`, `draws.weekly.close`, `draws.weekly.finalize`, `draws.weekly.entries.list`, `prizes.awards.list`, and `prizes.awards.retrieve`
-- user-triggered Lucky Wheel spin, referral redeem, cashback-to-points conversion, and `my-awards` / `my-weekly-entry` read endpoints do not require manager permission codes
+- required manager codes are exact action strings: `lucky_wheel.prizes.list`, `lucky_wheel.prizes.create`, `lucky_wheel.prizes.update`, `lucky_wheel.spins.list`, `seasons.list`, `seasons.create`, `seasons.update`, `seasons.calculate`, `seasons.finalize`, `seasons.insights.list`, `seasons.prizes.list`, `seasons.prizes.create`, `seasons.prizes.update`, `seasons.prizes.delete`, `reward_rules.list`, `reward_rules.retrieve`, `reward_rules.update`, `referrals.list`, `referrals.approve`, `referrals.reject`, `referral_challenges.list`, `referral_challenges.retrieve`, `referral_challenges.create`, `referral_challenges.update`, `referral_challenges.finalize`, `prizes.awards.list`, and `prizes.awards.retrieve`
+- user-triggered Lucky Wheel spin, referral redeem, cashback-to-points conversion, and `my-awards` read endpoints do not require manager permission codes
 
 Current pedigree permission pattern:
 

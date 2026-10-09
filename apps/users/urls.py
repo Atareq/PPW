@@ -10,7 +10,47 @@ from apps.users.views import (
     ProfileBalanceAdjustmentViewSet,
     SellerProfileAdminViewSet,
     SellerProfileMobileViewSet,
+    SellerRoomFollowViewSet,
+    SellerRoomUnfollowViewSet,
+    SellerRoomViewSet,
 )
+
+CREATE_ACTION = {"post": "create"}
+LIST_CREATE_ACTION = {"get": "list", "post": "create"}
+DETAIL_ACTIONS = {
+    "get": "retrieve",
+    "put": "update",
+    "patch": "partial_update",
+    "delete": "destroy",
+}
+
+
+def build_seller_room_urlpatterns(*, url_prefix: str = "", name_prefix: str = "seller-room"):
+    return [
+        path(
+            f"{url_prefix}",
+            SellerRoomViewSet.as_view(LIST_CREATE_ACTION),
+            name=f"{name_prefix}-list",
+        ),
+        path(
+            f"{url_prefix}<int:pk>/",
+            SellerRoomViewSet.as_view(DETAIL_ACTIONS),
+            name=f"{name_prefix}-detail",
+        ),
+        path(
+            f"{url_prefix}<int:pk>/follow/",
+            SellerRoomFollowViewSet.as_view(CREATE_ACTION),
+            name=f"{name_prefix}-follow",
+        ),
+        path(
+            f"{url_prefix}<int:pk>/unfollow/",
+            SellerRoomUnfollowViewSet.as_view(CREATE_ACTION),
+            name=f"{name_prefix}-unfollow",
+        ),
+    ]
+
+
+seller_room_urlpatterns = build_seller_room_urlpatterns()
 
 router = DefaultRouter()
 
@@ -60,6 +100,10 @@ urlpatterns = [
         "admin/profile-balance-adjustments/",
         ProfileBalanceAdjustmentViewSet.as_view({"post": "create"}),
         name="admin-profile-balance-adjustment-create",
+    ),
+    *build_seller_room_urlpatterns(
+        url_prefix="mobile/seller-rooms/",
+        name_prefix="mobile-seller-room",
     ),
     path("", include(router.urls)),
 ]

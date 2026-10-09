@@ -167,7 +167,7 @@ def test_disabled_onboarding_awards_no_pp_but_keeps_welcome_badge():
     assert WeeklyDrawEntry.objects.filter(
         user=user,
         source=WeeklyDrawEntrySource.ONBOARDING,
-    ).count() == 1
+    ).count() == 0
 
 
 def test_zero_point_onboarding_awards_nothing():

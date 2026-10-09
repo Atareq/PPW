@@ -27,7 +27,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.assets.models import Bird
 from apps.auctions.models import (
@@ -36,6 +36,7 @@ from apps.auctions.models import (
     AuctionEvent,
     AuctionItem,
     AuctionItemStatus,
+    AuctionShippingMethod,
     AuctionStatus,
     AuctionType,
     Bid,
@@ -44,7 +45,7 @@ from apps.authentication.models import UserAccount
 from apps.packages.models import PackageUsageType
 from apps.packages.services import PackageService
 from apps.users.constants import ProfileType
-from apps.users.models import CustomerProfile
+from apps.users.models import CustomerProfile, SellerProfile, SellerRoom
 
 AUCTION_AUTO_EXTEND_MINUTES = 10
 
@@ -94,8 +95,31 @@ class AuctionBusinessValidator:
         """
         self._retrieve_unique_unauctioned_items()
         self._validate_seller_owns_submitted_birds()
+        self._validate_room_ownership()
+        self._validate_shipping_settings()
         self._validate_item_count_for_type()
         self._validate_items()
+
+    def _validate_shipping_settings(self) -> None:
+        AuctionService._validate_shipping_for_auction(self.auction)
+
+    def _validate_room_ownership(self) -> None:
+        room = getattr(self.auction, "room", None)
+        if room is None and getattr(self.auction, "room_id", None) is not None:
+            room = SellerRoom.all_objects.filter(pk=self.auction.room_id).first()
+            if room is None:
+                raise ValidationError({"room": _("Seller room was not found.")})
+        if room is None:
+            return
+        if room.deleted is not None:
+            raise ValidationError(
+                {"room": _("Cannot assign auction to a deleted seller room.")}
+            )
+        owner = self.auction.owner
+        if owner is None or room.seller_id != owner.id:
+            raise ValidationError(
+                {"room": _("Sellers can assign auctions only to their own rooms.")}
+            )
 
     def _retrieve_unique_unauctioned_items(self):
         """Load submitted birds once and reject duplicate or active-auction use."""
@@ -380,6 +404,8 @@ class AuctionService:
         with transaction.atomic():
             # Ensure owner is set
             auction.owner = owner
+            AuctionService._validate_room_for_owner(owner, getattr(auction, "room", None) or getattr(auction, "room_id", None))
+            AuctionService._validate_shipping_for_auction(auction)
 
             # 1. Save auction
             auction.save()
@@ -412,6 +438,74 @@ class AuctionService:
             AuctionService._handle_auction_published_reward(auction, owner)
 
         return auction
+
+    @staticmethod
+    def _validate_shipping_for_auction(auction: Auction) -> None:
+        method = getattr(auction, "shipping_method", None)
+        if method == "":
+            auction.shipping_method = None
+            method = None
+        if method is not None:
+            normalized = str(method).strip().upper()
+            if normalized not in AuctionShippingMethod.values:
+                raise ValidationError(
+                    {"shipping_method": _("Unsupported shipping method.")}
+                )
+            auction.shipping_method = normalized
+
+        min_days = getattr(auction, "min_shipping_days", None)
+        max_days = getattr(auction, "max_shipping_days", None)
+        if min_days is not None and max_days is None:
+            max_days = min_days
+            auction.max_shipping_days = max_days
+        elif max_days is not None and min_days is None:
+            min_days = max_days
+            auction.min_shipping_days = min_days
+
+        if min_days is not None and min_days < 1:
+            raise ValidationError(
+                {
+                    "min_shipping_days": _(
+                        "Minimum shipping days must be a positive integer."
+                    )
+                }
+            )
+        if max_days is not None and max_days < 1:
+            raise ValidationError(
+                {
+                    "max_shipping_days": _(
+                        "Maximum shipping days must be a positive integer."
+                    )
+                }
+            )
+        if min_days is not None and max_days is not None and min_days > max_days:
+            raise ValidationError(
+                {
+                    "max_shipping_days": _(
+                        "Minimum shipping days cannot exceed maximum shipping days."
+                    )
+                }
+            )
+
+    @staticmethod
+    def _validate_room_for_owner(owner, room_or_id) -> None:
+        if room_or_id is None:
+            return
+        room = (
+            room_or_id
+            if isinstance(room_or_id, SellerRoom)
+            else SellerRoom.all_objects.filter(pk=room_or_id).first()
+        )
+        if room is None:
+            raise ValidationError({"room": _("Seller room was not found.")})
+        if room.deleted is not None:
+            raise ValidationError(
+                {"room": _("Cannot assign auction to a deleted seller room.")}
+            )
+        if owner is None or room.seller_id != owner.id:
+            raise ValidationError(
+                {"room": _("Sellers can assign auctions only to their own rooms.")}
+            )
 
     @staticmethod
     @transaction.atomic
@@ -553,10 +647,25 @@ class AuctionService:
         locked_auction = Auction.objects.select_for_update().get(id=auction.id)
         AuctionService._validate_auction_editable(locked_auction)
 
-        for field in ("title", "description", "tags"):
+        if "room" in validated_data:
+            AuctionService._validate_room_for_owner(
+                locked_auction.owner,
+                validated_data["room"],
+            )
+            locked_auction.room = validated_data["room"]
+
+        for field in (
+            "title",
+            "description",
+            "tags",
+            "shipping_method",
+            "min_shipping_days",
+            "max_shipping_days",
+        ):
             if field in validated_data:
                 setattr(locked_auction, field, validated_data[field])
 
+        AuctionService._validate_shipping_for_auction(locked_auction)
         locked_auction.save()
         return locked_auction
 
@@ -602,6 +711,78 @@ class AuctionService:
             profile=owner,
             context={"auction": auction},
         )
+
+    @staticmethod
+    def get_seller_payment_details_for_winner(
+        auction_id: int,
+        user: UserAccount,
+    ) -> dict:
+        """
+        Return private seller payment coordination details for an ended auction's
+        settled winning buyer account.
+
+        Raises NotFound whenever the auction does not exist, has not ended,
+        is cancelled, has no settled winner, has an inactive/deleted seller,
+        or the caller is not the winning buyer account.
+        """
+        if not user or not user.is_authenticated or not user.is_active:
+            raise NotFound(_("Auction not found"))
+
+        auction = (
+            Auction.objects.filter(
+                pk=auction_id,
+                deleted__isnull=True,
+            )
+            .exclude(
+                status=AuctionStatus.CANCELLED,
+            )
+            .first()
+        )
+        if auction is None:
+            raise NotFound(_("Auction not found"))
+
+        has_ended = auction.status in (
+            AuctionStatus.CLOSED,
+            AuctionStatus.ENDED,
+        ) or (
+            auction.status == AuctionStatus.ACTIVE and auction.is_ended()
+        )
+        if not has_ended:
+            raise NotFound(_("Auction not found"))
+
+        has_won_item = AuctionItem.objects.filter(
+            auction=auction,
+            deleted__isnull=True,
+            status=AuctionItemStatus.SOLD,
+            winner__isnull=False,
+            winner__deleted__isnull=True,
+            winner__is_valid=True,
+            winner__activated=True,
+            winner__user_id=user.pk,
+        ).exists()
+        if not has_won_item:
+            raise NotFound(_("Auction not found"))
+
+        seller_profile = (
+            SellerProfile.objects.filter(
+                pk=auction.owner_id,
+                deleted__isnull=True,
+                is_valid=True,
+                activated=True,
+                user__is_active=True,
+            )
+            .first()
+        )
+        if seller_profile is None:
+            raise NotFound(_("Auction not found"))
+
+        return {
+            "seller_id": seller_profile.pk,
+            "auction_id": auction.pk,
+            "bank_account": seller_profile.bank_account or "",
+            "wallet": seller_profile.wallet or "",
+            "transfer_phone": seller_profile.transfer_phone or "",
+        }
 
 
 # ============================================================================

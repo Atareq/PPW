@@ -153,10 +153,10 @@ Findings:
   `RewardEngine._award_badge()`; `REWARD_POINTS` no longer exists).
 - At BE-REW-02, `LuckyWheelGrantService.grant_onboarding_attempt()` was still
   called separately per created profile (`lucky_wheel:onboarding:{profile_id}`).
-  Since **BE-DRW-01** (section 21), account onboarding no longer grants a Lucky
-  Wheel spin attempt; instead, first-profile onboarding creates one account-level
-  `WeeklyDrawEntry` (`draw:onboarding:user:{user_id}`) via
-  `WeeklyDrawEntryService.ensure_for_first_profile_onboarding`.
+  Since **BE-DRW-01** / **BE-LW-01**, account onboarding no longer grants a Lucky
+  Wheel spin attempt, and since **BE-DRW-CANCEL-01** (sections 21 & 22), the
+  weekly onboarding draw is cancelled completely (`0` `WeeklyDrawEntry` rows and
+  `0` `LuckyWheelGrant` rows are created on onboarding).
 
 ### Files changed
 
@@ -3405,190 +3405,37 @@ Provide a one-time, account-level (`UserAccount`) **20% discount on the first pa
 | `pytest tests/packages tests/auctions tests/loyalty -q` (`LANGUAGE_CODE="en"`) | 313 passed, 1 skipped |
 | `python manage.py makemigrations --check --dry-run` | No changes detected |
 
-## 21. Weekly Onboarding Draw Domain & Automatic Entry (BE-DRW-01)
+## 21. Weekly Onboarding Draw Domain & Automatic Entry (BE-DRW-01 -> Cancelled in BE-DRW-CANCEL-01)
 
-Status: **DONE**
+Status: **BE-DRW — CANCELLED BY PRODUCT DECISION** (`BE-DRW-CANCEL-01`)
 
-### Requirement
+**CURRENT PRODUCT DECISION: Weekly onboarding draw cancelled.**
 
-Implement the dedicated **Weekly Onboarding Draw** domain (`apps.draws`: `WeeklyDraw`, `WeeklyDrawEntry`) and automatic account-level onboarding entry (`WeeklyDrawEntryService.ensure_for_first_profile_onboarding`), cleanly separated from the Lucky Wheel (`apps.lucky_wheel`), so that each newly onboarded `UserAccount` receives at most **1** onboarding weekly-draw entry across `Customer` and `Seller` modes without retroactive backfill for historical accounts.
+### Summary of Cancellation (`BE-DRW-CANCEL-01`)
 
-**Scope Boundary:**
-- BE-DRW-01 owns draw scheduling (`WeeklyDraw`), account-level onboarding draw entry creation (`WeeklyDrawEntry`), pending-entry assignment (`WeeklyDrawService.assign_pending_entries`), manager draw lifecycle APIs (`list`, `retrieve`, `create`, `update`, `open`, `close`, `entries`), and the user read-only status endpoint (`GET /api/draws/my-weekly-entry/`).
-- Winner selection, randomness, finalization (`FINALIZED`), prize definitions/fulfillment, PP Coin transactions, notifications, and `PaymentRequest` rows are out of scope for BE-DRW-01 (winner selection belongs to **BE-DRW-02**).
+- The weekly onboarding draw (`BE-DRW-01` & `BE-DRW-02`) is **cancelled completely** by verified product decision.
+- PPW no longer:
+  - creates `WeeklyDrawEntry` rows during customer registration (`POST /api/auth/register/customer/`), seller profile creation (`POST /api/users/mobile/sellers/`), customer profile creation (`POST /api/users/mobile/customers/`), or profile switching (`POST /api/auth/switch-profile/`)
+  - automatically enrolls new accounts into any weekly onboarding draw
+  - exposes `/api/draws/...` runtime endpoints or `draws.weekly.*` manager permissions
+  - selects weekly onboarding draw winners or creates weekly onboarding draw `PrizeAward`, `PointTransaction`, or `Notification` rows
+- **Onboarding Rewards Remaining Active:**
+  1. `100 PP` (`RewardEngine` / `ACCOUNT_ONBOARDING`, once per `UserAccount`, `BE-REW-02`)
+  2. `WELCOME_BUYER` / `WELCOME_SELLER` badges (profile-scoped, 0 PP, `BE-REW-06`)
+  3. `20%` discount on first auction highlight (`OnboardingHighlightBenefitService`, once per `UserAccount`, `BE-PRO-03` & `BE-PRO-03A`)
+- **Historical Schema Compatibility (`Case B — Already Committed`):**
+  - Because `apps/draws/migrations/0001_initial.py` was already committed in git history (`e94c92c`), `WeeklyDraw` and `WeeklyDrawEntry` remain in `apps/draws/models.py` as dormant historical schema records (`0` new migrations, no destructive table drop).
+  - `WeeklyDrawEntryService.ensure_for_onboarding()` and `WeeklyDrawEntryService.ensure_for_first_profile_onboarding()` are side-effect-free no-ops returning `None`.
 
-### Pre-change Audit & Lucky Wheel Separation Decision
+## 22. Weekly Draw Finalization & Winner-Selection Requirement Gate (BE-DRW-02 -> Cancelled in BE-DRW-CANCEL-01)
 
-1. **Product Source Audit (`REQUIREMENTS_AUDIT_SECTION_6.md` §6.1 vs `REQUIREMENTS_AUDIT_SECTION_13.md`):**
-   - Section 6.1 defines the three account onboarding rewards:
-     1. `100 PP` (`RewardEngine` / `ACCOUNT_ONBOARDING`)
-     2. `20%` discount on first auction highlight (`OnboardingHighlightBenefitService`)
-     3. Automatic weekly draw entry (`WeeklyDrawEntryService` in `apps.draws`)
-   - Section 13 defines the **Lucky Wheel** (`apps.lucky_wheel`) as a separate 8-slot spin wheel triggered by auction completion and other non-onboarding sources.
-2. **Resolution of Earlier Onboarding Lucky Wheel Conflation:**
-   - Before `apps.draws` existed, the initial MVP wired `LuckyWheelGrantService.grant_onboarding_attempt(profile)` into `CustomerRegisterSerializer.create`, `SellerProfileMobileViewSet.create`, and `CustomerProfileMobileViewSet.create`, which granted profile-scoped spin attempts (`lucky_wheel:onboarding:{profile_id}`).
-   - In BE-DRW-01, `LuckyWheelGrantService.grant_onboarding_attempt(...)` is removed from those three onboarding hooks and replaced with `WeeklyDrawEntryService.ensure_for_first_profile_onboarding(user=..., profile=...)`.
-   - `LuckyWheelGrantSourceType.ONBOARDING` and `LuckyWheelGrantService.grant_onboarding_attempt` remain on the model/service for historical row compatibility, while genuine Lucky Wheel grant paths (`grant_for_auction_completed`, `grant_attempt`) and spin flows remain unchanged.
+Status: **BE-DRW — CANCELLED BY PRODUCT DECISION** (`BE-DRW-CANCEL-01`)
 
-### Domain Models (`apps/draws/models.py`)
+**CURRENT PRODUCT DECISION: Weekly onboarding draw cancelled.**
 
-- `WeeklyDrawStatus(models.TextChoices)`:
-  - `DRAFT = "DRAFT"`, `OPEN = "OPEN"`, `CLOSED = "CLOSED"`, `FINALIZED = "FINALIZED"` (reserved for BE-DRW-02)
-- `WeeklyDraw(BaseModel)`:
-  - `title` (`CharField(max_length=150, blank=True, default="")`)
-  - `starts_at`, `ends_at` (timezone-aware `DateTimeField`)
-  - `status` (`CharField`, default `DRAFT`)
-  - `created_by` (`ForeignKey("users.Profile", on_delete=SET_NULL, null=True, blank=True)`)
-  - `metadata` (`JSONField(default=dict, blank=True)`)
-  - DB CheckConstraint: `draws_weekly_starts_before_ends_ck` (`starts_at < ends_at`)
-  - DB Indexes: `draws_weekly_status_start_idx`, `draws_weekly_window_idx`
-  - Non-overlapping `OPEN` window invariant enforced on create, update, open, and `clean()`.
-  - Schedule fields (`starts_at`, `ends_at`) are locked once `now >= starts_at`, once the draw has assigned entries, or once `status in (CLOSED, FINALIZED)`.
-  - `delete()` raises `ProtectedError` when entries are attached (`on_delete=models.PROTECT` on `WeeklyDrawEntry.draw` plus soft-delete guard).
-- `WeeklyDrawEntrySource(models.TextChoices)`:
-  - `ONBOARDING = "ONBOARDING"`
-- `WeeklyDrawEntryStatus(models.TextChoices)`:
-  - `PENDING = "PENDING"`, `ASSIGNED = "ASSIGNED"`
-- `WeeklyDrawEntry(BaseModel)`:
-  - `draw` (`ForeignKey(WeeklyDraw, on_delete=PROTECT, null=True, blank=True, related_name="entries")`)
-  - `user` (`ForeignKey("authentication.UserAccount", on_delete=CASCADE, related_name="weekly_draw_entries")`)
-  - `source` (`CharField`, default `ONBOARDING`)
-  - `status` (`CharField`, default `PENDING`)
-  - `idempotency_key` (`CharField(max_length=160, unique=True)`, `"draw:onboarding:user:{user_id}"`)
-  - `assigned_at` (`DateTimeField(null=True, blank=True)`)
-  - `metadata` (`JSONField(default=dict, blank=True)`)
-  - DB UniqueConstraint: `draws_entry_unique_user_source` on `("user", "source")`
-  - DB CheckConstraint: `draws_entry_status_draw_consistency_ck` (`(status=PENDING AND draw IS NULL AND assigned_at IS NULL) OR (status=ASSIGNED AND draw IS NOT NULL AND assigned_at IS NOT NULL)`)
-  - Once `status == ASSIGNED`, `draw` and `status` are immutable and cannot be reassigned or reverted to `PENDING`.
-
-### Account-Level First-Profile No-Backfill & Draw Assignment (`apps/users/services.py`, `apps/draws/services.py`)
-
-- **Shared First-Profile History Boundary (`AccountOnboardingService.has_prior_customer_seller_profile_history`):**
-  - Evaluates `Profile.all_objects.filter(user_id=user.pk, type__in=(ProfileType.CUSTOMER, ProfileType.SELLER))` (including soft-deleted rows) under `UserAccount` row lock.
-  - Shared by both `OnboardingHighlightBenefitService` and `WeeklyDrawEntryService`.
-  - Grants an onboarding entry only when the account has exactly **1** historical `Customer` or `Seller` profile row in `Profile.all_objects`, that row is non-deleted, and it matches the newly created profile.
-  - Second mode creation (`Customer -> Seller` or `Seller -> Customer`), historical pre-BE-DRW-01 accounts creating a second mode later, soft-deleted profile recreation, and `ManagerProfile` accounts never create or backfill entries.
-- **Canonical Eligible Draw Selection (`WeeklyDrawService.choose_eligible_draw`):**
-  - Half-open active window: `starts_at <= now < ends_at`.
-  - **Rule A:** Prefer an `OPEN` draw where `starts_at <= now < ends_at` (`starts_at ASC, id ASC`).
-  - **Rule B:** Otherwise choose the earliest upcoming (`starts_at > now`) draw with `status in (OPEN, DRAFT)` (`starts_at ASC, id ASC`).
-  - **Rule C:** Never select ended (`ends_at <= now`), `CLOSED`, or `FINALIZED` draws.
-- **Pending Entry Creation & Assignment (`WeeklyDrawService.assign_pending_entries`):**
-  - If no eligible draw exists at onboarding time, `WeeklyDrawEntry` is created with `status=PENDING`, `draw=None`, `assigned_at=None`.
-  - When an eligible draw is created or opened (`create_draw`, `open_draw`, `update_draw`, or explicit `assign_pending_entries`), all `PENDING` entries are locked with `select_for_update()` and assigned once (`status=ASSIGNED`, `draw=target_draw`, `assigned_at=now`).
-
-### APIs & Permissions
-
-| Method | Path | Access / Permission | Behavior |
-| --- | --- | --- | --- |
-| `GET` | `/api/draws/weekly/` | `draws.weekly.list` | Lists non-deleted weekly draws with `effective_status` and `entries_count` |
-| `POST` | `/api/draws/weekly/` | `draws.weekly.create` | Creates a `DRAFT` or `OPEN` weekly draw and assigns pending entries if eligible |
-| `GET` | `/api/draws/weekly/<id>/` | `draws.weekly.retrieve` | Retrieves one weekly draw |
-| `PATCH` | `/api/draws/weekly/<id>/` | `draws.weekly.update` | Updates a draw (schedule fields locked once started or once entries are assigned) |
-| `POST` | `/api/draws/weekly/<id>/open/` | `draws.weekly.open` | Opens a `DRAFT` draw (`ends_at > now`, non-overlapping) and assigns pending entries |
-| `POST` | `/api/draws/weekly/<id>/close/` | `draws.weekly.close` | Closes an `OPEN` draw |
-| `GET` | `/api/draws/weekly/<id>/entries/` | `draws.weekly.entries.list` | Lists entries assigned to the draw |
-| `GET` | `/api/draws/my-weekly-entry/` | `IsAuthenticated` | Non-mutating read returning `has_entry`, `status`, `draw_id`, `draw_starts_at`, `draw_ends_at`, `assigned_at`; never backfills or leaks other entrants/internal keys |
-
-### Files changed
-
-| File | Change | Reason |
-| --- | --- | --- |
-| `apps/users/services.py` | Added `AccountOnboardingService.has_prior_customer_seller_profile_history` | Shared neutral first-profile no-backfill helper for `apps.promotions` and `apps.draws` |
-| `apps/promotions/services.py` | Delegated `OnboardingHighlightBenefitService.has_prior_onboarding_profile_history` to `AccountOnboardingService` | Single canonical first-profile history check |
-| `apps/draws/models.py`, `apps/draws/migrations/0001_initial.py` | Added `WeeklyDraw`, `WeeklyDrawEntry`, enums, indexes, and DB constraints | Dedicated weekly onboarding draw domain |
-| `apps/draws/services.py` | Added `WeeklyDrawService` and `WeeklyDrawEntryService` | Draw lifecycle, eligible-draw resolution, pending-entry assignment, and account-level onboarding entry creation |
-| `apps/draws/serializers.py`, `apps/draws/views.py`, `apps/draws/urls.py` | Added manager draw/entry viewsets and `MyWeeklyDrawEntryViewSet` | Manager and user read-only APIs |
-| `ppw/settings/base.py`, `ppw/urls.py` | Registered `apps.draws` and mounted `/api/draws/` | App and route wiring |
-| `apps/users/manager_permissions.py`, `locale/ar/LC_MESSAGES/django.po`, `django.mo` | Registered `draws.weekly.*` permissions and Arabic translations | Manager RBAC and localization |
-| `apps/authentication/serializers.py`, `apps/users/views.py` | Replaced `LuckyWheelGrantService.grant_onboarding_attempt` with `WeeklyDrawEntryService.ensure_for_first_profile_onboarding` | Replace misimplemented onboarding wheel attempt with canonical weekly draw entry |
-| `tests/draws/test_weekly_onboarding_draws.py` | New, 57 tests (`test_01` through `test_57`) | Full BE-DRW-01 coverage |
-| `tests/loyalty/test_account_onboarding_reward.py`, `tests/loyalty/test_reward_rule_config.py`, `tests/rewards_sprint/test_rewards_sprint.py` | Updated 3 onboarding assertions from `LuckyWheelGrant` to `WeeklyDrawEntry` | Align regression tests with onboarding Lucky Wheel separation |
-
-### Test results (2026-10-05, `ppw-env`)
-
-| Command | Result |
-| --- | --- |
-| `pytest tests/draws/test_weekly_onboarding_draws.py -q` | 57 passed |
-| `pytest tests/draws tests/rewards_sprint tests/loyalty/test_account_onboarding_reward.py tests/loyalty/test_reward_rule_config.py tests/users/test_manager_permissions.py -q` | 133 passed |
-| `pytest tests/test_i18n.py tests/test_api_docs.py -q` | 13 passed |
-| `pytest tests/draws tests/promotions tests/seasons tests/referrals tests/rewards_sprint tests/test_api_docs.py tests/test_i18n.py -q` | 505 passed |
-| `python manage.py makemigrations --check --dry-run` | No changes detected |
-
-## 22. Weekly Draw Finalization & Winner-Selection Requirement Gate (BE-DRW-02)
-
-Status: **PARTIAL / BLOCKED** (Safe execution/freeze foundation implemented; winner selection blocked pending product decision)
-
-### Source-of-Truth Gate & Requirement Verification Table
-
-Audited sources:
-1. Original Arabic product specification PDF (`App pigeon planet وثيقة نطاق المشروع ومواصفات التطبيق النهائية2.pdf`, Section 6.1 lines 768–778, Section 6.5 lines 838–853, Section 16.1 line 1521)
-2. Badges & Reward Scenarios Report (`Pigeon_Planet_Badges_and_Reward_Scenarios_Report.pdf`)
-3. Section 6 Requirements Audit (`backend remainings/REQUIREMENTS_AUDIT_SECTION_6.md`, §6.1.3)
-4. `docs/rewards/REWARDS_SOURCE_OF_TRUTH.md`, `docs/rewards/rewarding-system-report.md`, and `AGENTS.md`
-
-| Requirement | Source-Confirmed? | Canonical Source Evidence |
-| --- | --- | --- |
-| Weekly onboarding draw exists | **YES** | Arabic PDF §6.1 (`جوائز ترحيبية (Onboarding)`): `دخول سحب أسبوعي تلقائي` ("automatic weekly draw entry") |
-| Eligible population | **PARTIAL** (onboarding accounts; one-time next-eligible draw is a BE-DRW-01 technical decision) | Arabic PDF §6.1 specifies automatic entry upon new account registration (`عند تسجيل حساب جديد يحصل المستخدم على ... دخول سحب أسبوعي تلقائي`) |
-| Number of winners | **NO (UNSPECIFIED)** | Neither §6.1 nor any other section defines whether a weekly onboarding draw selects 1 winner, 3 winners, or N winners |
-| Winner selection algorithm | **NO (UNSPECIFIED)** | No random/weighted/manual selection rule is defined for the weekly onboarding draw |
-| Equal probability / weighting | **NO (UNSPECIFIED)** | Not mentioned in the Arabic specification or badge/reward report |
-| Execution time & weekday | **NO (UNSPECIFIED)** | No weekday or clock time is defined in the specification |
-| Timezone | **NO (UNSPECIFIED)** | No draw execution timezone is defined in the specification |
-| Prize type | **NO (UNSPECIFIED)** | §6.5 describes general digital vs financial/in-kind prize delivery, and §6.2–6.4 list prizes for Monthly Referral, Seasonal Seller, and Lucky Wheel, but no prize type is assigned to the weekly onboarding draw |
-| Prize value | **NO (UNSPECIFIED)** | No PP amount, discount, cash amount, or physical item is specified for the weekly onboarding draw |
-| Repeated winner eligibility | **NO (UNSPECIFIED)** | Not specified in the product documents |
-| Whether manager manually executes | **NO (UNSPECIFIED)** | Not specified in the product documents |
-| Whether system auto-executes | **NO (UNSPECIFIED)** | Not specified in the product documents |
-
-### Separation of Confirmed Requirements, Technical Decisions, and Unresolved Product Questions
-
-1. **SOURCE-CONFIRMED:**
-   - New account onboarding grants an automatic weekly draw entry (`دخول سحب أسبوعي تلقائي`, §6.1).
-   - Winning a draw eventually triggers a congratulatory in-app notification (`سحب، تصلها رسالة تهنئة داخل التطبيق` / `"تهانينا! أنت من الفائزين"`, §6.5 & §16.1; notification delivery belongs to `BE-NOT-*`, not `BE-DRW-02`).
-2. **TECHNICAL DECISIONS (Implemented Foundation):**
-   - **BE-DRW-01** one-time next-eligible draw assignment per `UserAccount` (`WeeklyDraw` half-open `[starts_at, ends_at)`, `WeeklyDrawEntry` with `PENDING` / `ASSIGNED`).
-   - **BE-DRW-02** execution boundary: a `WeeklyDraw` can be closed or finalized only when `timezone.now() >= ends_at` (`starts_at <= now < ends_at` rejects closing/finalizing with `400 ValidationError`).
-   - **BE-DRW-02** frozen participant set: at close/finalization, eligible entrants are strictly `WeeklyDrawEntry` rows with `draw = this draw`, `status = ASSIGNED`, and `deleted__isnull = True` ordered by `("created", "id")`. `PENDING` entries, entries from other draws, soft-deleted rows, Lucky Wheel attempts, referrals, and auction bids are excluded.
-   - **BE-DRW-02** concurrency and idempotency: `WeeklyDrawService.close_draw` and `WeeklyDrawService.finalize_draw` (`WeeklyDrawFinalizationService.finalize_draw`) run inside `transaction.atomic()`, lock the `WeeklyDraw` row with `select_for_update()`, freeze the eligible participant snapshot once into `metadata["execution_freeze"]` (`eligible_entry_ids`, `eligible_user_ids`, `eligible_entries_count`, `frozen_at`, `frozen_by_profile_id`, `winner_selection_status="BLOCKED_PENDING_PRODUCT_DECISION"`, `winners_selected_count=0`), and set `status = CLOSED`.
-   - **BE-DRW-02** status rule (Option A): because winner selection semantics are not product-confirmed, `finalize_draw` keeps `status = CLOSED` and does **not** transition `status` to `FINALIZED` (avoiding any false claim that a winner was selected). Repeated `finalize_draw` calls return the stored frozen `CLOSED` draw idempotently without mutating `frozen_at`, `frozen_by_profile_id`, or `eligible_entry_ids`.
-   - **BE-DRW-02** immutability & deletion protection: once `CLOSED` or `FINALIZED`, a `WeeklyDraw` cannot be reopened, modified, or deleted (`ProtectedError`), and `ASSIGNED` `WeeklyDrawEntry` rows cannot be reassigned, reverted to `PENDING`, modified, or deleted (`ProtectedError`).
-3. **UNRESOLVED (Requires Product Decision Before Winner Selection Can Be Implemented):**
-   - Exact winner count per weekly onboarding draw (e.g., 1 winner vs multiple winners)
-   - Exact winner-selection algorithm (e.g., unbiased cryptographic random draw vs weighted vs manual)
-   - Exact weekly onboarding draw prize type and value
-   - Exact execution schedule (manual manager trigger vs automated Celery schedule, weekday/time/timezone)
-
-### APIs & Permissions Added / Updated in BE-DRW-02
-
-| Method | Path | Access / Permission | Behavior |
-| --- | --- | --- | --- |
-| `POST` | `/api/draws/weekly/<id>/close/` | `draws.weekly.close` | Requires `status == OPEN` and `now >= ends_at`; locks draw, freezes `ASSIGNED` participant set into `metadata["execution_freeze"]`, transitions `status -> CLOSED` |
-| `POST` | `/api/draws/weekly/<id>/finalize/` | `draws.weekly.finalize` | Idempotent execution freeze endpoint: rejects `DRAFT` and `now < ends_at`; locks draw with `select_for_update()`, freezes `ASSIGNED` participant set once, keeps `status = CLOSED` (`winner_selection_status = "BLOCKED_PENDING_PRODUCT_DECISION"`) |
-| `GET` | `/api/draws/weekly/` & `/api/draws/weekly/<id>/` | `draws.weekly.list` / `draws.weekly.retrieve` | Includes read-only `is_participant_set_frozen`, `winner_selection_status`, `entries_count` (`ASSIGNED` non-deleted count), and `metadata.execution_freeze` |
-| `GET` | `/api/draws/weekly/<id>/entries/` | `draws.weekly.entries.list` | Lists eligible `ASSIGNED` non-deleted entries for the draw ordered by `("created", "id")` |
-
-### Files changed
-
-| File | Change | Reason |
-| --- | --- | --- |
-| `apps/draws/models.py` | Hardened `WeeklyDraw.clean()`, `WeeklyDraw.delete()`, `WeeklyDrawEntry.clean()`, and `WeeklyDrawEntry.delete()` | Prevent reopening/deleting `CLOSED`/`FINALIZED` draws and prevent mutating/deleting `ASSIGNED` entries |
-| `apps/draws/services.py` | Updated `WeeklyDrawService.close_draw` and `update_draw` (`now >= ends_at` + participant freeze); added `get_eligible_entries`, `finalize_draw`, and `WeeklyDrawFinalizationService` | Atomic `select_for_update()` execution freeze, idempotent `finalize_draw`, and winner-selection requirement gate |
-| `apps/draws/serializers.py`, `apps/draws/views.py`, `apps/draws/urls.py` | Added `WeeklyDrawFinalizeViewSet` (`POST /api/draws/weekly/<id>/finalize/`), `is_participant_set_frozen`, `winner_selection_status`, and `ASSIGNED` entry scoping | Manager finalization/freeze endpoint and read inspection |
-| `apps/users/manager_permissions.py`, `locale/ar/LC_MESSAGES/django.po`, `django.mo` | Added `draws.weekly.finalize` permission and Arabic translations | Manager RBAC and Arabic-first localization |
-| `tests/draws/test_weekly_onboarding_draws.py` | Updated `test_30`, `test_32`, `test_33`, `test_48` to close draws at `now >= ends_at` | Align BE-DRW-01 close calls with `now >= ends_at` execution boundary |
-| `tests/draws/test_weekly_draw_finalization.py` | New, 26 tests (`test_01` through `test_26`) | Full BE-DRW-02 finalization/freeze, immutability, permission, and side-effect coverage |
-
-### Test results (2026-10-06, `ppw-env`)
-
-| Command | Result |
-| --- | --- |
-| `pytest tests/draws/test_weekly_draw_finalization.py -q` | 26 passed |
-| `pytest tests/draws/test_weekly_onboarding_draws.py -q` | 57 passed |
-| `pytest tests/draws -q` | 83 passed |
-| `pytest tests/draws tests/promotions tests/seasons tests/referrals tests/rewards_sprint tests/test_api_docs.py tests/test_i18n.py -q` | 531 passed |
-| `python manage.py makemigrations --check --dry-run` | No changes detected |
+- Supersedes the earlier `BE-DRW-02` `PARTIAL / BLOCKED` state.
+- All previously open product questions for `BE-DRW-02` (winner count, winner selection algorithm, prize type/value, execution schedule, and repeat winner eligibility) are **closed as obsolete** because the weekly onboarding draw feature is cancelled completely.
+- `WeeklyDrawService.WINNER_SELECTION_STATUS_CANCELLED = "CANCELLED_BY_PRODUCT_DECISION"` and `WeeklyDrawFinalizationService` has been removed.
 
 ## 23. Lucky Wheel Source Audit + Eligibility / Attempt Lifecycle Hardening (BE-LW-01 & BE-LW-01A)
 
@@ -3610,7 +3457,7 @@ Every Lucky Wheel rule is explicitly classified into one of three provenance cat
 | Rule / Requirement | Source-Confirmed? | Provenance Category & Current Implementation |
 | --- | --- | --- |
 | Lucky Wheel exists | **YES (SOURCE-CONFIRMED)** | Arabic PDF §13.2 (`عجلة الحظ (The Lucky Wheel)`); Badges Report Scenario `C-09 Lucky Wheel` |
-| Separate from Weekly Onboarding Draw | **YES (SOURCE-CONFIRMED)** | Arabic PDF §6.1 defines `دخول سحب أسبوعي تلقائي` ("automatic weekly draw entry") under onboarding, while §13.2 defines Lucky Wheel separately under UI/Engagement; separated in `BE-DRW-01` |
+| Separate from Weekly Onboarding Draw | **YES (SOURCE-CONFIRMED)** | Lucky Wheel (§13.2) is a separate engagement feature; the weekly onboarding draw is cancelled by product decision (`BE-DRW-CANCEL-01`) |
 | UI visibility condition ("appears only when eligible") | **YES (SOURCE-CONFIRMED)** | Arabic PDF §13.2: `أيقونة صغيرة يسار الشاشة` ("small icon on the left of the screen"), `تظهر فقط عند توافر الشروط` ("appears only when conditions are met"); Badges Report C-09: `Should display only when eligible` |
 | Admin manages wheel contents & conditions | **YES (SOURCE-CONFIRMED at high level)** | Arabic PDF §11.4 (`إدارة العروض والمحتوى`): `إدارة محتويات العجلة (كما هو موضح)` ("admin management of wheel contents"); Badges Report C-09: `Trigger: Admin-defined condition is met` |
 | Generic outcome categories (`points / discount / prize`) | **YES (SOURCE-CONFIRMED)** | Badges Report C-09: `Reward: Random points/discount/prize` |
@@ -3623,10 +3470,9 @@ Every Lucky Wheel rule is explicitly classified into one of three provenance cat
 | Prize validity | **YES (SOURCE-CONFIRMED)** | Badges Report C-09: `Prize validity set per wheel item; default 7 days for discounts` |
 | Weighting / probability (`LuckyWheelPrize.weight`) | **NO (CURRENT IMPLEMENTATION / TECHNICAL DECISION; audited in BE-LW-02)** | Positive integer `LuckyWheelPrize.weight` (`>= 1`) with weighted selection is a current implementation choice, not a source-confirmed probability rule; spin randomness, weights, fairness, inventory races, and prize application will be audited in `BE-LW-02` |
 
-### Domain Separation: Weekly Onboarding Draw != Lucky Wheel
+### Domain Separation: Onboarding Does Not Grant Lucky Wheel Attempts or Weekly Draw Entries
 
-- Fresh customer registration (`POST /api/auth/register/customer/`), seller profile creation (`POST /api/users/mobile/sellers/`), customer profile creation (`POST /api/users/mobile/customers/`), and profile switching (`POST /api/auth/switch-profile/`) create **0** `LuckyWheelGrant` rows.
-- Onboarding grants an account-level `WeeklyDrawEntry` in `apps.draws` (`BE-DRW-01`), not a Lucky Wheel attempt.
+- Fresh customer registration (`POST /api/auth/register/customer/`), seller profile creation (`POST /api/users/mobile/sellers/`), customer profile creation (`POST /api/users/mobile/customers/`), and profile switching (`POST /api/auth/switch-profile/`) create **0** `LuckyWheelGrant` rows (`BE-LW-01`) and **0** `WeeklyDrawEntry` rows (`BE-DRW-CANCEL-01`).
 - Historical `LuckyWheelGrant(source_type="onboarding")` rows and `LuckyWheelGrantService.grant_onboarding_attempt()` remain preserved for backward compatibility and historical audit.
 
 ### Hardened Eligibility, Attempt Lifecycle, Savepoint Recovery & Public API Whitelisting (`apps/lucky_wheel`)
@@ -3760,7 +3606,7 @@ Implement the shared prize-award and fulfillment foundation (`apps.prizes`: `Pri
 | **Seller Seasons** (`apps.seasons`) | `SeasonSellerInsight` + `SeasonPrize` / `SeasonPayoutService.payout_season_winners()` | Top-3 `SeasonPrize.pp_points > 0` (`100,000 / 50,000 / 25,000 PP` default) | `DIGITAL_AUTOMATIC` / `FULFILLED` | PP payout is applied first via `PointService.earn_points()`, then `PrizeAwardService.record_digital_fulfilled()` records one `PrizeAward` per newly paid Top-3 winner (`source_id = str(insight.pk)`, `idempotency_key = "prize:source:season:{season.pk}:seller:{seller.pk}"`). Optional descriptive `symbolic_prize_code` / `title` strings on `SeasonPrize` are not free-text parsed into physical claims; zero-PP season prizes create `0` `PrizeAward` rows, and historical pre-`BE-PRZ-01` paid seasons are not backfilled. |
 | **Monthly Referral Challenge** (`apps.referrals`) | `ReferralChallengeWinner` / `ReferralChallengeService.finalize()` | `ReferralChallengePrizeCode.IPHONE` (Rank 1), `ReferralChallengePrizeCode.AIRPODS` (Rank 2) | `CLAIM_REQUIRED` / `PENDING` | Recorded atomically during `ReferralChallengeService.finalize()` via `PrizeAwardService.record_claim_required()` (`source_id = str(winner.pk)`, `idempotency_key = "prize:source:referral_challenge:winner:{winner.pk}"`, `fulfilled_at = None`, zero PII stored). |
 | **Monthly Referral Challenge Rank 3** (`apps.referrals`) | `ReferralChallengeWinner` (`ANNUAL_LOFT_SUBSCRIPTION`) | `ReferralChallengePrizeCode.ANNUAL_LOFT_SUBSCRIPTION` | **Deferred / Unresolved Fulfillment Provisioning** | `ANNUAL_LOFT_SUBSCRIPTION` is a digital subscription concept in `ReferralChallengePrizeCode`, but `apps.referrals` does not link a `PedigreeTemplatePackage` SKU or provision a `LoftSubscription` on challenge finalization. Per `BE-PRZ-01` rules, it is neither falsely recorded as `DIGITAL_AUTOMATIC` / `FULFILLED` nor misclassified as a physical shipment `CLAIM_REQUIRED` prize. |
-| **Weekly Onboarding Draw** (`apps.draws`) | `WeeklyDraw` / `WeeklyDrawEntry` | Unspecified (`BE-DRW-02` blocked) | **Excluded (`BE-DRW-02` blocked)** | Weekly draw winner count, selection algorithm, and prize definition remain blocked in `BE-DRW-02`; `WEEKLY_DRAW` is not in `PrizeAwardSourceType` and `WeeklyDrawService.finalize_draw()` creates `0` `PrizeAward` rows. |
+| **Weekly Onboarding Draw** (`apps.draws`) | `WeeklyDraw` / `WeeklyDrawEntry` | Cancelled (`BE-DRW-CANCEL-01`) | **Cancelled by Product Decision (`BE-DRW-CANCEL-01`)** | The weekly onboarding draw is cancelled completely by product decision (`BE-DRW-CANCEL-01`); `WEEKLY_DRAW` is not in `PrizeAwardSourceType` and `0` `PrizeAward` rows are ever created for weekly onboarding draws. |
 
 ### Domain Model & Invariants (`apps/prizes/models.py`)
 
@@ -3842,7 +3688,7 @@ Implement the claim submission and manager review/delivery workflow for `CLAIM_R
 3. Manager marks the reviewed claim delivered -> `PrizeClaim` transitions `REVIEWED -> DELIVERED` (`delivered_at`, `delivered_by` recorded) and `PrizeAward` transitions `PENDING -> FULFILLED` (`fulfilled_at = delivered_at`) atomically.
 
 **Out of Scope (Simplicity Wins):**
-- No rejection/appeal/resubmission workflows, file/document uploads, shipping carrier/tracking integration, bank/IBAN/payment fields, notifications (`BE-NOT-*`), weekly-draw winner selection (`BE-DRW-02`), or annual Loft subscription provisioning.
+- No rejection/appeal/resubmission workflows, file/document uploads, shipping carrier/tracking integration, bank/IBAN/payment fields, notifications (`BE-NOT-*`), weekly-draw winner selection (cancelled in `BE-DRW-CANCEL-01`), or annual Loft subscription provisioning.
 
 ### PII Storage & Isolation Audit
 
@@ -3935,7 +3781,7 @@ Verified Arabic product requirements (`docs/rewards/rewarding-system-report.md` 
 **Out of Scope (Simplicity Wins):**
 - No notification grouping or daily digests (`BE-NOT-02`).
 - No Do-Not-Disturb (`DND`) or per-category user notification preference filtering (`BE-NOT-02`).
-- No weekly-draw winner notification while `BE-DRW-02` winner-selection rules remain blocked.
+- No weekly-draw winner notification (weekly onboarding draw cancelled in `BE-DRW-CANCEL-01`).
 - No `PrizeClaim` submission, manager review, or delivery status notifications.
 - No new database models or schema migrations (`0` migrations).
 - No historical backfill of notifications for existing `PointTransaction`, `BadgeAward`, or `PrizeAward` rows.
@@ -3968,7 +3814,96 @@ Verified Arabic product requirements (`docs/rewards/rewarding-system-report.md` 
 | `tests/notifications/test_reward_prize_notifications.py` | New, 42 tests (`test_01` through `test_42`) | Full BE-NOT-01 coverage |
 | `tests/prizes/test_prize_awards.py`, `tests/prizes/test_prize_claims.py`, `tests/lucky_wheel/test_lucky_wheel_spin_execution.py` | Updated pre-`BE-NOT-01` notification-count assertions to reflect `BE-NOT-01` behavior | Align existing tests with live `BE-NOT-01` notifications |
 
-## 28. Task Status
+## 28. Referral Challenge Annual Loft Subscription Prize (BE-PRZ-03)
+
+Status: **BLOCKED** (Requires explicit product and domain configuration decisions before provisioning can be implemented)
+
+### Go / No-Go Audit & Source / Provenance Table
+
+Audited files:
+- `apps/referrals/models.py`, `apps/referrals/services.py`
+- `apps/loft_subscriptions/models.py`, `apps/loft_subscriptions/services.py`, `apps/loft_subscriptions/serializers.py`, `apps/loft_subscriptions/views.py`, `apps/loft_subscriptions/migrations/0001_initial.py`
+- `apps/packages/models.py`, `apps/packages/services.py`
+- `apps/prizes/models.py`, `apps/prizes/services.py`
+- `AGENTS.md`, `docs/rewards/REWARDS_SOURCE_OF_TRUTH.md`, `docs/rewards/rewarding-system-report.md`
+
+| Decision Gate Criterion | Repository Reality | Provenance Category | Go / No-Go Status |
+| --- | --- | --- | --- |
+| **1. Prize exists for Rank 3** | `ReferralChallengePrizeCode.ANNUAL_LOFT_SUBSCRIPTION = "ANNUAL_LOFT_SUBSCRIPTION"` is the default Rank 3 prize code in `DEFAULT_REFERRAL_CHALLENGE_PRIZES`, and `ReferralChallengeService.finalize()` creates an immutable `ReferralChallengeWinner` row for Rank 3. | **SOURCE-CONFIRMED** | Confirmed (`ReferralChallengeWinner` recorded) |
+| **2. Exact recipient (`UserAccount` vs `Profile`)** | `ReferralChallengeWinner` is owned by `UserAccount` (`user` FK, no `profile` FK) because challenge referrals are scored across `Customer` and `Seller` modes at the account level. By contrast, `LoftSubscription` and `SubscriptionInvoice` inherit from `OwnerBaseModel` (`owner = ForeignKey("users.Profile")`), enforce `one_active_loft_subscription_per_profile`, and gate pedigree access per active `Profile` (`SubscriptionAccessService.get_current_subscription(profile)`). For a `UserAccount` with both `CustomerProfile` and `SellerProfile`, no rule defines which profile receives a `UserAccount`-level subscription prize. | **UNRESOLVED** | **BLOCKED** |
+| **3. Exact subscription model & non-nullable invoice constraint** | `LoftSubscription` represents an active/scheduled Loft subscription (`apps/loft_subscriptions/models.py`), but `LoftSubscription.invoice` is a **non-nullable** `OneToOneField(SubscriptionInvoice, on_delete=models.PROTECT)`. A `LoftSubscription` row cannot be created in the current schema without creating a `SubscriptionInvoice` row (which in turn requires non-nullable `duration` and `pedigree_package` FKs) or altering the schema. | **CURRENT IMPLEMENTATION / TECHNICAL DECISION** vs **UNRESOLVED** | **BLOCKED** |
+| **4. Exact package / plan target (`PedigreeTemplatePackage`, `selected_template_ids`, add-ons, AI quota)** | Loft subscriptions do not have a single flat "annual plan" row. Entitlements require a `PedigreeTemplatePackage` (`shapes_1` with `template_limit=1`, `shapes_10` with `template_limit=10`, or `shapes_unlimited` with `is_unlimited=True`), user-selected FastReport `selected_template_ids` (required for any non-unlimited package so `SubscriptionAccessService.require_pedigree_template(profile, pdf_id)` allows PDF generation), optional `addon_codes` (`cloud_backup`, `medical_records`, `qr_code_pedigree`, `custom_pedigree_template`), and optional `AIQuotaPackage`. `ReferralChallengePrize` has only `challenge`, `rank`, `prize_code`, `title`, and `metadata` — no FK or canonical reference to any `PedigreeTemplatePackage` or `SubscriptionDurationOption`, and `apps/loft_subscriptions/migrations/` seeds no catalog rows. | **UNRESOLVED** | **BLOCKED** |
+| **5. Annual duration semantics** | `SubscriptionActivationService._calculate_ends_at()` adds `timedelta(days=duration.duration_days)` or `relativedelta(months=duration.duration_months)` from `invoice.duration`, but no canonical constant or migration-seeded `SubscriptionDurationOption` row links `ANNUAL_LOFT_SUBSCRIPTION` to a specific `SubscriptionDurationOption` without matching `"annual"` / `duration_months=12`. | **UNRESOLVED** | **BLOCKED** |
+| **6. Existing subscription interaction & canonical provisioning service** | `SubscriptionActivationService` only provides `activate_paid_invoice()` (requires a `SubscriptionPaymentRequest` and rejects `total <= 0`) and `activate_trial_invoice()` (3-day trial only, records `LoftSubscriptionTrialUsage`). No free/reward/prize subscription provisioning service exists, and behavior when the winner already has both an `ACTIVE` and a `SCHEDULED` subscription (or needs to choose `selected_template_ids` before activation) is undefined. | **UNRESOLVED** | **BLOCKED** |
+
+### Safe Current Behavior Preserved While Blocked
+
+1. `ReferralChallengeService.finalize()` continues to record the immutable Rank 3 `ReferralChallengeWinner` row with `prize_code = ReferralChallengePrizeCode.ANNUAL_LOFT_SUBSCRIPTION`.
+2. **Zero speculative provisioning**: `finalize()` creates `0` `LoftSubscription` rows, `0` `SubscriptionInvoice` rows, and `0` `SubscriptionPaymentRequest` rows.
+3. **Zero false or misclassified `PrizeAward` rows**: `finalize()` creates `0` `PrizeAward` rows for `ANNUAL_LOFT_SUBSCRIPTION` (neither falsely marking an unprovisioned prize as `DIGITAL_AUTOMATIC` / `FULFILLED` nor misclassifying a digital subscription as a physical `CLAIM_REQUIRED` shipment form) and emits `0` `PRIZE_AWARDED` notifications for Rank 3.
+4. Verified by `test_64_annual_loft_subscription_winner_remains_safely_deferred_while_blocked` in `tests/prizes/test_prize_awards.py`.
+
+### Exact Product / Configuration Decisions Required to Unblock `BE-PRZ-03`
+
+1. **Recipient target**: Which `Profile` (`CustomerProfile` vs `SellerProfile`) receives a `LoftSubscription` when a `UserAccount` wins Rank 3 in `ReferralChallenge`, or should `LoftSubscription` / prize redemption let the winning user claim/activate the subscription on their chosen profile?
+2. **Included template package & `selected_template_ids`**: Which `PedigreeTemplatePackage` tier (`shapes_1`, `shapes_10`, `shapes_unlimited`, or a manager-configured FK on `ReferralChallengePrize`) is granted by `ANNUAL_LOFT_SUBSCRIPTION`, and if the tier is template-limited, how does the winner supply `selected_template_ids`?
+3. **Included add-ons & AI quota**: Which `SubscriptionAddon` codes (if any) and `AIQuotaPackage` operations (beyond `INCLUDED_AI_OPERATIONS_PER_MONTH = 10`) are included in the prize?
+4. **Invoice-free or zero-amount provisioning contract**: Should `LoftSubscription.invoice` become nullable for reward-provisioned subscriptions, or should a dedicated zero-total reward `SubscriptionInvoice` / provisioning service be introduced?
+
+## 29. Final Rewards / Prizes Consistency & Contract Audit (BE-REW-AUDIT-01)
+
+Status: **DONE**
+
+- Verified end-to-end consistency across `apps.loyalty`, `apps.referrals`, `apps.seasons`, `apps.promotions`, `apps.draws`, `apps.lucky_wheel`, `apps.prizes`, and `apps.notifications`:
+  - **Ownership model**: `PointWallet`, `PointTransaction.user`, `PrizeAward.user`, `ReferralChallengeWinner.user`, and `UserPromotionGrant.user` are strictly `UserAccount`-owned (`profile` is optional context only; `WeeklyDrawEntry` is dormant following `BE-DRW-CANCEL-01`), whereas `BadgeAward.profile`, `LuckyWheelAttemptGrant.profile`, and `Notification.recipient_profile` are `Profile`-owned.
+  - **Profile-scoped notification note (`BE-NOT-02`)**: Because `Notification` is owned by `recipient_profile = ForeignKey("users.Profile")` and `/api/notifications/` filters by `request.user.active_profile.pk`, account-level reward/prize notifications (`ACCOUNT_ONBOARDING`, `FIRST_BID_COMPLETED`, `REFERRAL_CHALLENGE` `PRIZE_AWARDED`) are routed to the user's currently active valid profile via `_resolve_reward_recipient_profile()` / `_resolve_award_recipient_profile()` and are visible only while that profile is active. Whether account-level notifications should be visible across `CustomerProfile` / `SellerProfile` switches is deferred as a `BE-NOT-02` product/architecture decision.
+  - **Savepoint & lock-ordering hardening**: Wrapped `.objects.create(...)` inside `try ... except IntegrityError:` with an inner `with transaction.atomic():` savepoint in `NotificationService.create_notification()`, `BadgeService.award_badge()`, `CashbackService._create_transaction()`, `UserPromotionGrantService._grant()`, `OnboardingHighlightBenefitService.ensure_for_onboarding()`, and `ReferralService.create_code()`, and re-checked `_get_idempotent_transaction()` after acquiring the `select_for_update()` row lock on `PointWallet` in `PointService._create_transaction()`.
+
+## 30. Cashback Product Alignment Audit & Gate (BE-CB-01)
+
+Status: **PARTIAL / BLOCKED** (Existing cashback ledger and manual PP Coin conversion hardened; `1%–5%` rule selection, automatic vs manual PP Coin conversion rate, and auction spending mechanics require product decisions)
+
+### Source Requirement vs Current Implementation vs Unresolved Product Decisions
+
+| Dimension | Source Requirement (`BE-CB-01`) | Current Implementation (`apps.promotions`, `apps.orders`, `apps.payments`, `apps.loyalty`) | Classification & Status |
+| --- | --- | --- | --- |
+| **1. Cashback percentage (`1%–5%`)** | Purchase cashback equals between `1%` and `5%` of eligible purchase value. | `CashbackOffer` (`OfferBase`) is admin-configured with `value_type` in `{percentage, fixed_amount}` and `0 < value <= 100.00` for percentages (`apps/promotions/models.py`). If no active `GLOBAL` `CashbackOffer` matches an `OrderItem`, `0` cashback is earned. No canonical default percentage (`1%`, `3%`, `5%`) or tier/category rule exists in code or `RewardRuleConfig`. | **UNRESOLVED PRODUCT DECISION** (`BLOCKED` — do not guess percentage or rewrite `CashbackOffer` bounds without product confirmation) |
+| **2. Trigger boundary** | Eligible purchase completion. | Only marketplace `OrderItem` sales trigger cashback: `OrderItemService.approve_item()` snapshots `cashback_earned_amount` and auto-redeems existing `cashback_balance`, and `PaymentRequestService._approve_market_request()` calls `CashbackService.earn_for_completed_order_item(order_item)` before `CompletedDealService.create_from_market_completion(order_item)`. Pending/rejected `PaymentRequest` rows and auction `CompletedDeal` rows earn `0` cashback. | **CURRENT IMPLEMENTATION** (verified; whether `CompletedDeal` should directly award cashback across `MARKET` and/or `AUCTION` is an **UNRESOLVED PRODUCT DECISION**) |
+| **3. Conversion into PP Coin value/balance** | Cashback is converted into PP Coin value/balance. | Earned cashback is first credited in 2-decimal monetary units to `CustomerProfile.cashback_balance` (`CashbackTransactionType.EARNED`). Customers can manually convert `cashback_balance` into `UserAccount`-owned `PointWallet` PP Coins via `POST /api/loyalty/points/buy-with-cashback/` (`CashbackService.buy_points_with_cashback()`), which deducts `CustomerProfile.cashback_balance`, writes a `POINTS_PURCHASE` `CashbackTransaction`, and calls `PointService.earn_points(source_type=CASHBACK_POINTS_PURCHASE)` at a hardcoded rate of `20 PP` per `1.00` cashback unit (ignoring profile currency `EGP` vs `USD`, whereas `DEAL_COMPLETED` uses `points_per_unit_EGP = 1`, `points_per_unit_USD = 1`). | **CURRENT IMPLEMENTATION** vs **UNRESOLVED PRODUCT DECISION** (`BLOCKED` — whether conversion should be automatic at deal completion vs manual, and what the canonical currency $\to$ PP rate is, require product confirmation) |
+| **4. Ownership (`UserAccount` vs `Profile`)** | PP Coin balance is unified at `UserAccount` level (`BE-REW-01`). | Raw `cashback_balance` and `CashbackTransaction` are owned by `CustomerProfile`, `UserPromotionGrant` (`CASHBACK`) is owned by `UserAccount`, and converted PP Coins (`PointWallet`, `PointTransaction`) are owned by `UserAccount` (`profile` is optional audit context). | **CURRENT IMPLEMENTATION** (verified; `CustomerProfile.cashback_balance` is preserved for backward compatibility) |
+| **5. Usable in later auctions** | Cashback / converted PP Coins are usable in later auctions. | Neither `CustomerProfile.cashback_balance` nor `PointWallet.balance` is wired into any auction flow (`apps.auctions` bidding, buy-now, auction highlight, or `AuctionPaymentRequest`). Because buyer-to-seller bird payment is manual outside the platform, spending internal PP Coins on auction hammer prices or highlight fees has no defined business rule. | **UNRESOLVED PRODUCT DECISION** (`BLOCKED` — exact auction spending mechanism requires product specification) |
+| **6. Non-withdrawable as cash** | Cashback cannot be withdrawn as cash. | No cash withdrawal, payout, or bank-transfer model, service, or endpoint exists for `CustomerProfile.cashback_balance` or `PointWallet.balance`. | **SOURCE REQUIREMENT & CURRENT IMPLEMENTATION** (verified) |
+| **7. Separation from Lucky Wheel & `PrizeAward`** | Purchase cashback must stay distinct from Lucky Wheel `CASHBACK_OFFER` and `PrizeAward`. | Purchase cashback and `buy_points_with_cashback` create `0` `PrizeAward` rows. Lucky Wheel `CASHBACK_OFFER` creates a `UserPromotionGrant` (`grant_type=CASHBACK`) and a `DIGITAL_AUTOMATIC` `PrizeAward` (`source_type=LUCKY_WHEEL`) without mutating `CustomerProfile.cashback_balance` (note: consuming non-global `UserPromotionGrant` rows during checkout/order approval is not yet wired in `CashbackOfferService.choose_best_offer()`). | **CURRENT IMPLEMENTATION** (verified) |
+
+### Hardening Applied in `BE-CB-01` (`apps/promotions/services.py`)
+
+1. **Post-lock idempotency re-checks across `CashbackService`**: Re-checked `CashbackService._existing_transaction(idempotency_key)` after acquiring `select_for_update()` locks on `OrderItem` and `CustomerProfile` in `redeem_for_order_item()`, `earn_for_completed_order_item()`, `refund_redeemed_for_order_item()`, `admin_adjust()`, and `buy_points_with_cashback()`.
+2. **Idempotency conflict validation in `buy_points_with_cashback()`**: Replaying `buy_points_with_cashback()` with the same `idempotency_key` and identical `cashback_amount` returns the existing `(CashbackTransaction, PointTransaction)` pair with `0` duplicate balance mutations and `0` duplicate `POINTS_EARNED` notifications, while replaying the same `idempotency_key` with a different `cashback_amount` now raises `ValidationError({"idempotency_key": ...})` via `CashbackService._validate_idempotent_transaction()`.
+3. **Sub-unit truncation guard in `buy_points_with_cashback()`**: Rejects positive `cashback_amount` values below `0.05` that would truncate `int(amount * Decimal("20"))` to `0` PP Coins with a clean `ValidationError({"cashback_amount": ...})` before touching `CustomerProfile.cashback_balance`.
+
+## 31. Account-Wide Do Not Disturb (DND) & Push Delivery (BE-NOT-02A)
+
+Status: **DONE**
+
+### Verified Product Decisions & Scope Boundaries
+
+1. **In-app persistence & realtime preserved**: Every canonical `Notification` row continues to be created transactionally inside the originating business transaction (`NotificationService.create_notification`), remains visible in-app (`is_read=False` unchanged), and continues to broadcast in-app realtime events over WebSocket (`broadcast_notification`) via `transaction.on_commit()`.
+2. **Account-wide DND ownership (`UserAccount`)**: `NotificationPreference` is owned by `UserAccount` (`user = OneToOneField("authentication.UserAccount", on_delete=CASCADE, related_name="notification_preference")`), **not** `CustomerProfile`, `SellerProfile`, or `PushDevice`. Switching between `Customer` and `Seller` modes preserves the same DND settings.
+3. **One optional daily DND interval**:
+   - `dnd_enabled` (`BooleanField(default=False)`)
+   - `dnd_start` (`TimeField(null=True, blank=True)`)
+   - `dnd_end` (`TimeField(null=True, blank=True)`)
+   - Supports both same-day windows (`13:00 -> 15:00`, where `dnd_start <= t < dnd_end`) and overnight windows crossing midnight (`23:00 -> 08:00`, where `t >= dnd_start or t < dnd_end`).
+   - Users with no `NotificationPreference` row or `dnd_enabled=False` have DND disabled by default (lazy creation on first `PATCH /api/notifications/preferences/`, `0` historical backfill rows). Disabling DND (`dnd_enabled=False`) preserves the stored row and interval.
+4. **Outbound mobile push suppression only (`no delay / no catch-up`)**:
+   - At push delivery time (`deliver_notification_push` in `apps/notifications/tasks.py` and `send_notification_to_devices` in `apps/notifications/fcm.py`), `NotificationPreferenceService.is_dnd_active_for_user(notification.recipient_profile.user_id)` evaluates whether the recipient `UserAccount` is currently inside its active DND window.
+   - When DND is active, mobile FCM push is skipped immediately (`return 0`) and is **never** delayed, queued, or rescheduled for when DND ends.
+5. **Short, simple source-specific reward copy & non-duplication**:
+   - `PointService._build_points_earned_body(points, source_type)` maps known `PointTransaction.source_type` values (`onboarding`, `referral_*`, `deal_completed` / `deal_completion_bonus` / `successful_sale` / `auction_completed`, `season_winner`, `lucky_wheel`) to short, simple Arabic/English sentences (`apps/loyalty/services.py`, `apps/notifications/payload.py`, `locale/{ar,en}/LC_MESSAGES/django.po`) without adding extra metadata or a template engine.
+   - Non-duplication invariants remain unchanged: at most `1` `POINTS_EARNED` per positive `EARN` `PointTransaction`, `1` `BADGE_AWARDED` per new `BadgeAward`, `1` `PRIZE_AWARDED` per new `CLAIM_REQUIRED` `PrizeAward`, `0` generic prize notifications on `DIGITAL_AUTOMATIC` `PrizeAward`, and `0` weekly onboarding draw notifications (feature cancelled in `BE-DRW-CANCEL-01`).
+   - Cross-profile in-app notification history (`Notification.recipient_profile`) and per-category notification preferences are intentionally not redesigned in `BE-NOT-02A`.
+
+## 32. Task Status
 
 | Task | Description | Status |
 | --- | --- | --- |
@@ -3992,16 +3927,21 @@ Verified Arabic product requirements (`docs/rewards/rewarding-system-report.md` 
 | BE-PRO-02 | Service-level promotion effects (`PromotionCampaignEffect`, non-stacking highest-discount resolution, package + Loft subscription integration) | DONE |
 | BE-PRO-03 | Onboarding 20% first auction-highlight discount (account-level entitlement, campaign comparison, trusted atomic consumption) | DONE (actual purchase wiring deferred pending canonical highlight domain) |
 | BE-PRO-03A | Harden onboarding highlight benefit no-backfill semantics (`ensure_for_first_profile_onboarding` via `Profile.all_objects`, `discount_percent` scoping) | DONE |
-| BE-DRW-01 | Weekly onboarding draw domain + automatic entry (`apps.draws`, `WeeklyDraw`, `WeeklyDrawEntry`, pending assignment, Lucky Wheel onboarding separation) | DONE |
-| BE-DRW-02 | Weekly draw finalization + winner-selection requirement gate (`now >= ends_at` close/freeze foundation, frozen `ASSIGNED` participant set, idempotent `POST /api/draws/weekly/<id>/finalize/`) | PARTIAL / BLOCKED (winner-selection rule, winner count, and prize definition require product decision) |
+| BE-DRW-01 | Weekly onboarding draw domain + automatic entry | BE-DRW — CANCELLED BY PRODUCT DECISION (`BE-DRW-CANCEL-01`) |
+| BE-DRW-02 | Weekly draw finalization + winner-selection requirement gate | BE-DRW — CANCELLED BY PRODUCT DECISION (`BE-DRW-CANCEL-01`) |
+| BE-DRW-CANCEL-01 | Cancel weekly onboarding draw completely (`0` onboarding entries, `/api/draws/` unmounted, `draws.weekly.*` permissions removed, `BE-DRW-02` closed) | DONE |
 | BE-LW-01 | Lucky Wheel source audit + eligibility / attempt lifecycle hardening (`LuckyWheelService.get_availability`, `LuckyWheelGrantService` / `LuckyWheelSpinService` locking & isolation, client payload guard) | DONE |
 | BE-LW-01A | Lucky Wheel lifecycle / API / source-provenance hardening (savepoint-safe `grant_attempt` `IntegrityError` recovery with collision check, `expires_at ASC NULLS LAST` ordering, public API metadata stripping, source-provenance classification) | DONE |
 | BE-LW-02 | Lucky Wheel spin outcome + prize execution hardening (`LuckyWheelPrizeSelector` with `secrets.SystemRandom()`, bounded concurrent finite-inventory re-resolution, strict one-of prize validation, atomic rollback, immutable `prize_snapshot`) | DONE |
 | BE-PRZ-01 | Shared prize award / fulfillment foundation (`apps.prizes`, `PrizeAward` ledger, `DIGITAL_AUTOMATIC` vs `CLAIM_REQUIRED`, source integrations, user/manager read APIs) | DONE |
 | BE-PRZ-02 | Claim-required prize submission, manager review & delivery (`PrizeClaim`, `PrizeClaimService`, `SUBMITTED -> REVIEWED -> DELIVERED`, user claim API, manager claim APIs, PII isolation) | DONE |
 | BE-NOT-01 | Reward & prize congratulatory notifications (`PointService.earn_points`, `BadgeService.award_badge`, `PrizeAwardService.record_claim_required`, existing `NotificationService` + post-commit WebSocket/FCM reuse) | DONE |
+| BE-NOT-02A | Account-wide DND preferences (`NotificationPreference`, `GET/PATCH /api/notifications/preferences/`, mobile push suppression during daily DND window without delaying or suppressing in-app/WebSocket notifications, short source-specific reward copy) | DONE |
+| BE-PRZ-03 | Referral Challenge `ANNUAL_LOFT_SUBSCRIPTION` prize provisioning audit & gate | BLOCKED (requires product/config decision on `UserAccount` vs `Profile` subscription recipient, `PedigreeTemplatePackage` tier & `selected_template_ids`, add-ons/AI quota, and non-nullable `LoftSubscription.invoice` provisioning) |
+| BE-REW-AUDIT-01 | Final rewards / prizes / notifications consistency & contract audit | DONE |
+| BE-CB-01 | Cashback product alignment audit & hardening (`CashbackService` post-lock idempotency, `buy_points_with_cashback` conflict & minimum-PP validation) | PARTIAL / BLOCKED (`1%–5%` rule selection, automatic vs manual PP conversion & currency rate, and auction spending mechanics require product decision) |
 
-Other reward work (weekly draw winner selection once product rules are confirmed, notification preferences/DND in BE-NOT-02, and buyer/seller level progression) is tracked in subsequent tickets.
+Other reward work (`ANNUAL_LOFT_SUBSCRIPTION` prize provisioning once subscription package/recipient rules are confirmed, cashback `1%–5%` / automatic PP conversion / auction spending once product rules are confirmed, per-category notification preferences/digests, and buyer/seller level progression) is tracked in subsequent tickets.
 
 
 

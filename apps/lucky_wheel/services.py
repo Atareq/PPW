@@ -109,8 +109,7 @@ class LuckyWheelGrantService:
     def grant_onboarding_attempt(profile):
         """Legacy helper retained only for historical compatibility.
 
-        Fresh account/profile onboarding no longer calls this method (BE-DRW-01 / BE-LW-01);
-        onboarding grants an account-level `WeeklyDrawEntry` in `apps.draws` instead.
+        Fresh account/profile onboarding no longer calls this method (BE-LW-01 / BE-DRW-CANCEL-01).
         """
 
         return LuckyWheelGrantService.grant_attempt(

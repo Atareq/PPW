@@ -4,8 +4,47 @@ from django.conf import settings
 from django.utils import translation
 from django.utils.translation import gettext as _
 
-_POINTS_EARNED_BODY_RE = re.compile(
-    r"^Congratulations! You earned (?P<points>\d+) PP Coins\.$"
+_POINTS_EARNED_PATTERNS = (
+    (
+        re.compile(r"^Congratulations! You earned (?P<points>\d+) PP Coins\.$"),
+        "Congratulations! You earned %(points)s PP Coins.",
+        "تهانينا! لقد ربحت %(points)s نقطة PP.",
+    ),
+    (
+        re.compile(
+            r"^Congratulations! You earned (?P<points>\d+) PP Coins for joining\.$"
+        ),
+        "Congratulations! You earned %(points)s PP Coins for joining.",
+        "تهانينا! لقد ربحت %(points)s نقطة PP لانضمامك.",
+    ),
+    (
+        re.compile(
+            r"^Congratulations! You earned (?P<points>\d+) PP Coins from a referral\.$"
+        ),
+        "Congratulations! You earned %(points)s PP Coins from a referral.",
+        "تهانينا! لقد ربحت %(points)s نقطة PP من الإحالة.",
+    ),
+    (
+        re.compile(
+            r"^Congratulations! You earned (?P<points>\d+) PP Coins for a completed deal\.$"
+        ),
+        "Congratulations! You earned %(points)s PP Coins for a completed deal.",
+        "تهانينا! لقد ربحت %(points)s نقطة PP لإتمام صفقة.",
+    ),
+    (
+        re.compile(
+            r"^Congratulations! You earned (?P<points>\d+) PP Coins as a season winner\.$"
+        ),
+        "Congratulations! You earned %(points)s PP Coins as a season winner.",
+        "تهانينا! لقد ربحت %(points)s نقطة PP كفائز بالموسم.",
+    ),
+    (
+        re.compile(
+            r"^Congratulations! You earned (?P<points>\d+) PP Coins from Lucky Wheel\.$"
+        ),
+        "Congratulations! You earned %(points)s PP Coins from Lucky Wheel.",
+        "تهانينا! لقد ربحت %(points)s نقطة PP من عجلة الحظ.",
+    ),
 )
 _BADGE_AWARDED_BODY_RE = re.compile(
     r"^(?:Congratulations! )?You earned the (?P<badge_name>.+) badge\.$"
@@ -35,11 +74,13 @@ def localize_notification_text(text, language=None) -> str:
         if translated != text or target_lang == "en":
             return translated
 
-        points_match = _POINTS_EARNED_BODY_RE.match(text)
-        if points_match:
-            return str(_("Congratulations! You earned %(points)s PP Coins.")) % {
-                "points": points_match.group("points"),
-            }
+        for pattern, msgid, ar_fallback in _POINTS_EARNED_PATTERNS:
+            points_match = pattern.match(text)
+            if points_match:
+                localized_tpl = str(_(msgid))
+                if target_lang == "ar" and localized_tpl == msgid:
+                    localized_tpl = ar_fallback
+                return localized_tpl % {"points": points_match.group("points")}
 
         badge_match = _BADGE_AWARDED_BODY_RE.match(text)
         if badge_match:
@@ -56,6 +97,7 @@ def localize_notification_text(text, language=None) -> str:
             ) % {"prize_title": prize_title}
 
         return translated
+
 
 
 class NotificationPayload:

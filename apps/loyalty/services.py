@@ -18,7 +18,9 @@ from apps.loyalty.constants import (
     BadgeType,
     PointTransactionType,
     RewardRuleCode,
+    RewardSourceType,
 )
+
 from apps.loyalty.models import (
     BadgeAward,
     PointTransaction,
@@ -211,6 +213,20 @@ class PointService:
 
         wallet = PointService.get_or_create_wallet(user)
         wallet = PointWallet.objects.select_for_update().get(pk=wallet.pk)
+        existing_transaction = PointService._get_idempotent_transaction(idempotency_key)
+        if existing_transaction is not None:
+            PointService._validate_idempotent_match(
+                existing_transaction,
+                user=user,
+                profile=profile,
+                transaction_type=transaction_type,
+                points=points,
+                reason=reason,
+                source_type=source_type,
+                source_id=source_id,
+                metadata=metadata,
+            )
+            return existing_transaction
         next_balance = PointService._next_balance(
             wallet.balance,
             transaction_type,
@@ -238,6 +254,40 @@ class PointService:
         return point_tx
 
     @staticmethod
+    def _build_points_earned_body(points: int, source_type: str | None) -> str:
+        normalized_source = str(source_type or "").strip()
+        if normalized_source == RewardSourceType.ONBOARDING:
+            return f"Congratulations! You earned {points} PP Coins for joining."
+        if normalized_source in {
+            RewardSourceType.REFERRAL_APPROVED,
+            RewardSourceType.REFERRAL_ACCEPTED,
+            RewardSourceType.REFERRAL_FIRST_BID,
+        }:
+            return (
+                f"Congratulations! You earned {points} PP Coins from a referral."
+            )
+        if normalized_source in {
+            RewardSourceType.DEAL_COMPLETED,
+            RewardSourceType.DEAL_COMPLETION_BONUS,
+            RewardSourceType.SUCCESSFUL_SALE,
+            RewardSourceType.AUCTION_COMPLETED,
+            RewardSourceType.ORDER_COMPLETED_AMOUNT,
+            RewardSourceType.ORDER_COMPLETED_BONUS,
+        }:
+            return (
+                f"Congratulations! You earned {points} PP Coins for a completed deal."
+            )
+        if normalized_source == RewardSourceType.SEASON_WINNER:
+            return (
+                f"Congratulations! You earned {points} PP Coins as a season winner."
+            )
+        if normalized_source == RewardSourceType.LUCKY_WHEEL:
+            return (
+                f"Congratulations! You earned {points} PP Coins from Lucky Wheel."
+            )
+        return f"Congratulations! You earned {points} PP Coins."
+
+    @staticmethod
     def _create_points_earned_notification(point_tx):
         from apps.notifications.models import NotificationType
         from apps.notifications.services import NotificationService
@@ -253,7 +303,10 @@ class PointService:
             recipient_profile=recipient_profile,
             notification_type=NotificationType.POINTS_EARNED,
             title=_("Congratulations! Points earned"),
-            body=f"Congratulations! You earned {point_tx.points} PP Coins.",
+            body=PointService._build_points_earned_body(
+                point_tx.points,
+                point_tx.source_type,
+            ),
             object_type="point_transaction",
             object_id=point_tx.pk,
             metadata={
@@ -264,6 +317,7 @@ class PointService:
             },
             idempotency_key=f"points_earned:{point_tx.pk}",
         )
+
 
     @staticmethod
     def _next_balance(current_balance, transaction_type, points):
@@ -389,11 +443,12 @@ class BadgeService:
             "metadata": metadata or {},
         }
         try:
-            award = BadgeAward.objects.create(
-                profile=profile,
-                badge_type=badge_type,
-                **defaults,
-            )
+            with transaction.atomic():
+                award = BadgeAward.objects.create(
+                    profile=profile,
+                    badge_type=badge_type,
+                    **defaults,
+                )
             created_new = True
         except IntegrityError:
             if idempotency_key is not None:

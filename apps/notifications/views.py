@@ -9,14 +9,23 @@ from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
 from apps.notifications.filters import NotificationFilter
-from apps.notifications.models import Notification, NotificationType
+from apps.notifications.models import (
+    Notification,
+    NotificationPreference,
+    NotificationType,
+)
 from apps.notifications.serializers import (
     ManualNotificationCreateSerializer,
     MarkAllReadSerializer,
+    NotificationPreferenceSerializer,
     NotificationSerializer,
     UnreadCountSerializer,
 )
-from apps.notifications.services import NotificationService, notification_queryset
+from apps.notifications.services import (
+    NotificationPreferenceService,
+    NotificationService,
+    notification_queryset,
+)
 from apps.users.constants import ProfileType
 from apps.users.models import Profile
 
@@ -152,3 +161,53 @@ class NotificationMarkAllReadViewSet(viewsets.GenericViewSet):
         updated_count = NotificationService.mark_all_as_read(active_profile(request))
         serializer = self.get_serializer({"updated_count": updated_count})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema_view(
+    retrieve=extend_schema(
+        tags=["Notifications"],
+        description=(
+            "Retrieve the authenticated account's Do Not Disturb (DND) settings. "
+            "DND belongs to the whole UserAccount and suppresses mobile FCM push "
+            "notifications only; in-app Notification rows and WebSocket realtime "
+            "events are still created and delivered."
+        ),
+        responses={200: NotificationPreferenceSerializer},
+    ),
+    partial_update=extend_schema(
+        tags=["Notifications"],
+        description=(
+            "Update the authenticated account's Do Not Disturb (DND) settings. "
+            "Supports one daily time interval (including overnight ranges such as "
+            "23:00 to 08:00). DND suppresses mobile FCM push delivery only without "
+            "delaying or suppressing in-app notifications or WebSocket realtime delivery."
+        ),
+        request=NotificationPreferenceSerializer,
+        responses={200: NotificationPreferenceSerializer},
+    ),
+)
+class NotificationPreferenceViewSet(viewsets.GenericViewSet):
+    """Account-wide DND preference endpoint scoped strictly to request.user."""
+
+    permission_classes = [IsAuthenticated]
+    queryset = NotificationPreference.objects.all()
+    serializer_class = NotificationPreferenceSerializer
+    http_method_names = ["get", "patch"]
+
+    def retrieve(self, request, *args, **kwargs):
+        preference = NotificationPreferenceService.get_preference(request.user)
+        serializer = self.get_serializer(preference)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        preference = NotificationPreferenceService.update_preference(
+            request.user,
+            **serializer.validated_data,
+        )
+        return Response(
+            self.get_serializer(preference).data,
+            status=status.HTTP_200_OK,
+        )
+

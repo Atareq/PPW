@@ -189,6 +189,17 @@ def send_notification_to_devices(notification, devices) -> int:
     delivery failures, it may resend to already-delivered devices. Clients (e.g. Flutter)
     rely on the stable `notification_id` field in the FCM data payload for local deduplication.
     """
+    from apps.notifications.services import NotificationPreferenceService
+
+    recipient_profile = getattr(notification, "recipient_profile", None)
+    if (
+        recipient_profile is not None
+        and NotificationPreferenceService.is_dnd_active_for_user(
+            recipient_profile.user_id
+        )
+    ):
+        return 0
+
     app = _firebase_app()
     if app is None or not devices:
         return 0
@@ -196,6 +207,7 @@ def send_notification_to_devices(notification, devices) -> int:
     active_devices = [d for d in devices if d.is_active]
     if not active_devices:
         return 0
+
 
     tokens = [d.token for d in active_devices]
     message = build_fcm_message(notification, tokens)

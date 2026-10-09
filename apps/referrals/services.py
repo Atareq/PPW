@@ -52,11 +52,12 @@ class ReferralService:
         expires_at = timezone.now() + timezone.timedelta(hours=REFERRAL_CODE_TTL_HOURS)
         for _ in range(5):
             try:
-                code = LinkSharingCode.objects.create(
-                    owner_profile=owner,
-                    code=uuid4().hex[:12],
-                    expires_at=expires_at,
-                )
+                with transaction.atomic():
+                    code = LinkSharingCode.objects.create(
+                        owner_profile=owner,
+                        code=uuid4().hex[:12],
+                        expires_at=expires_at,
+                    )
                 return code
             except IntegrityError:
                 continue

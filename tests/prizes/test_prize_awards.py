@@ -1686,15 +1686,12 @@ def test_56_prize_award_creation_creates_zero_payment_requests():
 def test_57_no_weekly_draw_mutation_or_prize_award_created():
     now = timezone.now()
     _, manager_profile = make_manager()
-    draw = WeeklyDrawService.create_draw(
-        {
-            "title": "Weekly Draw 57",
-            "starts_at": now - timedelta(days=8),
-            "ends_at": now - timedelta(days=1),
-            "status": WeeklyDrawStatus.OPEN,
-        },
+    draw = WeeklyDraw.objects.create(
+        title="Weekly Draw 57",
+        starts_at=now - timedelta(days=8),
+        ends_at=now - timedelta(days=1),
+        status=WeeklyDrawStatus.CLOSED,
         created_by=manager_profile,
-        now=now - timedelta(days=5),
     )
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     entry = WeeklyDrawEntry.objects.create(
@@ -1705,10 +1702,6 @@ def test_57_no_weekly_draw_mutation_or_prize_award_created():
         idempotency_key=f"draw:onboarding:user:{user.pk}",
     )
 
-    frozen_draw = WeeklyDrawService.finalize_draw(
-        draw, finalized_by=manager_profile
-    )
-    assert frozen_draw.status == WeeklyDrawStatus.CLOSED
     assert PrizeAward.objects.count() == 0
 
     PrizeAwardService.record_digital_fulfilled(
@@ -1789,21 +1782,10 @@ def test_60_referrals_regression_smoke():
 
 def test_61_draws_regression_smoke():
     now = timezone.now()
-    _, manager_profile = make_manager()
-    draw = WeeklyDrawService.create_draw(
-        {
-            "title": "Regression Draw 61",
-            "starts_at": now - timedelta(days=1),
-            "ends_at": now + timedelta(days=6),
-            "status": WeeklyDrawStatus.OPEN,
-        },
-        created_by=manager_profile,
-        now=now,
-    )
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     entry = WeeklyDrawEntryService.ensure_for_onboarding(user, now=now)
-    assert entry.draw_id == draw.pk
-    assert entry.status == WeeklyDrawEntryStatus.ASSIGNED
+    assert entry is None
+    assert WeeklyDrawEntry.objects.filter(user=user).count() == 0
     assert PrizeAward.objects.count() == 0
 
 
@@ -1849,4 +1831,66 @@ def test_63_loyalty_and_rewards_sprint_regression_smoke():
     assert tx.points == 100
     assert PointService.get_balance(user) == 100
     assert PrizeAward.objects.count() == 0
+
+
+def test_64_annual_loft_subscription_winner_remains_safely_deferred_while_blocked():
+    from apps.loft_subscriptions.models import (
+        LoftSubscription,
+        PedigreeTemplatePackage,
+        SubscriptionDurationOption,
+        SubscriptionInvoice,
+        SubscriptionPaymentRequest,
+    )
+    from apps.notifications.models import NotificationType
+
+    SubscriptionDurationOption.objects.create(
+        code="month_12",
+        name="One Year",
+        duration_months=12,
+        price=Decimal("1700.00"),
+        sort_order=1,
+    )
+    PedigreeTemplatePackage.objects.create(
+        code="shapes_1",
+        name="One Shape",
+        template_limit=1,
+        price=Decimal("0.00"),
+        sort_order=1,
+    )
+    PedigreeTemplatePackage.objects.create(
+        code="shapes_unlimited",
+        name="Unlimited Shapes",
+        is_unlimited=True,
+        price=Decimal("999.00"),
+        sort_order=2,
+    )
+
+    challenge, inviters, reviewer = make_ended_referral_challenge_with_scorers()
+    # Give Rank 3 winner both Customer and Seller profiles to confirm no profile-guessing occurs
+    SellerProfileFactory(user=inviters[2], is_active=False, activated=True)
+
+    ReferralChallengeService.finalize(challenge.pk, reviewer)
+    ReferralChallengeService.finalize(challenge.pk, reviewer)
+
+    rank_3_winner = ReferralChallengeWinner.objects.get(
+        challenge=challenge,
+        rank=3,
+    )
+    assert rank_3_winner.user_id == inviters[2].pk
+    assert (
+        rank_3_winner.prize_code
+        == ReferralChallengePrizeCode.ANNUAL_LOFT_SUBSCRIPTION
+    )
+    assert LoftSubscription.objects.count() == 0
+    assert SubscriptionInvoice.objects.count() == 0
+    assert SubscriptionPaymentRequest.objects.count() == 0
+    assert not PrizeAward.objects.filter(
+        source_type=PrizeAwardSourceType.REFERRAL_CHALLENGE,
+        source_id=str(rank_3_winner.pk),
+    ).exists()
+    assert not PrizeAward.objects.filter(user=inviters[2]).exists()
+    assert not Notification.objects.filter(
+        recipient_profile__user=inviters[2],
+        notification_type=NotificationType.PRIZE_AWARDED,
+    ).exists()
 

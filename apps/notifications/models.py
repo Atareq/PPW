@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
@@ -161,3 +162,46 @@ class PushDevice(BaseModel):
 
     def __str__(self):
         return f"PushDevice #{self.pk} {self.platform} -> {self.profile_id}"
+
+
+class NotificationPreference(BaseModel):
+    """Account-wide notification settings including one optional daily DND window."""
+
+    user = models.OneToOneField(
+        "authentication.UserAccount",
+        on_delete=models.CASCADE,
+        related_name="notification_preference",
+    )
+    dnd_enabled = models.BooleanField(default=False)
+    dnd_start = models.TimeField(null=True, blank=True)
+    dnd_end = models.TimeField(null=True, blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.dnd_enabled:
+            errors = {}
+            if self.dnd_start is None:
+                errors["dnd_start"] = _(
+                    "DND start time is required when DND is enabled."
+                )
+            if self.dnd_end is None:
+                errors["dnd_end"] = _(
+                    "DND end time is required when DND is enabled."
+                )
+            if (
+                self.dnd_start is not None
+                and self.dnd_end is not None
+                and self.dnd_start == self.dnd_end
+            ):
+                errors["dnd_end"] = _(
+                    "DND start and end times must be different when DND is enabled."
+                )
+            if errors:
+                raise ValidationError(errors)
+
+    def __str__(self):
+        return (
+            f"NotificationPreference user={self.user_id} "
+            f"dnd_enabled={self.dnd_enabled}"
+        )
+

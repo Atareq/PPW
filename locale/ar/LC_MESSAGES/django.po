@@ -3903,3 +3903,103 @@ msgstr "تهانينا! أنت من الفائزين"
 #, python-format
 msgid "Congratulations! You won a prize: %(prize_title)s."
 msgstr "تهانينا! لقد فزت بجائزة: %(prize_title)s."
+
+msgid "Announcements"
+msgstr "الإعلانات"
+
+msgid "List announcements"
+msgstr "عرض الإعلانات"
+
+msgid "View admin announcement bar records."
+msgstr "عرض سجلات شريط الإعلانات الإدارية."
+
+msgid "View announcement details"
+msgstr "عرض تفاصيل الإعلان"
+
+msgid "Open one admin announcement bar record."
+msgstr "فتح سجل شريط إعلان إداري واحد."
+
+msgid "Create announcements"
+msgstr "إنشاء الإعلانات"
+
+msgid "Create admin announcement bar records."
+msgstr "إنشاء سجلات شريط الإعلانات الإدارية."
+
+msgid "Update announcements"
+msgstr "تحديث الإعلانات"
+
+msgid "Update admin announcement bar records."
+msgstr "تحديث سجلات شريط الإعلانات الإدارية."
+
+msgid "Delete announcements"
+msgstr "حذف الإعلانات"
+
+msgid "Delete admin announcement bar records."
+msgstr "حذف سجلات شريط الإعلانات الإدارية."
+
+msgid "Hours"
+msgstr "ساعات"
+
+msgid "Days"
+msgstr "أيام"
+
+msgid "Announcement text is required."
+msgstr "نص الإعلان مطلوب."
+
+msgid "Announcement start time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت بدء الإعلان المنطقة الزمنية."
+
+msgid "Announcement expiration time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت انتهاء الإعلان المنطقة الزمنية."
+
+msgid "Announcement expiration time must be later than start time."
+msgstr "يجب أن يكون وقت انتهاء الإعلان بعد وقت البدء."
+
+msgid "Unsupported duration unit."
+msgstr "وحدة المدة غير مدعومة."
+
+msgid "Announcement was not found."
+msgstr "لم يتم العثور على الإعلان."
+
+msgid "Client cannot specify user, profile, or dismissal parameters."
+msgstr "لا يمكن للعميل تحديد المستخدم أو الملف الشخصي أو معلمات الإغلاق."
+
+msgid "Both duration_value and duration_unit are required when specifying duration."
+msgstr "يجب تحديد قيمة المدة ووحدة المدة معًا عند تحديد المدة."
+
+msgid "Provide either expires_at or duration_value with duration_unit, not both."
+msgstr "يرجى تقديم إما وقت الانتهاء أو قيمة المدة مع وحدتها، وليس كليهما."
+
+msgid "Either expires_at or duration_value with duration_unit is required."
+msgstr "مطلوب إما وقت الانتهاء أو قيمة المدة مع وحدتها."
+
+msgid "Auction not found"
+msgstr "لم يتم العثور على المزاد"
+
+msgid "DND start time is required when DND is enabled."
+msgstr "وقت بدء عدم الإزعاج مطلوب عند تفعيله."
+
+msgid "DND end time is required when DND is enabled."
+msgstr "وقت انتهاء عدم الإزعاج مطلوب عند تفعيله."
+
+msgid "DND start and end times must be different when DND is enabled."
+msgstr "يجب أن يختلف وقت البدء عن وقت الانتهاء عند تفعيل عدم الإزعاج."
+
+msgid "This field is not allowed."
+msgstr "هذا الحقل غير مسموح به."
+
+msgid "Congratulations! You earned %(points)s PP Coins for joining."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP لانضمامك."
+
+msgid "Congratulations! You earned %(points)s PP Coins from a referral."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP من الإحالة."
+
+msgid "Congratulations! You earned %(points)s PP Coins for a completed deal."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP لإتمام صفقة."
+
+msgid "Congratulations! You earned %(points)s PP Coins as a season winner."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP كفائز بالموسم."
+
+msgid "Congratulations! You earned %(points)s PP Coins from Lucky Wheel."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP من عجلة الحظ."
+

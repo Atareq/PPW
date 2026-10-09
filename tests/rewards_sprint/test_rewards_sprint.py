@@ -228,15 +228,14 @@ def test_registration_grants_one_onboarding_lucky_wheel_attempt():
     )
 
     assert response.status_code == status.HTTP_201_CREATED
-    # BE-DRW-01 replaced the misimplemented onboarding Lucky Wheel attempt with
-    # an account-level WeeklyDrawEntry.
+    # BE-LW-01 & BE-DRW-CANCEL-01: registration grants neither an onboarding
+    # LuckyWheelGrant nor a WeeklyDrawEntry.
     assert not LuckyWheelGrant.objects.filter(
         source_type=LuckyWheelGrantSourceType.ONBOARDING
     ).exists()
-    entry = WeeklyDrawEntry.objects.get(
+    assert not WeeklyDrawEntry.objects.filter(
         source=WeeklyDrawEntrySource.ONBOARDING
-    )
-    assert entry.user.username == "onboarding-customer" 
+    ).exists()
 
 
 def test_referral_redeem_creates_pending_referral_without_points():

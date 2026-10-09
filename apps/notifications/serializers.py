@@ -2,7 +2,7 @@ from django.utils import translation
 from django.utils.translation import gettext as _
 from rest_framework import serializers
 
-from apps.notifications.models import Notification
+from apps.notifications.models import Notification, NotificationPreference
 from apps.notifications.payload import localize_notification_text
 from apps.users.models import Profile
 
@@ -95,3 +95,35 @@ class ManualNotificationCreateSerializer(serializers.Serializer):
         ).exists():
             raise serializers.ValidationError(_("Recipient profile was not found."))
         return value
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    dnd_enabled = serializers.BooleanField(required=False)
+    dnd_start = serializers.TimeField(required=False, allow_null=True)
+    dnd_end = serializers.TimeField(required=False, allow_null=True)
+
+    class Meta:
+        model = NotificationPreference
+        fields = [
+            "dnd_enabled",
+            "dnd_start",
+            "dnd_end",
+        ]
+
+    def validate(self, attrs):
+        if isinstance(getattr(self, "initial_data", None), dict):
+            forbidden_fields = {
+                "user",
+                "user_id",
+                "profile",
+                "profile_id",
+            } & set(self.initial_data.keys())
+            if forbidden_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: _("This field is not allowed.")
+                        for field in sorted(forbidden_fields)
+                    }
+                )
+        return attrs
+

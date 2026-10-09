@@ -210,6 +210,8 @@ class CashbackService:
             return CashbackService._get_order_item(order_item.pk)
 
         item = CashbackService._get_locked_order_item(order_item.pk)
+        if CashbackService._existing_transaction(idempotency_key):
+            return CashbackService._get_order_item(order_item.pk)
         payable_amount = quantize_money(item.gross_total - item.discount_amount)
         offer = CashbackOfferService.choose_best_offer(item.asset, payable_amount)
         if offer is None:
@@ -218,6 +220,8 @@ class CashbackService:
         customer = CustomerProfile.objects.select_for_update().get(
             pk=item.order.owner_id
         )
+        if CashbackService._existing_transaction(idempotency_key):
+            return CashbackService._get_order_item(order_item.pk)
         cashback_earned_amount = CashbackOfferService.calculate_cashback_earned(
             offer,
             payable_amount,
@@ -265,8 +269,9 @@ class CashbackService:
         """Credit earned cashback once after marketplace sale completion."""
 
         idempotency_key = f"earned:order_item:{order_item.pk}"
-        if CashbackService._existing_transaction(idempotency_key):
-            return CashbackService._existing_transaction(idempotency_key)
+        existing = CashbackService._existing_transaction(idempotency_key)
+        if existing is not None:
+            return existing
 
         item = CashbackService._get_locked_order_item(order_item.pk)
         if item.cashback_offer_id is None or item.cashback_earned_amount <= 0:
@@ -275,6 +280,9 @@ class CashbackService:
         customer = CustomerProfile.objects.select_for_update().get(
             pk=item.order.owner_id
         )
+        existing = CashbackService._existing_transaction(idempotency_key)
+        if existing is not None:
+            return existing
         amount = item.cashback_earned_amount
         customer.cashback_balance = quantize_money(customer.cashback_balance + amount)
         customer.save(update_fields=["cashback_balance", "modified"])
@@ -295,8 +303,9 @@ class CashbackService:
         """Return redeemed cashback if an approved item is later cancelled."""
 
         idempotency_key = f"refunded:order_item:{order_item.pk}"
-        if CashbackService._existing_transaction(idempotency_key):
-            return CashbackService._existing_transaction(idempotency_key)
+        existing = CashbackService._existing_transaction(idempotency_key)
+        if existing is not None:
+            return existing
 
         item = CashbackService._get_locked_order_item(order_item.pk)
         if item.cashback_offer_id is None or item.cashback_redeemed_amount <= 0:
@@ -305,6 +314,9 @@ class CashbackService:
         customer = CustomerProfile.objects.select_for_update().get(
             pk=item.order.owner_id
         )
+        existing = CashbackService._existing_transaction(idempotency_key)
+        if existing is not None:
+            return existing
         amount = item.cashback_redeemed_amount
         customer.cashback_balance = quantize_money(customer.cashback_balance + amount)
         customer.save(update_fields=["cashback_balance", "modified"])
@@ -359,6 +371,17 @@ class CashbackService:
         customer = CustomerProfile.objects.select_for_update().get(
             pk=customer_profile.pk
         )
+        existing = CashbackService._existing_transaction(idempotency_key)
+        if existing is not None:
+            CashbackService._validate_idempotent_transaction(
+                existing,
+                customer=customer_profile,
+                transaction_type=CashbackTransactionType.ADMIN_ADJUSTMENT,
+                amount=amount,
+                adjusted_by=admin_profile,
+                note=note or "",
+            )
+            return existing
         next_balance = quantize_money(customer.cashback_balance + amount)
         if next_balance < 0:
             raise ValidationError(
@@ -393,6 +416,15 @@ class CashbackService:
             raise ValidationError(
                 {"cashback_amount": _("Cashback amount must be greater than zero.")}
             )
+        points = int(amount * Decimal("20"))
+        if points <= 0:
+            raise ValidationError(
+                {
+                    "cashback_amount": _(
+                        "Cashback amount must convert to at least 1 PP Coin."
+                    )
+                }
+            )
         idempotency_key = str(idempotency_key or "").strip()
         if not idempotency_key:
             raise ValidationError({"idempotency_key": _("This field is required.")})
@@ -400,11 +432,22 @@ class CashbackService:
         cashback_key = (
             f"cashback_points_purchase:{customer_profile.pk}:{idempotency_key}"
         )
+        note = "Cashback converted into PP Coins."
+        customer = CustomerProfile.objects.select_for_update().get(
+            pk=customer_profile.pk
+        )
         existing = CashbackService._existing_transaction(cashback_key)
         if existing is not None:
+            CashbackService._validate_idempotent_transaction(
+                existing,
+                customer=customer_profile,
+                transaction_type=CashbackTransactionType.POINTS_PURCHASE,
+                amount=amount,
+                note=note,
+            )
             point_transaction = PointService.earn_points(
-                user=customer_profile.user,
-                profile=customer_profile,
+                user=customer.user,
+                profile=customer,
                 points=int(existing.amount * Decimal("20")),
                 reason="Purchased PP Coins with cashback",
                 source_type=RewardSourceType.CASHBACK_POINTS_PURCHASE,
@@ -414,9 +457,6 @@ class CashbackService:
             )
             return existing, point_transaction
 
-        customer = CustomerProfile.objects.select_for_update().get(
-            pk=customer_profile.pk
-        )
         if customer.cashback_balance < amount:
             raise ValidationError({"cashback_amount": _("Insufficient cashback balance.")})
 
@@ -431,12 +471,12 @@ class CashbackService:
             amount=amount,
             balance_after=customer.cashback_balance,
             idempotency_key=cashback_key,
-            note="Cashback converted into PP Coins.",
+            note=note,
         )
         point_transaction = PointService.earn_points(
             user=customer.user,
             profile=customer,
-            points=int(amount * Decimal("20")),
+            points=points,
             reason="Purchased PP Coins with cashback",
             source_type=RewardSourceType.CASHBACK_POINTS_PURCHASE,
             source_id=str(cashback_transaction.pk),
@@ -480,7 +520,8 @@ class CashbackService:
     @staticmethod
     def _create_transaction(**kwargs):
         try:
-            return CashbackTransaction.objects.create(**kwargs)
+            with transaction.atomic():
+                return CashbackTransaction.objects.create(**kwargs)
         except IntegrityError:
             existing = CashbackService._existing_transaction(kwargs["idempotency_key"])
             if existing is not None:
@@ -660,18 +701,19 @@ class UserPromotionGrantService:
             return existing
 
         try:
-            return UserPromotionGrant.objects.create(
-                user=user,
-                profile=profile,
-                grant_type=grant_type,
-                discount_offer=discount_offer,
-                cashback_offer=cashback_offer,
-                source_type=source_type or "",
-                source_id=str(source_id or ""),
-                expires_at=expires_at,
-                idempotency_key=idempotency_key,
-                metadata=metadata or {},
-            )
+            with transaction.atomic():
+                return UserPromotionGrant.objects.create(
+                    user=user,
+                    profile=profile,
+                    grant_type=grant_type,
+                    discount_offer=discount_offer,
+                    cashback_offer=cashback_offer,
+                    source_type=source_type or "",
+                    source_id=str(source_id or ""),
+                    expires_at=expires_at,
+                    idempotency_key=idempotency_key,
+                    metadata=metadata or {},
+                )
         except IntegrityError:
             return UserPromotionGrant.objects.get(idempotency_key=idempotency_key)
 
@@ -1703,20 +1745,21 @@ class OnboardingHighlightBenefitService:
                 ),
             }
             try:
-                return UserPromotionGrant.objects.create(
-                    user=locked_user,
-                    profile=None,
-                    grant_type=UserPromotionGrantType.DISCOUNT,
-                    discount_offer=offer,
-                    cashback_offer=None,
-                    source_type=OfferTriggerType.ONBOARDING,
-                    source_id=str(locked_user.pk),
-                    status=UserPromotionGrantStatus.ACTIVE,
-                    expires_at=None,
-                    redeemed_at=None,
-                    idempotency_key=key,
-                    metadata=metadata,
-                )
+                with transaction.atomic():
+                    return UserPromotionGrant.objects.create(
+                        user=locked_user,
+                        profile=None,
+                        grant_type=UserPromotionGrantType.DISCOUNT,
+                        discount_offer=offer,
+                        cashback_offer=None,
+                        source_type=OfferTriggerType.ONBOARDING,
+                        source_id=str(locked_user.pk),
+                        status=UserPromotionGrantStatus.ACTIVE,
+                        expires_at=None,
+                        redeemed_at=None,
+                        idempotency_key=key,
+                        metadata=metadata,
+                    )
             except IntegrityError:
                 return UserPromotionGrant.objects.select_related(
                     "discount_offer",

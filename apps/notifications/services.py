@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotFound, ValidationError
 
-from apps.notifications.models import Notification
+from apps.notifications.models import Notification, NotificationPreference
 from apps.users.models import Profile
 
 logger = logging.getLogger(__name__)
@@ -98,18 +98,19 @@ class NotificationService:
                 return existing
 
         try:
-            notification = Notification.objects.create(
-                recipient_profile=recipient,
-                actor_profile=actor,
-                notification_type=notification_type,
-                title=title,
-                body=body,
-                object_type=normalize_optional_string(object_type),
-                object_id=object_id,
-                metadata=metadata or {},
-                target_url=normalize_optional_string(target_url),
-                idempotency_key=idempotency_key,
-            )
+            with transaction.atomic():
+                notification = Notification.objects.create(
+                    recipient_profile=recipient,
+                    actor_profile=actor,
+                    notification_type=notification_type,
+                    title=title,
+                    body=body,
+                    object_type=normalize_optional_string(object_type),
+                    object_id=object_id,
+                    metadata=metadata or {},
+                    target_url=normalize_optional_string(target_url),
+                    idempotency_key=idempotency_key,
+                )
         except IntegrityError:
             if idempotency_key is None:
                 raise
@@ -196,3 +197,67 @@ class NotificationService:
             and profile.is_valid
             and getattr(profile, "deleted", None) is None
         )
+
+
+class NotificationPreferenceService:
+    """Account-wide notification preference and daily DND evaluation service."""
+
+    @staticmethod
+    def get_preference(user):
+        user_id = getattr(user, "pk", user)
+        pref = NotificationPreference.objects.filter(user_id=user_id).first()
+        if pref is not None:
+            return pref
+        return NotificationPreference(
+            user_id=user_id,
+            dnd_enabled=False,
+            dnd_start=None,
+            dnd_end=None,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def update_preference(user, **changes):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        pref, _ = NotificationPreference.objects.select_for_update().get_or_create(
+            user=user,
+            defaults={
+                "dnd_enabled": False,
+                "dnd_start": None,
+                "dnd_end": None,
+            },
+        )
+        for field in ("dnd_enabled", "dnd_start", "dnd_end"):
+            if field in changes:
+                setattr(pref, field, changes[field])
+        try:
+            pref.full_clean()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        pref.save()
+        return pref
+
+    @staticmethod
+    def is_time_in_dnd_window(current_time, dnd_start, dnd_end) -> bool:
+        if dnd_start is None or dnd_end is None or dnd_start == dnd_end:
+            return False
+        if dnd_start < dnd_end:
+            return dnd_start <= current_time < dnd_end
+        return current_time >= dnd_start or current_time < dnd_end
+
+    @staticmethod
+    def is_dnd_active_for_user(user_or_id, now=None) -> bool:
+        user_id = getattr(user_or_id, "pk", user_or_id)
+        if not user_id:
+            return False
+        pref = NotificationPreference.objects.filter(user_id=user_id).first()
+        if pref is None or not pref.dnd_enabled:
+            return False
+        eval_dt = timezone.localtime(now or timezone.now())
+        return NotificationPreferenceService.is_time_in_dnd_window(
+            eval_dt.time(),
+            pref.dnd_start,
+            pref.dnd_end,
+        )
+

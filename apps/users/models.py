@@ -122,6 +122,9 @@ class SellerProfile(Profile):
     recoded_voice = models.CharField(max_length=150, blank=True)
     country = models.CharField(max_length=2, choices=CountryOptions.choices)
     currency = models.CharField(max_length=3, choices=CurrencyOptions.choices)
+    bank_account = models.CharField(max_length=255, blank=True, default="")
+    wallet = models.CharField(max_length=255, blank=True, default="")
+    transfer_phone = models.CharField(max_length=50, blank=True, default="")
     avg_rating = models.DecimalField(
         max_digits=3,
         decimal_places=2,
@@ -266,3 +269,94 @@ class ProfileBalanceTransaction(BaseModel):
                 name="profile_balance_txn_after_gte_0_ck",
             ),
         ]
+
+
+class SellerRoom(BaseModel):
+    """Seller-owned auction room/farm grouping beneath a SellerProfile (BE-ROOM-01)."""
+
+    seller = models.ForeignKey(
+        SellerProfile,
+        on_delete=models.CASCADE,
+        related_name="rooms",
+        db_index=True,
+    )
+    name = models.CharField(max_length=150)
+    description = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created", "-id"]
+        indexes = [
+            models.Index(
+                fields=["seller", "-created"],
+                name="users_sroom_seller_created",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.name is not None:
+            self.name = str(self.name).strip()
+        if not self.name:
+            errors["name"] = _("Room name cannot be blank.")
+        if self.description is None:
+            self.description = ""
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"SellerRoom #{self.pk} ({self.name})"
+
+
+class SellerRoomFollow(BaseModel):
+    """Account-scoped follow relation for a SellerRoom (BE-ROOM-01)."""
+
+    room = models.ForeignKey(
+        SellerRoom,
+        on_delete=models.CASCADE,
+        related_name="follows",
+    )
+    user = models.ForeignKey(
+        UserAccount,
+        on_delete=models.CASCADE,
+        related_name="seller_room_follows",
+    )
+
+    class Meta:
+        ordering = ["-created", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room", "user"],
+                name="uniq_seller_room_follow_room_user",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["user", "-created"],
+                name="users_sroom_fol_user_created",
+            ),
+            models.Index(
+                fields=["room", "-created"],
+                name="users_sroom_fol_room_created",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.room_id and self.user_id:
+            if self.room.seller.user_id == self.user_id:
+                raise ValidationError(
+                    {"room": _("Users cannot follow their own seller room.")}
+                )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"SellerRoomFollow #{self.pk} (room={self.room_id}, user={self.user_id})"
+

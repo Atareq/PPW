@@ -2867,8 +2867,109 @@ msgstr "Congratulations! You are a winner"
 msgid "Congratulations! You won a prize: %(prize_title)s."
 msgstr "Congratulations! You won a prize: %(prize_title)s."
 
+msgid "Announcements"
+msgstr "Announcements"
+
+msgid "List announcements"
+msgstr "List announcements"
+
+msgid "View admin announcement bar records."
+msgstr "View admin announcement bar records."
+
+msgid "View announcement details"
+msgstr "View announcement details"
+
+msgid "Open one admin announcement bar record."
+msgstr "Open one admin announcement bar record."
+
+msgid "Create announcements"
+msgstr "Create announcements"
+
+msgid "Create admin announcement bar records."
+msgstr "Create admin announcement bar records."
+
+msgid "Update announcements"
+msgstr "Update announcements"
+
+msgid "Update admin announcement bar records."
+msgstr "Update admin announcement bar records."
+
+msgid "Delete announcements"
+msgstr "Delete announcements"
+
+msgid "Delete admin announcement bar records."
+msgstr "Delete admin announcement bar records."
+
+msgid "Hours"
+msgstr "Hours"
+
+msgid "Days"
+msgstr "Days"
+
+msgid "Announcement text is required."
+msgstr "Announcement text is required."
+
+msgid "Announcement start time must be timezone-aware."
+msgstr "Announcement start time must be timezone-aware."
+
+msgid "Announcement expiration time must be timezone-aware."
+msgstr "Announcement expiration time must be timezone-aware."
+
+msgid "Announcement expiration time must be later than start time."
+msgstr "Announcement expiration time must be later than start time."
+
+msgid "Unsupported duration unit."
+msgstr "Unsupported duration unit."
+
+msgid "Announcement was not found."
+msgstr "Announcement was not found."
+
+msgid "Client cannot specify user, profile, or dismissal parameters."
+msgstr "Client cannot specify user, profile, or dismissal parameters."
+
+msgid "Both duration_value and duration_unit are required when specifying duration."
+msgstr "Both duration_value and duration_unit are required when specifying duration."
+
+msgid "Provide either expires_at or duration_value with duration_unit, not both."
+msgstr "Provide either expires_at or duration_value with duration_unit, not both."
+
+msgid "Either expires_at or duration_value with duration_unit is required."
+msgstr "Either expires_at or duration_value with duration_unit is required."
+
+msgid "Auction not found"
+msgstr "Auction not found"
+
+msgid "DND start time is required when DND is enabled."
+msgstr "DND start time is required when DND is enabled."
+
+msgid "DND end time is required when DND is enabled."
+msgstr "DND end time is required when DND is enabled."
+
+msgid "DND start and end times must be different when DND is enabled."
+msgstr "DND start and end times must be different when DND is enabled."
+
+msgid "This field is not allowed."
+msgstr "This field is not allowed."
+
+msgid "Congratulations! You earned %(points)s PP Coins for joining."
+msgstr "Congratulations! You earned %(points)s PP Coins for joining."
+
+msgid "Congratulations! You earned %(points)s PP Coins from a referral."
+msgstr "Congratulations! You earned %(points)s PP Coins from a referral."
+
+msgid "Congratulations! You earned %(points)s PP Coins for a completed deal."
+msgstr "Congratulations! You earned %(points)s PP Coins for a completed deal."
+
+msgid "Congratulations! You earned %(points)s PP Coins as a season winner."
+msgstr "Congratulations! You earned %(points)s PP Coins as a season winner."
+
+msgid "Congratulations! You earned %(points)s PP Coins from Lucky Wheel."
+msgstr "Congratulations! You earned %(points)s PP Coins from Lucky Wheel."
+
+
 #~ msgid "SECRET_KEY is not set"
 #~ msgstr "SECRET_KEY is not set"
 
 #~ msgid "ALLOWED_HOSTS is not set"
 #~ msgstr "ALLOWED_HOSTS is not set"
+

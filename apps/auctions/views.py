@@ -22,6 +22,7 @@ from apps.auctions.serializers import (
     AuctionItemDetailSerializer,
     AuctionItemListSerializer,
     AuctionListSerializer,
+    AuctionSellerPaymentDetailsSerializer,
     AuctionUpdateSerializer,
     BidSerializer,
     BuyNowSerializer,
@@ -56,7 +57,14 @@ from apps.users.constants import ProfileType
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Filter auctions by status (manager only).",
-            )
+            ),
+            OpenApiParameter(
+                name="room",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter auctions by seller room id.",
+            ),
         ],
         responses={200: AuctionListSerializer(many=True)},
     ),
@@ -79,12 +87,28 @@ from apps.users.constants import ProfileType
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Filter auctions by status.",
-            )
+            ),
+            OpenApiParameter(
+                name="room",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter auctions by seller room id.",
+            ),
         ],
         responses={200: AuctionListSerializer(many=True)},
     ),
     active=extend_schema(
         tags=["Auctions"],
+        parameters=[
+            OpenApiParameter(
+                name="room",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter active auctions by seller room id.",
+            ),
+        ],
         responses={200: AuctionListSerializer(many=True)},
     ),
     ending_soon=extend_schema(
@@ -118,6 +142,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     """
 
     permission_resource = "AUCTION"
+    allow_scoped_read_access = True
     queryset = Auction.objects.all().order_by("-created")
     permission_classes = [IsAuthenticated, HasAppAccess]
     manager_permission_map = {
@@ -133,7 +158,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
         """Choose serializer based on action"""
         if self.action == "create":
             return AuctionCreateSerializer
-        elif self.action == "partial_update":
+        elif self.action in ["update", "partial_update"]:
             return AuctionUpdateSerializer
         elif self.action == "retrieve":
             return AuctionDetailSerializer
@@ -153,29 +178,57 @@ class AuctionViewSet(viewsets.ModelViewSet):
                 status_filter = self.request.query_params.get("status")
                 if status_filter:
                     qs = qs.filter(status=status_filter)
+                qs = self._filter_by_room_param(qs)
             return qs
         else:
             if self.action in [
                 "my_auctions",
                 "cancel",
+                "update",
                 "partial_update",
                 "destroy",
             ]:
-                return self._base_queryset().filter(
+                qs = self._base_queryset().filter(
                     owner=self.request.user.active_profile
                 )
+                if self.action == "my_auctions":
+                    qs = self._filter_by_room_param(qs)
+                return qs
 
             # Public listings only show published auctions
             if self.action in ["list", "active", "ended"]:
-                return self._base_queryset().filter(is_visible=True)
+                return self._filter_by_room_param(
+                    self._base_queryset().filter(is_visible=True)
+                )
             if self.action == "retrieve":
                 return self._base_queryset()
 
         return self._base_queryset()
 
+    def _filter_by_room_param(self, queryset):
+        room_param = self.request.query_params.get("room")
+        if room_param in (None, ""):
+            room_param = self.request.query_params.get("room_id")
+        if room_param in (None, ""):
+            return queryset
+        try:
+            room_id = int(room_param)
+        except (TypeError, ValueError):
+            raise ValidationError(
+                {"room": _("Room filter must be a valid integer id.")}
+            )
+        if room_id < 1:
+            raise ValidationError(
+                {"room": _("Room filter must be a positive integer id.")}
+            )
+        return queryset.filter(
+            room_id=room_id,
+            room__deleted__isnull=True,
+        )
+
     def _base_queryset(self):
         return (
-            Auction.objects.select_related("owner", "owner__sellerprofile")
+            Auction.objects.select_related("owner", "owner__sellerprofile", "room")
             .prefetch_related(
                 "items",
                 "items__bird",
@@ -200,6 +253,10 @@ class AuctionViewSet(viewsets.ModelViewSet):
 
         auction = Auction(
             owner=self.request.user.active_profile,
+            room=validated_data.get("room"),
+            shipping_method=validated_data.get("shipping_method"),
+            min_shipping_days=validated_data.get("min_shipping_days"),
+            max_shipping_days=validated_data.get("max_shipping_days"),
             title=validated_data["title"],
             description=validated_data.get("description", ""),
             auction_type=validated_data["auction_type"],
@@ -251,6 +308,9 @@ class AuctionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(auction)
         return Response(serializer.data)
 
+    def update(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
     def partial_update(self, request, *args, **kwargs):
 
         auction = self.get_object()
@@ -297,7 +357,7 @@ class AuctionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def active(self, request):
         """Get all active auctions"""
-        queryset = (
+        queryset = self._filter_by_room_param(
             self._base_queryset()
             .filter(
                 is_visible=True,
@@ -678,3 +738,31 @@ class AuctionEventViewSet(viewsets.ReadOnlyModelViewSet):
         if auction_id:
             queryset = queryset.filter(auction_id=auction_id)
         return queryset
+
+
+@extend_schema_view(
+    retrieve=extend_schema(
+        tags=["Auctions"],
+        responses={200: AuctionSellerPaymentDetailsSerializer},
+    )
+)
+class AuctionSellerPaymentDetailsViewSet(viewsets.GenericViewSet):
+    """
+    Private winner-only endpoint returning seller payment coordination details
+    after an auction has ended and a winning buyer has been determined.
+    """
+
+    permission_resource = "AUCTION"
+    queryset = Auction.objects.all()
+    serializer_class = AuctionSellerPaymentDetailsSerializer
+    permission_classes = [IsAuthenticated, HasAppAccess, IsNotManagerProfile]
+
+    def retrieve(self, request, *args, **kwargs):
+        payload = AuctionService.get_seller_payment_details_for_winner(
+            auction_id=self.kwargs["pk"],
+            user=request.user,
+        )
+        serializer = self.get_serializer(payload)
+        response = Response(serializer.data, status=status.HTTP_200_OK)
+        response["Cache-Control"] = "private, no-store"
+        return response

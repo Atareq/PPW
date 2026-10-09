@@ -16,6 +16,7 @@ from apps.feed.views import (
 
 CREATE_ACTION = {"post": "create"}
 LIST_ACTION = {"get": "list"}
+RETRIEVE_ACTION = {"get": "retrieve"}
 LIST_CREATE_ACTION = {"get": "list", "post": "create"}
 DESTROY_ACTION = {"delete": "destroy"}
 
@@ -36,6 +37,11 @@ urlpatterns = [
         "sellers/",
         SellerDiscoveryViewSet.as_view(LIST_ACTION),
         name="seller-discovery",
+    ),
+    path(
+        "sellers/<int:pk>/",
+        SellerDiscoveryViewSet.as_view(RETRIEVE_ACTION),
+        name="seller-detail",
     ),
     path(
         "sellers/<int:seller_id>/follow/",

@@ -68,14 +68,9 @@ class CustomerRegisterSerializer(PhoneValidationMixin, serializers.ModelSerializ
                 actor=customer_profile,
                 profile=customer_profile,
             )
-            from apps.draws.services import WeeklyDrawEntryService
             from apps.promotions.services import OnboardingHighlightBenefitService
 
             OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding(
-                user=user,
-                profile=customer_profile,
-            )
-            WeeklyDrawEntryService.ensure_for_first_profile_onboarding(
                 user=user,
                 profile=customer_profile,
             )

@@ -1,13 +1,14 @@
 from django.db import transaction
+from django.db.models import Q
 from django.http import Http404
 from django.utils.translation import gettext as _
 from rest_framework import permissions, status, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.authentication.services import switch_user_profile
 from apps.general.authorizations import HasAppAccess
-from apps.general.permissions import IsSuperUser
+from apps.general.permissions import IsNotManagerProfile, IsSuperUser
 from apps.users.constants import ProfileType
 from apps.users.manager_permissions import get_manager_permission_groups
 from apps.users.models import (
@@ -15,6 +16,8 @@ from apps.users.models import (
     ManagerProfile,
     ProfileBalanceTransaction,
     SellerProfile,
+    SellerRoom,
+    SellerRoomFollow,
 )
 from apps.users.serializers import (
     CustomerProfileAdminSerializer,
@@ -27,7 +30,13 @@ from apps.users.serializers import (
     ProfileBalanceTransactionSerializer,
     SellerProfileAdminSerializer,
     SellerProfileMobileSerializer,
+    SellerRoomFollowActionSerializer,
+    SellerRoomFollowSerializer,
+    SellerRoomPublicSerializer,
+    SellerRoomSerializer,
+    SellerRoomUnfollowResponseSerializer,
 )
+from apps.users.services import SellerRoomFollowService, SellerRoomService
 
 
 class SellerProfileAdminViewSet(viewsets.ModelViewSet):
@@ -212,14 +221,9 @@ class SellerProfileMobileViewSet(viewsets.ModelViewSet):
             actor=seller_profile,
             profile=seller_profile,
         )
-        from apps.draws.services import WeeklyDrawEntryService
         from apps.promotions.services import OnboardingHighlightBenefitService
 
         OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding(
-            user=user,
-            profile=seller_profile,
-        )
-        WeeklyDrawEntryService.ensure_for_first_profile_onboarding(
             user=user,
             profile=seller_profile,
         )
@@ -277,7 +281,6 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
         response = super().create(request, *args, **kwargs)
         customer_profile = self.get_queryset().first()
         if customer_profile is not None:
-            from apps.draws.services import WeeklyDrawEntryService
             from apps.loyalty.constants import RewardEventType
             from apps.loyalty.reward_engine import RewardEngine
             from apps.promotions.services import OnboardingHighlightBenefitService
@@ -288,10 +291,6 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
                 profile=customer_profile,
             )
             OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding(
-                user=request.user,
-                profile=customer_profile,
-            )
-            WeeklyDrawEntryService.ensure_for_first_profile_onboarding(
                 user=request.user,
                 profile=customer_profile,
             )
@@ -325,3 +324,150 @@ class CustomerProfileMobileViewSet(viewsets.ModelViewSet):
             instance.is_active = False
             instance.is_valid = False
         instance.delete()
+
+
+class SellerRoomViewSet(viewsets.ModelViewSet):
+    """Seller-owned room CRUD and public room retrieval (BE-ROOM-01)."""
+
+    permission_classes = [permissions.IsAuthenticated, HasAppAccess]
+    permission_resource = "SELLER_ROOM"
+    permission_owner_field = "seller_id"
+    allow_scoped_read_access = True
+    serializer_class = SellerRoomSerializer
+    queryset = (
+        SellerRoom.objects.select_related("seller")
+        .filter(deleted__isnull=True)
+        .order_by("-created", "-id")
+    )
+
+    def get_serializer_class(self):
+        if self.action in {"list", "retrieve"}:
+            return SellerRoomPublicSerializer
+        return SellerRoomSerializer
+
+    def get_queryset(self):
+        base_qs = (
+            SellerRoom.objects.select_related("seller")
+            .filter(deleted__isnull=True)
+            .order_by("-created", "-id")
+        )
+        user = self.request.user
+        role = getattr(user, "role", None)
+
+        if self.action == "list":
+            seller_param = self.request.query_params.get(
+                "seller"
+            ) or self.request.query_params.get("seller_id")
+            if seller_param is not None:
+                try:
+                    seller_id = int(seller_param)
+                    if seller_id <= 0:
+                        raise ValueError
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError(
+                        {"seller": [_("Invalid seller id.")]}
+                    ) from exc
+                if (
+                    role == ProfileType.SELLER
+                    and user.active_profile.pk == seller_id
+                ):
+                    return SellerRoomService.rooms_for_owner(seller_id)
+                return SellerRoomService.public_rooms_for_seller(seller_id)
+
+            if role == ProfileType.SELLER:
+                return SellerRoomService.rooms_for_owner(user.active_profile)
+
+            return base_qs.filter(
+                seller__deleted__isnull=True,
+                seller__is_active=True,
+                seller__activated=True,
+                seller__is_valid=True,
+            )
+
+        if self.action == "retrieve":
+            if role == ProfileType.SELLER:
+                return base_qs.filter(
+                    Q(seller=user.active_profile)
+                    | Q(
+                        seller__deleted__isnull=True,
+                        seller__is_active=True,
+                        seller__activated=True,
+                        seller__is_valid=True,
+                    )
+                )
+            return base_qs.filter(
+                seller__deleted__isnull=True,
+                seller__is_active=True,
+                seller__activated=True,
+                seller__is_valid=True,
+            )
+
+        return base_qs
+
+    def perform_create(self, serializer):
+        serializer.instance = SellerRoomService.create_room(
+            user=self.request.user,
+            validated_data=serializer.validated_data,
+        )
+
+    def perform_update(self, serializer):
+        serializer.instance = SellerRoomService.update_room(
+            room=serializer.instance,
+            user=self.request.user,
+            validated_data=serializer.validated_data,
+        )
+
+    def perform_destroy(self, instance):
+        SellerRoomService.delete_room(
+            room=instance,
+            user=self.request.user,
+        )
+
+
+class SellerRoomFollowViewSet(viewsets.GenericViewSet):
+    """Idempotently follow a public seller room at the UserAccount level (BE-ROOM-01)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsNotManagerProfile]
+    queryset = SellerRoomFollow.objects.all()
+    serializer_class = SellerRoomFollowSerializer
+    http_method_names = ["post"]
+
+    def create(self, request, *args, **kwargs):
+        action_serializer = SellerRoomFollowActionSerializer(data=request.data)
+        action_serializer.is_valid(raise_exception=True)
+        follow = SellerRoomFollowService.follow(
+            user=request.user,
+            room_id=kwargs["pk"],
+        )
+        return Response(
+            SellerRoomFollowSerializer(
+                follow,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class SellerRoomUnfollowViewSet(viewsets.GenericViewSet):
+    """Idempotently unfollow a seller room at the UserAccount level (BE-ROOM-01)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsNotManagerProfile]
+    queryset = SellerRoomFollow.objects.all()
+    serializer_class = SellerRoomUnfollowResponseSerializer
+    http_method_names = ["post"]
+
+    def create(self, request, *args, **kwargs):
+        action_serializer = SellerRoomFollowActionSerializer(data=request.data)
+        action_serializer.is_valid(raise_exception=True)
+        room = SellerRoomFollowService.unfollow(
+            user=request.user,
+            room_id=kwargs["pk"],
+        )
+        return Response(
+            {
+                "room_id": room.pk,
+                "is_followed": False,
+            },
+            status=status.HTTP_200_OK,
+        )
+

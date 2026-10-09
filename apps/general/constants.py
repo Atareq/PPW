@@ -123,6 +123,18 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "ANNOUNCEMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_ROOM": [
+        "list",
+        "retrieve",
+        "create",
+        "update",
+        "partial_update",
+        "destroy",
+    ],
 }
 
 CUSTOMER_PERMISSIONS = {
@@ -252,5 +264,13 @@ CUSTOMER_PERMISSIONS = {
     "NOTIFICATION": [
         "list",
         "create",
+    ],
+    "ANNOUNCEMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_ROOM": [
+        "list",
+        "retrieve",
     ],
 }

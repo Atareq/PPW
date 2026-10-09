@@ -33,19 +33,14 @@ class WeeklyDrawEntryStatus(models.TextChoices):
 
 
 class WeeklyDraw(BaseModel):
-    """Scheduled weekly onboarding draw window (BE-DRW-01 & BE-DRW-02).
+    """Historical weekly onboarding draw table retained for migration compatibility (BE-DRW-CANCEL-01).
 
-    Invariants:
-    - Canonical active window is half-open `[starts_at, ends_at)`:
-      `starts_at <= now < ends_at`.
-    - `starts_at < ends_at` is enforced at serializer, service, model, and DB levels.
-    - Non-deleted `OPEN` draws cannot have overlapping `[starts_at, ends_at)` windows.
-    - Once a draw has started (`now >= starts_at`), has assigned entries, or is
-      `CLOSED`/`FINALIZED`, its schedule fields (`starts_at`, `ends_at`) are locked.
-    - A draw can become `CLOSED` only when `now >= ends_at`, freezing its
-      `ASSIGNED` participant set.
-    - A draw that is `CLOSED`, `FINALIZED`, or has assigned entries cannot be
-      deleted (`ProtectedError`).
+    Product decision (BE-DRW-CANCEL-01):
+    - The weekly onboarding draw feature is cancelled completely.
+    - No runtime endpoints, onboarding hooks, winner selection, prizes, or
+      notifications are active.
+    - Historical models and migrations are retained so existing databases and
+      committed migration history remain intact without destructive table drops.
     """
 
     title = models.CharField(max_length=150, blank=True, default="")
@@ -235,15 +230,11 @@ class WeeklyDraw(BaseModel):
 
 
 class WeeklyDrawEntry(BaseModel):
-    """Account-level onboarding entry in a weekly draw (BE-DRW-01 & BE-DRW-02).
+    """Historical onboarding weekly draw entry table retained for migration compatibility (BE-DRW-CANCEL-01).
 
-    Invariants:
-    - Owned by `UserAccount` (one `ONBOARDING` entry per `UserAccount`).
-    - `idempotency_key` is `draw:onboarding:user:{user_id}` (unique).
-    - If no eligible draw exists at onboarding, `status=PENDING`, `draw=None`,
-      `assigned_at=None`.
-    - Once assigned (`status=ASSIGNED`, `draw` set, `assigned_at` set), the entry
-      cannot be reassigned to another draw, reverted to `PENDING`, or deleted.
+    Product decision (BE-DRW-CANCEL-01):
+    - The weekly onboarding draw feature is cancelled completely.
+    - Account/profile onboarding no longer creates `WeeklyDrawEntry` rows.
     """
 
     draw = models.ForeignKey(

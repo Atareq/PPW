@@ -721,14 +721,6 @@ def test_21_season_pp_payout_creates_one_pp_notification_and_zero_prize_notifica
 
 
 def test_22_onboarding_creates_one_pp_notification_and_one_badge_notification_and_zero_draw_notifications():
-    now = timezone.now()
-    WeeklyDraw.objects.create(
-        title="Active Weekly Draw",
-        starts_at=now - timedelta(days=1),
-        ends_at=now + timedelta(days=6),
-        status=WeeklyDrawStatus.OPEN,
-    )
-
     payload = customer_registration_payload(phone_number="+201099887766")
     payload["username"] = "onboard_notif_user"
     response = APIClient().post(
@@ -740,7 +732,7 @@ def test_22_onboarding_creates_one_pp_notification_and_one_badge_notification_an
 
     user = UserAccount.objects.get(username="onboard_notif_user")
     customer = CustomerProfile.objects.get(user=user)
-    assert WeeklyDrawEntry.objects.filter(user=user).count() == 1
+    assert WeeklyDrawEntry.objects.filter(user=user).count() == 0
 
     user_notifs = Notification.objects.filter(recipient_profile=customer)
     assert user_notifs.filter(
@@ -1287,27 +1279,24 @@ def test_39_no_dnd_or_preference_filtering_models_exist_before_be_not_02():
         model.__name__
         for model in django_apps.get_app_config("notifications").get_models()
     }
-    assert notif_models == {"Notification", "PushDevice"}
+    assert notif_models == {
+        "Notification",
+        "PushDevice",
+        "NotificationPreference",
+    }
+
 
 
 def test_40_no_weekly_draw_winner_notification_occurs_while_be_drw_02_blocked():
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-    now = timezone.now()
-    draw = WeeklyDraw.objects.create(
-        title="Weekly Onboarding Draw",
-        starts_at=now - timedelta(days=7),
-        ends_at=now + timedelta(days=1),
-        status=WeeklyDrawStatus.OPEN,
-    )
-    WeeklyDrawEntryService.ensure_for_onboarding(user, profile=user.active_profile)
-    WeeklyDraw.objects.filter(pk=draw.pk).update(
-        ends_at=now - timedelta(hours=1)
-    )
-    draw.refresh_from_db()
     Notification.objects.all().delete()
 
-    WeeklyDrawService.finalize_draw(draw)
+    entry = WeeklyDrawEntryService.ensure_for_onboarding(
+        user, profile=user.active_profile
+    )
 
+    assert entry is None
+    assert WeeklyDrawEntry.objects.filter(user=user).count() == 0
     assert Notification.objects.count() == 0
 
 
@@ -1343,4 +1332,196 @@ def test_42_no_historical_backfill_or_new_migrations_exist():
 
     call_command("makemigrations", "--check", "--dry-run", verbosity=0)
     assert Notification.objects.count() == 0
+
+
+def test_43_referral_challenge_iphone_and_airpods_get_one_notification_and_blocked_annual_loft_gets_zero():
+    now = timezone.now()
+    _, manager_profile = make_manager()
+    challenge = ReferralChallengeService.create_challenge(
+        name="Top 3 Referral Challenge",
+        starts_at=now - timedelta(days=30),
+        ends_at=now - timedelta(hours=1),
+        created_by=manager_profile.user,
+    )
+    inviter1 = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    inviter2 = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    inviter3 = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+    for inviter, count in ((inviter1, 3), (inviter2, 2), (inviter3, 1)):
+        for _ in range(count):
+            code_obj = ReferralService.create_code(inviter.active_profile)
+            referred = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+            referral = ReferralService.redeem_code(
+                referred.active_profile,
+                code_obj.code,
+            )
+            type(referral).objects.filter(pk=referral.pk).update(
+                redeemed_at=challenge.starts_at + timedelta(days=1)
+            )
+            ReferralService.approve(referral.pk, manager_profile.user)
+
+    Notification.objects.all().delete()
+
+    ReferralChallengeService.finalize(challenge.pk, manager_profile.user)
+
+    # Rank 1 (IPHONE) -> 1 PRIZE_AWARDED notification
+    r1_award = PrizeAward.objects.get(
+        user=inviter1,
+        source_type=PrizeAwardSourceType.REFERRAL_CHALLENGE,
+    )
+    r1_notifs = Notification.objects.filter(
+        recipient_profile=inviter1.active_profile,
+        notification_type=NotificationType.PRIZE_AWARDED,
+    )
+    assert r1_notifs.count() == 1
+    assert r1_notifs.first().object_id == r1_award.pk
+    assert r1_award.prize_snapshot["prize_code"] == "IPHONE"
+
+    # Rank 2 (AIRPODS) -> 1 PRIZE_AWARDED notification
+    r2_award = PrizeAward.objects.get(
+        user=inviter2,
+        source_type=PrizeAwardSourceType.REFERRAL_CHALLENGE,
+    )
+    r2_notifs = Notification.objects.filter(
+        recipient_profile=inviter2.active_profile,
+        notification_type=NotificationType.PRIZE_AWARDED,
+    )
+    assert r2_notifs.count() == 1
+    assert r2_notifs.first().object_id == r2_award.pk
+    assert r2_award.prize_snapshot["prize_code"] == "AIRPODS"
+
+    # Rank 3 (ANNUAL_LOFT_SUBSCRIPTION) -> still BLOCKED -> 0 notifications
+    assert not PrizeAward.objects.filter(
+        user=inviter3,
+        source_type=PrizeAwardSourceType.REFERRAL_CHALLENGE,
+    ).exists()
+    assert (
+        Notification.objects.filter(
+            recipient_profile=inviter3.active_profile,
+        ).count()
+        == 0
+    )
+    assert Notification.objects.count() == 2
+
+
+def test_44_lucky_wheel_no_prize_spin_creates_zero_notifications():
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    profile = user.active_profile
+    LuckyWheelGrantService.grant_attempt(
+        profile=profile,
+        source_type=LuckyWheelGrantSourceType.AUCTION_COMPLETED,
+        source_id="deal-44",
+        idempotency_key="lw:grant:44",
+    )
+    LuckyWheelPrize.objects.create(
+        label="Try Again",
+        prize_type=LuckyWheelPrizeType.NO_PRIZE,
+        weight=1,
+        is_active=True,
+    )
+    Notification.objects.all().delete()
+
+    spin, extra = LuckyWheelSpinService.spin(user, profile, "lw:spin:44")
+
+    assert spin.prize_snapshot["prize_type"] == LuckyWheelPrizeType.NO_PRIZE
+    assert extra is None
+    assert PrizeAward.objects.count() == 0
+    assert Notification.objects.count() == 0
+
+
+def test_45_lucky_wheel_spin_retry_does_not_duplicate_notification():
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    profile = user.active_profile
+    LuckyWheelGrantService.grant_attempt(
+        profile=profile,
+        source_type=LuckyWheelGrantSourceType.AUCTION_COMPLETED,
+        source_id="deal-45",
+        idempotency_key="lw:grant:45",
+    )
+    LuckyWheelPrize.objects.create(
+        label="75 PP Coins",
+        prize_type=LuckyWheelPrizeType.PP_COINS,
+        points_amount=75,
+        weight=1,
+        is_active=True,
+    )
+    Notification.objects.all().delete()
+
+    spin1, _ = LuckyWheelSpinService.spin(user, profile, "lw:spin:45:retry")
+    spin2, _ = LuckyWheelSpinService.spin(user, profile, "lw:spin:45:retry")
+
+    assert spin1.pk == spin2.pk
+    assert (
+        Notification.objects.filter(
+            recipient_profile=profile,
+            notification_type=NotificationType.POINTS_EARNED,
+        ).count()
+        == 1
+    )
+    assert Notification.objects.count() == 1
+
+
+def test_46_savepoint_safe_integrity_error_recovery_inside_outer_atomic_block(
+    monkeypatch,
+):
+    from django.db import IntegrityError, transaction
+
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    profile = user.active_profile
+
+    existing_notif = NotificationService.create_notification(
+        recipient_profile=profile,
+        notification_type=NotificationType.POINTS_EARNED,
+        title="Existing",
+        body="Existing body",
+        idempotency_key="audit:savepoint:notif:1",
+    )
+
+    real_filter = Notification.objects.filter
+
+    def race_first_lookup(*args, **kwargs):
+        qs = real_filter(*args, **kwargs)
+        if kwargs.get("idempotency_key") == "audit:savepoint:notif:1":
+            monkeypatch.setattr(Notification.objects, "filter", real_filter)
+            return Notification.objects.none()
+        return qs
+
+    monkeypatch.setattr(Notification.objects, "filter", race_first_lookup)
+
+    with transaction.atomic():
+        recovered = NotificationService.create_notification(
+            recipient_profile=profile,
+            notification_type=NotificationType.POINTS_EARNED,
+            title="Concurrent",
+            body="Concurrent body",
+            idempotency_key="audit:savepoint:notif:1",
+        )
+        assert recovered.pk == existing_notif.pk
+        assert Notification.objects.filter(pk=existing_notif.pk).exists()
+
+    existing_badge = BadgeService.award_badge(
+        profile,
+        BadgeType.WELCOME_BUYER,
+        idempotency_key="audit:savepoint:badge:1",
+    )
+    real_badge_filter = BadgeAward.objects.filter
+
+    def race_badge_lookup(*args, **kwargs):
+        qs = real_badge_filter(*args, **kwargs)
+        if kwargs.get("idempotency_key") == "audit:savepoint:badge:1":
+            monkeypatch.setattr(BadgeAward.objects, "filter", real_badge_filter)
+            return BadgeAward.objects.none()
+        return qs
+
+    monkeypatch.setattr(BadgeAward.objects, "filter", race_badge_lookup)
+
+    with transaction.atomic():
+        recovered_badge = BadgeService.award_badge(
+            profile,
+            BadgeType.WELCOME_BUYER,
+            idempotency_key="audit:savepoint:badge:1",
+        )
+        assert recovered_badge.pk == existing_badge.pk
+        assert BadgeAward.objects.filter(pk=existing_badge.pk).exists()
+
 

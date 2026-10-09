@@ -196,11 +196,10 @@ def test_04_onboarding_creates_weekly_draw_entry_instead_of_lucky_wheel_grant():
     assert not LuckyWheelGrant.objects.filter(
         source_type=LuckyWheelGrantSourceType.ONBOARDING
     ).exists()
-    entry = WeeklyDrawEntry.objects.get(
+    assert not WeeklyDrawEntry.objects.filter(
         user__username="lw01-draw-not-wheel",
         source=WeeklyDrawEntrySource.ONBOARDING,
-    )
-    assert entry.pk is not None
+    ).exists()
 
 
 def test_05_and_06_historical_onboarding_lucky_wheel_grants_remain_readable_and_unaffected():
@@ -902,7 +901,7 @@ def test_38_to_45_cross_epic_rewards_referrals_seasons_promotions_draws_and_hist
     )
 
     # New registration triggers BE-REW-02 (100 PP), BE-PRO-03/03A (20% highlight discount),
-    # and BE-DRW-01 (WeeklyDrawEntry), and 0 LuckyWheelGrants
+    # 0 WeeklyDrawEntries (BE-DRW-CANCEL-01), and 0 LuckyWheelGrants
     payload = customer_registration_payload(phone_number="+201009998879")
     payload["username"] = "lw01-full-onboarding-check"
     reg = auth_client().post("/api/auth/register/customer/", payload, format="json")
@@ -920,7 +919,7 @@ def test_38_to_45_cross_epic_rewards_referrals_seasons_promotions_draws_and_hist
     assert WeeklyDrawEntry.objects.filter(
         user__username="lw01-full-onboarding-check",
         source=WeeklyDrawEntrySource.ONBOARDING,
-    ).count() == 1
+    ).count() == 0
     assert not LuckyWheelGrant.objects.filter(
         user__username="lw01-full-onboarding-check"
     ).exists()

@@ -238,8 +238,8 @@ def test_lucky_wheel_onboarding_attempts_are_unchanged():
         profile=seller_profile,
     )
 
-    # BE-DRW-01: account onboarding grants one account-level WeeklyDrawEntry
-    # instead of a profile-scoped LuckyWheelGrant.
+    # BE-LW-01 & BE-DRW-CANCEL-01: account onboarding grants 0 LuckyWheelGrant rows
+    # and 0 WeeklyDrawEntry rows (weekly onboarding draw cancelled).
     grants = LuckyWheelGrant.objects.filter(
         user=user,
         source_type=LuckyWheelGrantSourceType.ONBOARDING,
@@ -249,6 +249,6 @@ def test_lucky_wheel_onboarding_attempts_are_unchanged():
         user=user,
         source=WeeklyDrawEntrySource.ONBOARDING,
     )
-    assert entries.count() == 1
-    assert entries.get().metadata["onboarding_profile_id"] == customer_profile.pk
+    assert entries.count() == 0
+    assert customer_profile.pk is not None
     assert PointService.get_balance(user) == 100
