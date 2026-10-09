@@ -76,6 +76,7 @@ class SellerPackageSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_blank=True,
     )
+    pricing_snapshot = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = SellerPackage
@@ -94,10 +95,14 @@ class SellerPackageSerializer(serializers.ModelSerializer):
             "expires_at",
             "invalidated_at",
             "status",
+            "pricing_snapshot",
             "created",
             "modified",
         ]
         read_only_fields = fields
+
+    def get_pricing_snapshot(self, obj) -> dict | None:
+        return obj.pricing_snapshot
 
 
 class SellerPackageActiveSerializer(serializers.ModelSerializer):

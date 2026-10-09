@@ -16,6 +16,7 @@ from apps.auctions.models import (
     Bid,
 )
 from apps.authentication.models import UserAccount
+from apps.deals.models import CompletedDeal, CompletedDealSourceType, CompletedDealType
 from apps.general.models import AssetMedia
 from apps.loyalty.constants import BadgeType, PointTransactionType
 from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
@@ -589,6 +590,28 @@ class BidFactory(factory.django.DjangoModelFactory):
         base_amount = self.item.current_price or self.item.starting_price
         increment = self.item.auction.min_bid_increment or Decimal("1.00")
         return Decimal(base_amount) + Decimal(increment)
+
+
+class CompletedDealFactory(factory.django.DjangoModelFactory):
+    """A recorded market deal; source ids are synthetic unless given."""
+
+    class Meta:
+        model = CompletedDeal
+
+    deal_type = CompletedDealType.MARKET
+    source_type = CompletedDealSourceType.ORDER_ITEM
+    source_id = factory.Sequence(lambda n: 100000 + n)
+    buyer_profile = factory.SubFactory(CustomerProfileFactory)
+    buyer_user = factory.SelfAttribute("buyer_profile.user")
+    seller_profile = factory.SubFactory(SellerProfileFactory)
+    seller_user = factory.SelfAttribute("seller_profile.user")
+    asset = factory.SubFactory(
+        SupplyFactory,
+        owner=factory.SelfAttribute("..seller_profile"),
+    )
+    amount = Decimal("10.00")
+    currency = CurrencyOptions.EGP
+    completed_at = factory.LazyFunction(timezone.now)
 
 
 # ============================================================================

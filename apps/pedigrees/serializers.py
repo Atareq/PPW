@@ -1,3 +1,5 @@
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -14,6 +16,7 @@ from apps.pedigrees.models import (
     PedigreeBirdOwnershipStatus,
     PedigreeBirdSex,
     PedigreeDocument,
+    RegisteredPedigree,
 )
 from apps.pedigrees.services import PedigreeBirdValidator
 
@@ -272,6 +275,47 @@ class PedigreeBirdSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data["owner"] = self.context["request"].user.active_profile
         return super().create(validated_data)
+
+
+class RegisteredPedigreeSerializer(serializers.ModelSerializer):
+    """User-facing view; never exposes other accounts' assignments."""
+
+    class Meta:
+        model = RegisteredPedigree
+        fields = ["id", "pedigree_id", "is_public"]
+        read_only_fields = fields
+
+
+class RegisteredPedigreeAdminSerializer(serializers.ModelSerializer):
+    """Manager CRUD; `user_ids` is the full desired private-access set."""
+
+    user_ids = serializers.PrimaryKeyRelatedField(
+        source="users",
+        many=True,
+        queryset=get_user_model().objects.all(),
+        required=False,
+    )
+
+    class Meta:
+        model = RegisteredPedigree
+        fields = [
+            "id",
+            "pedigree_id",
+            "is_public",
+            "user_ids",
+            "created",
+            "modified",
+        ]
+        read_only_fields = ["id", "created", "modified"]
+
+    @transaction.atomic
+    def create(self, validated_data):
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        # ModelSerializer only calls users.set() when user_ids was sent.
+        return super().update(instance, validated_data)
 
 
 class PedigreeReportGenerateSerializer(serializers.Serializer):

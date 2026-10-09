@@ -162,40 +162,150 @@ class LuckyWheelPrize(BaseModel):
     def clean(self):
         super().clean()
         errors = {}
+        if (
+            self.weight is None
+            or isinstance(self.weight, bool)
+            or self.weight <= 0
+        ):
+            errors["weight"] = _("Prize weight must be greater than 0.")
+
+        if (
+            self.prize_type != LuckyWheelPrizeType.PP_COINS
+            and self.points_amount == 0
+        ):
+            self.points_amount = None
+
+        has_points = self.points_amount is not None
         reward_fields = [
             bool(self.points_amount),
             bool(self.discount_offer_id),
             bool(self.cashback_offer_id),
             bool(self.badge_type),
         ]
+
         if self.prize_type == LuckyWheelPrizeType.PP_COINS:
-            if not self.points_amount:
-                errors["points_amount"] = "PP coin prizes require points amount."
+            if (
+                self.points_amount is None
+                or isinstance(self.points_amount, bool)
+                or self.points_amount <= 0
+            ):
+                errors["points_amount"] = _(
+                    "PP coin prizes require points amount."
+                )
+            if self.discount_offer_id is not None:
+                errors["discount_offer"] = _(
+                    "PP coin prizes cannot define a discount offer."
+                )
+            if self.cashback_offer_id is not None:
+                errors["cashback_offer"] = _(
+                    "PP coin prizes cannot define a cashback offer."
+                )
+            if self.badge_type:
+                errors["badge_type"] = _(
+                    "PP coin prizes cannot define a badge type."
+                )
         elif self.prize_type == LuckyWheelPrizeType.DISCOUNT_OFFER:
             if not self.discount_offer_id:
-                errors["discount_offer"] = "Discount offer prize requires an offer."
+                errors["discount_offer"] = _(
+                    "Discount offer prize requires an offer."
+                )
+            elif (
+                self.discount_offer.deleted is not None
+                or not self.discount_offer.is_active
+            ):
+                errors["discount_offer"] = _(
+                    "Discount offer must be active."
+                )
             elif self.discount_offer.trigger_type != OfferTriggerType.LUCKY_WHEEL:
-                errors["discount_offer"] = "Offer trigger type must be lucky_wheel."
+                errors["discount_offer"] = _(
+                    "Offer trigger type must be lucky_wheel."
+                )
+            if has_points:
+                errors["points_amount"] = _(
+                    "Discount offer prizes cannot define points amount."
+                )
+            if self.cashback_offer_id is not None:
+                errors["cashback_offer"] = _(
+                    "Discount offer prizes cannot define a cashback offer."
+                )
+            if self.badge_type:
+                errors["badge_type"] = _(
+                    "Discount offer prizes cannot define a badge type."
+                )
         elif self.prize_type == LuckyWheelPrizeType.CASHBACK_OFFER:
             if not self.cashback_offer_id:
-                errors["cashback_offer"] = "Cashback offer prize requires an offer."
+                errors["cashback_offer"] = _(
+                    "Cashback offer prize requires an offer."
+                )
+            elif (
+                self.cashback_offer.deleted is not None
+                or not self.cashback_offer.is_active
+            ):
+                errors["cashback_offer"] = _(
+                    "Cashback offer must be active."
+                )
             elif self.cashback_offer.trigger_type != OfferTriggerType.LUCKY_WHEEL:
-                errors["cashback_offer"] = "Offer trigger type must be lucky_wheel."
+                errors["cashback_offer"] = _(
+                    "Offer trigger type must be lucky_wheel."
+                )
+            if has_points:
+                errors["points_amount"] = _(
+                    "Cashback offer prizes cannot define points amount."
+                )
+            if self.discount_offer_id is not None:
+                errors["discount_offer"] = _(
+                    "Cashback offer prizes cannot define a discount offer."
+                )
+            if self.badge_type:
+                errors["badge_type"] = _(
+                    "Cashback offer prizes cannot define a badge type."
+                )
         elif self.prize_type == LuckyWheelPrizeType.BADGE:
             if not self.badge_type:
-                errors["badge_type"] = "Badge prize requires badge type."
+                errors["badge_type"] = _("Badge prize requires badge type.")
             elif self.badge_type not in BadgeType.values:
-                errors["badge_type"] = "Badge type is not in BadgeType."
+                errors["badge_type"] = _("Badge type is not in BadgeType.")
+            if has_points:
+                errors["points_amount"] = _(
+                    "Badge prizes cannot define points amount."
+                )
+            if self.discount_offer_id is not None:
+                errors["discount_offer"] = _(
+                    "Badge prizes cannot define a discount offer."
+                )
+            if self.cashback_offer_id is not None:
+                errors["cashback_offer"] = _(
+                    "Badge prizes cannot define a cashback offer."
+                )
         elif self.prize_type == LuckyWheelPrizeType.NO_PRIZE:
             if any(reward_fields):
-                errors["detail"] = "No-prize rows cannot define reward fields."
-        if (
-            self.quantity_total is not None
-            and self.quantity_awarded > self.quantity_total
-        ):
-            errors["quantity_awarded"] = (
-                "Quantity awarded cannot exceed quantity total."
-            )
+                errors["detail"] = _(
+                    "No-prize rows cannot define reward fields."
+                )
+        else:
+            errors["prize_type"] = _("Unsupported prize type.")
+
+        if self.quantity_total is not None:
+            if isinstance(self.quantity_total, bool) or self.quantity_total <= 0:
+                errors["quantity_total"] = _(
+                    "Quantity total must be greater than 0 when specified."
+                )
+            elif self.quantity_awarded > self.quantity_total:
+                msg = _("Quantity awarded cannot exceed quantity total.")
+                errors["quantity_awarded"] = msg
+                errors["quantity_total"] = msg
+
+        if isinstance(self.metadata, dict) and "validity_days" in self.metadata:
+            validity_days = self.metadata.get("validity_days")
+            if validity_days is not None and (
+                isinstance(validity_days, bool)
+                or not isinstance(validity_days, int)
+                or validity_days <= 0
+            ):
+                errors["metadata"] = _(
+                    "Prize validity days must be a positive integer."
+                )
+
         if errors:
             raise ValidationError(errors)
 

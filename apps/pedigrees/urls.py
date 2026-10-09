@@ -9,6 +9,7 @@ from apps.pedigrees.views import (
     PedigreeReportListProxyViewSet,
     PedigreeReportSchemaProxyViewSet,
     PedigreeReportStyleParametersProxyViewSet,
+    RegisteredPedigreeViewSet,
 )
 
 CREATE_ACTION = {"post": "create"}
@@ -34,6 +35,16 @@ urlpatterns = [
         "birds/<int:pk>/",
         PedigreeBirdViewSet.as_view(RETRIEVE_UPDATE_DESTROY_ACTION),
         name="pedigree-bird-detail",
+    ),
+    path(
+        "registered/",
+        RegisteredPedigreeViewSet.as_view(LIST_CREATE_ACTION),
+        name="registered-pedigree-list",
+    ),
+    path(
+        "registered/<int:pk>/",
+        RegisteredPedigreeViewSet.as_view(RETRIEVE_UPDATE_DESTROY_ACTION),
+        name="registered-pedigree-detail",
     ),
     path(
         "templates/",

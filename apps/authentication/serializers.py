@@ -68,9 +68,12 @@ class CustomerRegisterSerializer(PhoneValidationMixin, serializers.ModelSerializ
                 actor=customer_profile,
                 profile=customer_profile,
             )
-            from apps.lucky_wheel.services import LuckyWheelGrantService
+            from apps.promotions.services import OnboardingHighlightBenefitService
 
-            LuckyWheelGrantService.grant_onboarding_attempt(customer_profile)
+            OnboardingHighlightBenefitService.ensure_for_first_profile_onboarding(
+                user=user,
+                profile=customer_profile,
+            )
             notify_managers_new_user_registered(user, customer_profile)
 
         return user

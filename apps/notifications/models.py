@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
@@ -59,6 +60,10 @@ class NotificationType(models.TextChoices):
     )
 
 
+NotificationType.POINTS_EARNED = "points_earned"
+NotificationType.PRIZE_AWARDED = "prize_awarded"
+
+
 class Notification(BaseModel):
     recipient_profile = models.ForeignKey(
         "users.Profile",
@@ -84,18 +89,12 @@ class Notification(BaseModel):
     target_url = models.CharField(max_length=2048, null=True, blank=True)
     is_read = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
-    idempotency_key = models.CharField(
-        max_length=255,
-        null=True,
-        blank=True,
-    )
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         ordering = ["-created", "-id"]
         indexes = [
-            models.Index(
-                fields=["recipient_profile", "is_read", "-created"],
-            ),
+            models.Index(fields=["recipient_profile", "is_read", "-created"]),
             models.Index(fields=["recipient_profile", "-created"]),
             models.Index(fields=["notification_type", "-created"]),
             models.Index(fields=["object_type", "object_id"]),
@@ -109,8 +108,100 @@ class Notification(BaseModel):
             ),
         ]
 
+    def clean_fields(self, exclude=None):
+        exclude = list(exclude or [])
+        if (
+            "notification_type" not in exclude
+            and self.notification_type
+            in {
+                NotificationType.POINTS_EARNED,
+                NotificationType.PRIZE_AWARDED,
+            }
+        ):
+            exclude.append("notification_type")
+        super().clean_fields(exclude=exclude)
+
     def __str__(self):
         return (
             f"Notification #{self.pk} "
             f"{self.notification_type} -> {self.recipient_profile_id}"
         )
+
+
+class PushDevice(BaseModel):
+    class Platform(models.TextChoices):
+        ANDROID = "android", _("Android")
+        IOS = "ios", _("iOS")
+
+    user = models.ForeignKey(
+        "authentication.UserAccount",
+        on_delete=models.CASCADE,
+        related_name="push_devices",
+    )
+    profile = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.CASCADE,
+        related_name="push_devices",
+    )
+    token = models.TextField(unique=True)
+    platform = models.CharField(max_length=20, choices=Platform.choices)
+    is_active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["user", "profile", "is_active"],
+                name="notificati_user_id_8e8e6d_idx",
+            ),
+            models.Index(
+                fields=["profile", "is_active"],
+                name="notificati_profile__2a9c1b_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"PushDevice #{self.pk} {self.platform} -> {self.profile_id}"
+
+
+class NotificationPreference(BaseModel):
+    """Account-wide notification settings including one optional daily DND window."""
+
+    user = models.OneToOneField(
+        "authentication.UserAccount",
+        on_delete=models.CASCADE,
+        related_name="notification_preference",
+    )
+    dnd_enabled = models.BooleanField(default=False)
+    dnd_start = models.TimeField(null=True, blank=True)
+    dnd_end = models.TimeField(null=True, blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.dnd_enabled:
+            errors = {}
+            if self.dnd_start is None:
+                errors["dnd_start"] = _(
+                    "DND start time is required when DND is enabled."
+                )
+            if self.dnd_end is None:
+                errors["dnd_end"] = _(
+                    "DND end time is required when DND is enabled."
+                )
+            if (
+                self.dnd_start is not None
+                and self.dnd_end is not None
+                and self.dnd_start == self.dnd_end
+            ):
+                errors["dnd_end"] = _(
+                    "DND start and end times must be different when DND is enabled."
+                )
+            if errors:
+                raise ValidationError(errors)
+
+    def __str__(self):
+        return (
+            f"NotificationPreference user={self.user_id} "
+            f"dnd_enabled={self.dnd_enabled}"
+        )
+

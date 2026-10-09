@@ -21,6 +21,7 @@ from apps.pedigrees.models import (
     PedigreeBirdSex,
     PedigreeDocument,
     PedigreeDocumentStatus,
+    RegisteredPedigree,
 )
 from apps.pedigrees.services import (
     PedigreeProviderDiagnosticService,
@@ -696,7 +697,7 @@ def test_reports_proxy_uses_settings_url_and_returns_upstream_response(
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test/"
     settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     settings.PEDIGREE_REPORT_TIMEOUT = 7
-    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    user = UserAccountFactory(with_profile=ProfileType.MANAGER)
     client = authenticated_client(user)
 
     upstream = UpstreamResponse(
@@ -734,7 +735,7 @@ def test_reports_proxy_preserves_upstream_error_response(
 ):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     settings.PEDIGREE_REPORT_API_KEY = "provider-key"
-    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    user = UserAccountFactory(with_profile=ProfileType.MANAGER)
     upstream = UpstreamResponse(
         content=content,
         status_code=status_code,
@@ -755,6 +756,7 @@ def test_schema_proxy_validates_generation_and_returns_upstream_response(
     settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     settings.PEDIGREE_REPORT_TIMEOUT = 8
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    RegisteredPedigree.objects.create(pedigree_id=4)
     upstream = UpstreamResponse(
         content=b'{"parameters":["Farth_No"]}',
         status_code=200,
@@ -791,6 +793,7 @@ def test_style_parameters_proxy_uses_provider_query_names(settings):
     settings.PEDIGREE_REPORT_BASE_URL = "http://provider.test"
     settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    RegisteredPedigree.objects.create(pedigree_id=13)
     upstream = UpstreamResponse(
         content=b'{"styleParameters":["TextColor"]}',
         status_code=200,
@@ -896,6 +899,7 @@ def test_generate_requires_accessible_subject_bird_and_blocks_other_owner(
     other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     foreign_bird = PedigreeBirdFactory(owner=other.active_profile)
     create_report_subscription(user.active_profile)
+    RegisteredPedigree.objects.create(pedigree_id=7)
 
     with patch("requests.post") as post:
         response = authenticated_client(user).post(
@@ -918,6 +922,7 @@ def test_generate_calls_provider_and_returns_pdf_unchanged(
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     owner = user.active_profile
     create_report_subscription(owner)
+    RegisteredPedigree.objects.create(pedigree_id=7)
     grand_father = PedigreeBirdFactory(
         owner=owner,
         ring_number="FF",
@@ -992,6 +997,7 @@ def test_generate_depth_excludes_deeper_ancestors(settings):
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     owner = user.active_profile
     create_report_subscription(owner)
+    RegisteredPedigree.objects.create(pedigree_id=7)
     grand_father = PedigreeBirdFactory(owner=owner, ring_number="FF")
     father = PedigreeBirdFactory(
         owner=owner, ring_number="F", father=grand_father
@@ -1029,6 +1035,7 @@ def test_generate_preserves_provider_error_responses(
     settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     create_report_subscription(user.active_profile)
+    RegisteredPedigree.objects.create(pedigree_id=7)
     subject = PedigreeBirdFactory(owner=user.active_profile)
     upstream = UpstreamResponse(
         content=content,
@@ -1054,6 +1061,7 @@ def test_generate_network_errors_return_small_local_responses(settings):
     settings.PEDIGREE_REPORT_API_KEY = "provider-key"
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     create_report_subscription(user.active_profile)
+    RegisteredPedigree.objects.create(pedigree_id=7)
     subject = PedigreeBirdFactory(owner=user.active_profile)
 
     with patch("requests.post", side_effect=requests.exceptions.Timeout):

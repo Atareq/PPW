@@ -724,3 +724,171 @@ class TestPromotionApi:
         )
 
         assert response.status_code == 403
+
+
+class TestCashbackProductAlignment:
+    """BE-CB-01 audit and hardening regression coverage."""
+
+    def test_pending_and_rejected_payment_requests_do_not_award_cashback(self):
+        seller_user = UserAccountFactory(with_profile=ProfileType.SELLER)
+        seller = active_seller(seller_user)
+        customer_user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        customer = active_customer(customer_user)
+        supply = SupplyFactory(owner=seller, price=Decimal("100.00"), count=5)
+        CashbackOfferFactory(
+            value_type=OfferValueType.PERCENTAGE,
+            value=Decimal("5.00"),
+            allowed_redemption_amount=Decimal("0.00"),
+        )
+
+        order = OrderService.create_order(
+            customer,
+            [{"asset_id": supply.pk, "quantity": 1}],
+        )
+        item = OrderItemService.approve_item(
+            order.items.get(),
+            seller,
+        )
+        payment_request = PaymentRequestService.create_for_order_item(
+            item.pk,
+            customer,
+        )
+
+        customer.refresh_from_db()
+        assert customer.cashback_balance == Decimal("0.00")
+        assert not CashbackTransaction.objects.filter(
+            customer=customer,
+            transaction_type=CashbackTransactionType.EARNED,
+        ).exists()
+
+        PaymentRequestService.reject(
+            payment_request.pk,
+            seller,
+            "Buyer did not complete manual payment",
+        )
+        customer.refresh_from_db()
+        assert customer.cashback_balance == Decimal("0.00")
+        assert not CashbackTransaction.objects.filter(
+            customer=customer,
+            transaction_type=CashbackTransactionType.EARNED,
+        ).exists()
+
+    def test_buy_points_with_cashback_unifies_user_wallet_notifies_once_and_creates_no_prize_award(
+        self,
+        django_capture_on_commit_callbacks,
+    ):
+        from apps.loyalty.constants import RewardSourceType
+        from apps.loyalty.models import PointTransaction, PointWallet
+        from apps.notifications.models import Notification, NotificationType
+        from apps.prizes.models import PrizeAward
+
+        user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+        customer = active_customer(user)
+        SellerProfileFactory(
+            user=user,
+            is_active=False,
+            activated=True,
+            is_valid=True,
+        )
+        customer.cashback_balance = Decimal("10.00")
+        customer.save(update_fields=["cashback_balance", "modified"])
+
+        with django_capture_on_commit_callbacks(execute=True):
+            cb_tx_1, pt_tx_1 = CashbackService.buy_points_with_cashback(
+                customer_profile=customer,
+                cashback_amount=Decimal("2.50"),
+                idempotency_key="cb-align-1",
+            )
+            cb_tx_2, pt_tx_2 = CashbackService.buy_points_with_cashback(
+                customer_profile=customer,
+                cashback_amount=Decimal("2.50"),
+                idempotency_key="cb-align-1",
+            )
+
+        assert cb_tx_1.pk == cb_tx_2.pk
+        assert pt_tx_1.pk == pt_tx_2.pk
+        customer.refresh_from_db()
+        assert customer.cashback_balance == Decimal("7.50")
+
+        wallet = PointWallet.objects.get(user=user)
+        assert wallet.balance == 50
+        assert (
+            PointTransaction.objects.filter(
+                user=user,
+                source_type=RewardSourceType.CASHBACK_POINTS_PURCHASE,
+            ).count()
+            == 1
+        )
+        assert (
+            Notification.objects.filter(
+                recipient_profile=customer,
+                notification_type=NotificationType.POINTS_EARNED,
+            ).count()
+            == 1
+        )
+        assert PrizeAward.objects.count() == 0
+
+    def test_buy_points_with_cashback_rejects_conflicting_idempotency_payload_and_sub_unit_amount(
+        self,
+    ):
+        customer = CustomerProfileFactory(
+            is_active=True,
+            cashback_balance=Decimal("10.00"),
+        )
+
+        with pytest.raises(ValidationError) as sub_unit_exc:
+            CashbackService.buy_points_with_cashback(
+                customer_profile=customer,
+                cashback_amount=Decimal("0.04"),
+                idempotency_key="cb-too-small",
+            )
+        assert "cashback_amount" in sub_unit_exc.value.detail
+        customer.refresh_from_db()
+        assert customer.cashback_balance == Decimal("10.00")
+
+        CashbackService.buy_points_with_cashback(
+            customer_profile=customer,
+            cashback_amount=Decimal("1.00"),
+            idempotency_key="cb-conflict-key",
+        )
+        with pytest.raises(ValidationError) as conflict_exc:
+            CashbackService.buy_points_with_cashback(
+                customer_profile=customer,
+                cashback_amount=Decimal("2.00"),
+                idempotency_key="cb-conflict-key",
+            )
+        assert "idempotency_key" in conflict_exc.value.detail
+        customer.refresh_from_db()
+        assert customer.cashback_balance == Decimal("9.00")
+
+    def test_lucky_wheel_cashback_offer_grant_is_separate_from_purchase_cashback_and_prize_award(
+        self,
+    ):
+        from apps.prizes.models import PrizeAward
+        from apps.promotions.services import UserPromotionGrantService
+
+        customer = CustomerProfileFactory(
+            is_active=True,
+            cashback_balance=Decimal("0.00"),
+        )
+        offer = CashbackOfferFactory(
+            value_type=OfferValueType.PERCENTAGE,
+            value=Decimal("20.00"),
+            is_active=False,
+        )
+        grant = UserPromotionGrantService.grant_cashback(
+            user=customer.user,
+            profile=customer,
+            cashback_offer=offer,
+            source_type="LUCKY_WHEEL",
+            source_id="spin-cb-align-1",
+            idempotency_key="grant:cb-align:1",
+        )
+
+        assert grant.grant_type == UserPromotionGrantType.CASHBACK
+        customer.refresh_from_db()
+        assert customer.cashback_balance == Decimal("0.00")
+        assert CashbackTransaction.objects.filter(customer=customer).count() == 0
+        assert PrizeAward.objects.count() == 0
+
+

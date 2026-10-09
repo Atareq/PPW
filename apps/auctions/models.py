@@ -1,5 +1,7 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -26,6 +28,15 @@ class AuctionBidVisibility(models.TextChoices):
 
     PUBLIC = "public", _("Public Auction")
     SEALED = "sealed", _("Silent Auction")
+
+
+class AuctionShippingMethod(models.TextChoices):
+    """Seller-defined shipping/handoff option for an auction (BE-SHIP-01)."""
+
+    PERSONAL_PICKUP = "PERSONAL_PICKUP", _("Personal Pickup")
+    SHIPPING_COMPANY = "SHIPPING_COMPANY", _("Shipping Company")
+    INTERNATIONAL_SHIPPING = "INTERNATIONAL_SHIPPING", _("International Shipping")
+    HAND_DELIVERY = "HAND_DELIVERY", _("Hand Delivery")
 
 
 class AuctionItemStatus(models.TextChoices):
@@ -138,16 +149,85 @@ class Auction(OwnerBaseModel):
         blank=True,
         related_name="created_auctions",
     )
+    room = models.ForeignKey(
+        "users.SellerRoom",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="auctions",
+    )
+    shipping_method = models.CharField(
+        max_length=32,
+        choices=AuctionShippingMethod.choices,
+        null=True,
+        blank=True,
+    )
+    min_shipping_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text=_("Minimum expected shipping duration in days"),
+    )
+    max_shipping_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text=_("Maximum expected shipping duration in days"),
+    )
 
     class Meta:
         indexes = [
             models.Index(fields=["end_time"]),
             models.Index(fields=["owner"]),
+            models.Index(fields=["room"]),
             models.Index(fields=["auction_type"]),
             models.Index(fields=["bid_visibility"]),
             models.Index(fields=["is_visible"]),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(min_shipping_days__isnull=True) | Q(min_shipping_days__gte=1),
+                name="auctions_min_shipping_days_gte_1",
+            ),
+            models.CheckConstraint(
+                check=Q(max_shipping_days__isnull=True) | Q(max_shipping_days__gte=1),
+                name="auctions_max_shipping_days_gte_1",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(min_shipping_days__isnull=True)
+                    | Q(max_shipping_days__isnull=True)
+                    | Q(min_shipping_days__lte=F("max_shipping_days"))
+                ),
+                name="auctions_min_lte_max_shipping_days",
+            ),
+        ]
         ordering = ["-created"]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.shipping_method is not None and self.shipping_method != "":
+            if self.shipping_method not in AuctionShippingMethod.values:
+                errors["shipping_method"] = _("Unsupported shipping method.")
+        if self.min_shipping_days is not None and self.min_shipping_days < 1:
+            errors["min_shipping_days"] = _(
+                "Minimum shipping days must be a positive integer."
+            )
+        if self.max_shipping_days is not None and self.max_shipping_days < 1:
+            errors["max_shipping_days"] = _(
+                "Maximum shipping days must be a positive integer."
+            )
+        if (
+            self.min_shipping_days is not None
+            and self.max_shipping_days is not None
+            and self.min_shipping_days > self.max_shipping_days
+        ):
+            errors["max_shipping_days"] = _(
+                "Minimum shipping days cannot exceed maximum shipping days."
+            )
+        if errors:
+            raise DjangoValidationError(errors)
 
     def __str__(self):
         return f"  #{self.pk} Auction ({self.get_auction_type_display()})"

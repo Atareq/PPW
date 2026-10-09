@@ -67,6 +67,10 @@ SELLER_PERMISSIONS = {
     "SELLER_RATING": [
         "list",
     ],
+    "DEAL_RATING": [
+        "create",
+        "retrieve",
+    ],
     "RACE": [
         "list",
         "retrieve",
@@ -99,6 +103,10 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "REGISTERED_PEDIGREE": [
+        "list",
+        "retrieve",
+    ],
     "LOFT_SUBSCRIPTION": [
         "list",
         "create",
@@ -114,6 +122,18 @@ SELLER_PERMISSIONS = {
     "NOTIFICATION": [
         "list",
         "create",
+    ],
+    "ANNOUNCEMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_ROOM": [
+        "list",
+        "retrieve",
+        "create",
+        "update",
+        "partial_update",
+        "destroy",
     ],
 }
 
@@ -186,6 +206,10 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "DEAL_RATING": [
+        "create",
+        "retrieve",
+    ],
     "RACE": [
         "list",
         "retrieve",
@@ -221,6 +245,10 @@ CUSTOMER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "REGISTERED_PEDIGREE": [
+        "list",
+        "retrieve",
+    ],
     "LOFT_SUBSCRIPTION": [
         "list",
         "create",
@@ -236,5 +264,13 @@ CUSTOMER_PERMISSIONS = {
     "NOTIFICATION": [
         "list",
         "create",
+    ],
+    "ANNOUNCEMENT": [
+        "list",
+        "create",
+    ],
+    "SELLER_ROOM": [
+        "list",
+        "retrieve",
     ],
 }

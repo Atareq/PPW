@@ -12,10 +12,12 @@ from apps.auctions.models import (
     AuctionEvent,
     AuctionItem,
     AuctionItemStatus,
+    AuctionShippingMethod,
     Bid,
 )
 from apps.auctions.services import AuctionService, SettlementService
 from apps.users.constants import ProfileType
+from apps.users.models import SellerRoom
 
 # ============================================================================
 # NESTED SERIALIZERS
@@ -209,21 +211,30 @@ class AuctionItemListSerializer(serializers.ModelSerializer):
 class AuctionEventSerializer(serializers.ModelSerializer):
     """Audit trail of auction events"""
 
-    user_phone = serializers.CharField(
-        source="performer.user.phone_number", read_only=True, allow_null=True
-    )
     event_type_display = serializers.CharField(
         source="get_event_type_display", read_only=True
     )
 
     class Meta:
         model = AuctionEvent
-        fields = "__all__"
+        fields = [
+            "id",
+            "auction",
+            "event_type",
+            "event_type_display",
+            "item",
+            "bid",
+            "performer",
+            "metadata",
+            "created",
+            "modified",
+        ]
         read_only_fields = [
             "id",
             "event_type",
             "event_type_display",
             "created",
+            "modified",
         ]
 
 
@@ -247,9 +258,16 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
     current_price = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
+    room = serializers.SerializerMethodField()
+    room_name = serializers.SerializerMethodField()
 
     auction_type_display = serializers.CharField(
         source="get_auction_type_display", read_only=True
+    )
+    shipping_method_display = serializers.CharField(
+        source="get_shipping_method_display",
+        read_only=True,
+        allow_null=True,
     )
 
     class Meta:
@@ -263,6 +281,12 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "bid_visibility",
             "seller_nickname",
             "owner",
+            "room",
+            "room_name",
+            "shipping_method",
+            "shipping_method_display",
+            "min_shipping_days",
+            "max_shipping_days",
             "seller_package",
             "start_time",
             "end_time",
@@ -294,6 +318,12 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
             "items",
             "events",
             "owner",
+            "room",
+            "room_name",
+            "shipping_method",
+            "shipping_method_display",
+            "min_shipping_days",
+            "max_shipping_days",
             "seller_package",
             "created",
             "modified",
@@ -329,6 +359,14 @@ class AuctionDetailSerializer(serializers.ModelSerializer):
     def get_is_owner(self, obj):
         return _is_request_profile_owner(obj, self.context.get("request"))
 
+    def get_room(self, obj) -> int | None:
+        room = _active_auction_room(obj)
+        return room.pk if room is not None else None
+
+    def get_room_name(self, obj) -> str | None:
+        room = _active_auction_room(obj)
+        return room.name if room is not None else None
+
 
 class AuctionListSerializer(serializers.ModelSerializer):
     """Minimal auction info for listing"""
@@ -341,12 +379,19 @@ class AuctionListSerializer(serializers.ModelSerializer):
     auction_type_display = serializers.CharField(
         source="get_auction_type_display", read_only=True
     )
+    shipping_method_display = serializers.CharField(
+        source="get_shipping_method_display",
+        read_only=True,
+        allow_null=True,
+    )
     time_remaining = serializers.SerializerMethodField()
     is_active = serializers.SerializerMethodField()
     is_ended = serializers.SerializerMethodField()
     current_price = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
+    room = serializers.SerializerMethodField()
+    room_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Auction
@@ -358,6 +403,12 @@ class AuctionListSerializer(serializers.ModelSerializer):
             "bid_visibility",
             "status_display",
             "seller_nickname",
+            "room",
+            "room_name",
+            "shipping_method",
+            "shipping_method_display",
+            "min_shipping_days",
+            "max_shipping_days",
             "seller_package",
             "start_time",
             "end_time",
@@ -378,6 +429,12 @@ class AuctionListSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "is_visible",
+            "room",
+            "room_name",
+            "shipping_method",
+            "shipping_method_display",
+            "min_shipping_days",
+            "max_shipping_days",
             "seller_package",
             "created",
             "is_active",
@@ -415,6 +472,26 @@ class AuctionListSerializer(serializers.ModelSerializer):
 
     def get_is_owner(self, obj):
         return _is_request_profile_owner(obj, self.context.get("request"))
+
+    def get_room(self, obj) -> int | None:
+        room = _active_auction_room(obj)
+        return room.pk if room is not None else None
+
+    def get_room_name(self, obj) -> str | None:
+        room = _active_auction_room(obj)
+        return room.name if room is not None else None
+
+
+def _active_auction_room(auction):
+    if auction.room_id is None:
+        return None
+    try:
+        room = auction.room
+    except ObjectDoesNotExist:
+        return None
+    if room is None or room.deleted is not None:
+        return None
+    return room
 
 
 def _first_auction_item(auction):
@@ -533,6 +610,73 @@ class AuctionItemInputSerializer(serializers.Serializer):
 # ============================================================================
 
 
+class AuctionShippingMethodField(serializers.ChoiceField):
+    """ChoiceField for AuctionShippingMethod with case-insensitive input normalization."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("choices", AuctionShippingMethod.choices)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if data in (None, ""):
+            if self.allow_null or self.allow_blank:
+                return None
+            self.fail("null")
+        if isinstance(data, str):
+            data = data.strip().upper()
+        return super().to_internal_value(data)
+
+
+def _validate_auction_shipping_attrs(attrs, instance=None):
+    has_shipping_days = "shipping_days" in attrs
+    shipping_days = attrs.pop("shipping_days", None)
+    if has_shipping_days:
+        if shipping_days is None:
+            attrs.setdefault("min_shipping_days", None)
+            attrs.setdefault("max_shipping_days", None)
+        else:
+            attrs.setdefault("min_shipping_days", shipping_days)
+            attrs.setdefault("max_shipping_days", shipping_days)
+
+    min_in_attrs = "min_shipping_days" in attrs
+    max_in_attrs = "max_shipping_days" in attrs
+
+    min_days = (
+        attrs["min_shipping_days"]
+        if min_in_attrs
+        else (
+            getattr(instance, "min_shipping_days", None)
+            if instance is not None
+            else None
+        )
+    )
+    max_days = (
+        attrs["max_shipping_days"]
+        if max_in_attrs
+        else (
+            getattr(instance, "max_shipping_days", None)
+            if instance is not None
+            else None
+        )
+    )
+
+    if min_days is not None and max_days is None and not max_in_attrs:
+        max_days = min_days
+        attrs["max_shipping_days"] = max_days
+    elif max_days is not None and min_days is None and not min_in_attrs:
+        min_days = max_days
+        attrs["min_shipping_days"] = min_days
+
+    if min_days is not None and max_days is not None and min_days > max_days:
+        raise serializers.ValidationError(
+            {
+                "max_shipping_days": _(
+                    "Minimum shipping days cannot exceed maximum shipping days."
+                )
+            }
+        )
+
+
 class AuctionCreateSerializer(serializers.ModelSerializer):
     """
     Production-grade auction creation serializer.
@@ -571,6 +715,36 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
 
     items = AuctionItemInputSerializer(many=True, allow_empty=False)
     seller_package_id = serializers.IntegerField(write_only=True)
+    room = serializers.PrimaryKeyRelatedField(
+        queryset=SellerRoom.objects.filter(deleted__isnull=True),
+        required=False,
+        allow_null=True,
+    )
+    room_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+    shipping_method = AuctionShippingMethodField(
+        required=False,
+        allow_null=True,
+    )
+    min_shipping_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    max_shipping_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    shipping_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        write_only=True,
+    )
     bid_visibility = serializers.ChoiceField(
         choices=AuctionBidVisibility.choices,
         default=AuctionBidVisibility.PUBLIC,
@@ -580,6 +754,12 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
         model = Auction
         fields = [
             "seller_package_id",
+            "room",
+            "room_id",
+            "shipping_method",
+            "min_shipping_days",
+            "max_shipping_days",
+            "shipping_days",
             "title",
             "description",
             "auction_type",
@@ -598,6 +778,33 @@ class AuctionCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
+        if "room_id" in data and "room" not in data:
+            raw_room_id = data.pop("room_id")
+            if raw_room_id is None:
+                data["room"] = None
+            else:
+                room = SellerRoom.objects.filter(
+                    pk=raw_room_id,
+                    deleted__isnull=True,
+                ).first()
+                if room is None:
+                    raise serializers.ValidationError(
+                        {"room_id": _("Invalid pk - object does not exist.")}
+                    )
+                data["room"] = room
+        else:
+            data.pop("room_id", None)
+
+        room = data.get("room")
+        if room is not None:
+            active_profile = _request_active_profile(self.context.get("request"))
+            if active_profile is not None and room.seller_id != active_profile.pk:
+                raise serializers.ValidationError(
+                    {"room": _("Selected room does not belong to the auction owner.")}
+                )
+
+        _validate_auction_shipping_attrs(data)
+
         start_time = data["start_time"]
         end_time = data["end_time"]
         now = timezone.now()
@@ -658,13 +865,78 @@ class EndingSoonQuerySerializer(serializers.Serializer):
 
 
 class AuctionUpdateSerializer(serializers.ModelSerializer):
+    room = serializers.PrimaryKeyRelatedField(
+        queryset=SellerRoom.objects.filter(deleted__isnull=True),
+        required=False,
+        allow_null=True,
+    )
+    room_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+    shipping_method = AuctionShippingMethodField(
+        required=False,
+        allow_null=True,
+    )
+    min_shipping_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    max_shipping_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    shipping_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        write_only=True,
+    )
+
     class Meta:
         model = Auction
         fields = [
             "title",
             "description",
             "tags",
+            "room",
+            "room_id",
+            "shipping_method",
+            "min_shipping_days",
+            "max_shipping_days",
+            "shipping_days",
         ]
+
+    def validate(self, attrs):
+        if "room_id" in attrs and "room" not in attrs:
+            raw_room_id = attrs.pop("room_id")
+            if raw_room_id is None:
+                attrs["room"] = None
+            else:
+                room = SellerRoom.objects.filter(
+                    pk=raw_room_id,
+                    deleted__isnull=True,
+                ).first()
+                if room is None:
+                    raise serializers.ValidationError(
+                        {"room_id": _("Invalid pk - object does not exist.")}
+                    )
+                attrs["room"] = room
+        else:
+            attrs.pop("room_id", None)
+
+        room = attrs.get("room")
+        if room is not None and self.instance is not None:
+            if room.seller_id != self.instance.owner_id:
+                raise serializers.ValidationError(
+                    {"room": _("Selected room does not belong to the auction owner.")}
+                )
+
+        _validate_auction_shipping_attrs(attrs, instance=self.instance)
+        return attrs
 
     def update(self, instance, validated_data):
         """Update only allowed fields through the service layer."""
@@ -713,8 +985,24 @@ class CancelAuctionSerializer(serializers.Serializer):
         if not request or not auction:
             raise serializers.ValidationError(_("Invalid request context"))
 
+        reason = validated_data.get("reason") or "Cancelled by owner"
         try:
-            auction = AuctionService.cancel_auction(auction)
+            auction = AuctionService.cancel_auction(
+                auction,
+                reason=reason,
+                performer=request.user.active_profile,
+            )
             return auction
         except serializers.ValidationError:
             raise
+
+
+class AuctionSellerPaymentDetailsSerializer(serializers.Serializer):
+    """Winner-only read-only serializer for seller payment coordination details."""
+
+    seller_id = serializers.IntegerField(read_only=True)
+    auction_id = serializers.IntegerField(read_only=True)
+    bank_account = serializers.CharField(read_only=True)
+    wallet = serializers.CharField(read_only=True)
+    transfer_phone = serializers.CharField(read_only=True)
+

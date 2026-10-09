@@ -273,9 +273,17 @@ class SellerPackageFollowingViewSet(mixins.ListModelMixin, viewsets.GenericViewS
         tags=["Feed"],
         responses={200: SellerDiscoverySerializer(many=True)},
     ),
+    retrieve=extend_schema(
+        tags=["Feed"],
+        responses={200: SellerDiscoverySerializer},
+    ),
 )
-class SellerDiscoveryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """Paginated discovery list of active seller profiles."""
+class SellerDiscoveryViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Paginated discovery list and public detail of active seller profiles."""
 
     permission_classes = [IsAuthenticated]
     queryset = SellerProfile.objects.all()
@@ -302,10 +310,17 @@ class SellerDiscoveryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             )
         )
 
-        if profile.type == ProfileType.SELLER:
-            queryset = queryset.exclude(pk=profile.pk)
+        if self.action == "list":
+            if profile.type == ProfileType.SELLER:
+                queryset = queryset.exclude(pk=profile.pk)
+            elif profile.type == ProfileType.CUSTOMER:
+                queryset = queryset.exclude(user_id=profile.user_id)
+                blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
+                    profile
+                )
+                if blocked_seller_ids:
+                    queryset = queryset.exclude(pk__in=blocked_seller_ids)
         elif profile.type == ProfileType.CUSTOMER:
-            queryset = queryset.exclude(user_id=profile.user_id)
             blocked_seller_ids = BlockService.get_blocked_seller_ids_for_customer(
                 profile
             )

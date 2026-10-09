@@ -2,14 +2,15 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.general.authorizations import HasAppAccess
 from apps.loyalty.filters import PointTransactionFilter
-from apps.loyalty.models import BadgeAward, PointTransaction
+from apps.loyalty.models import BadgeAward, PointTransaction, RewardRuleConfig
 from apps.loyalty.serializers import (
     BadgeAwardCreateSerializer,
     BadgeAwardSerializer,
@@ -18,8 +19,10 @@ from apps.loyalty.serializers import (
     BuyPointsWithCashbackSerializer,
     PointBalanceSerializer,
     PointTransactionSerializer,
+    RewardRuleSerializer,
+    RewardRuleUpdateSerializer,
 )
-from apps.loyalty.services import BadgeService, PointService
+from apps.loyalty.services import BadgeService, PointService, RewardRuleService
 from apps.users.constants import ProfileType
 
 
@@ -176,3 +179,61 @@ class BadgeViewSet(viewsets.GenericViewSet):
         )
         serializer = BadgeAwardSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class RewardRuleAdminViewSet(viewsets.GenericViewSet):
+    """Manager tuning of system-defined reward rules.
+
+    Rules are addressed by code and resolved from the canonical default or the
+    manager override row, so there is no create or delete: managers can only
+    adjust values of codes the backend defines.
+    """
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "REWARD_RULE_ADMIN"
+    manager_permission_map = {
+        "list": "reward_rules.list",
+        "retrieve": "reward_rules.retrieve",
+        "partial_update": "reward_rules.update",
+    }
+    queryset = RewardRuleConfig.objects.all()
+    serializer_class = RewardRuleSerializer
+    lookup_field = "code"
+
+    def _get_rule(self, code):
+        if not RewardRuleService.is_known_code(code):
+            raise NotFound(_("Reward rule was not found."))
+        return RewardRuleService.get_rule(code)
+
+    @extend_schema(tags=["Loyalty"], responses={200: RewardRuleSerializer(many=True)})
+    def list(self, request, *args, **kwargs):
+        rules = RewardRuleService.list_rules()
+        page = self.paginate_queryset(rules)
+        if page is not None:
+            serializer = RewardRuleSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        return Response(RewardRuleSerializer(rules, many=True).data)
+
+    @extend_schema(tags=["Loyalty"], responses={200: RewardRuleSerializer})
+    def retrieve(self, request, code=None, *args, **kwargs):
+        return Response(RewardRuleSerializer(self._get_rule(code)).data)
+
+    @extend_schema(
+        tags=["Loyalty"],
+        request=RewardRuleUpdateSerializer,
+        responses={200: RewardRuleSerializer},
+    )
+    def partial_update(self, request, code=None, *args, **kwargs):
+        rule = self._get_rule(code)
+        serializer = RewardRuleUpdateSerializer(
+            data=request.data,
+            partial=True,
+            context={"request": request, "rule": rule},
+        )
+        serializer.is_valid(raise_exception=True)
+        rule = RewardRuleService.update_rule(
+            code,
+            updated_by=request.user,
+            **serializer.validated_data,
+        )
+        return Response(RewardRuleSerializer(rule).data, status=status.HTTP_200_OK)

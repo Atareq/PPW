@@ -1,3 +1,8 @@
+from copy import deepcopy
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -8,10 +13,20 @@ from rest_framework.exceptions import ValidationError
 
 from apps.loyalty.constants import (
     BADGE_DEFINITIONS,
+    DEFAULT_REWARD_RULES,
+    REWARD_RULE_TUNABLE_FIELDS,
     BadgeType,
     PointTransactionType,
+    RewardRuleCode,
+    RewardSourceType,
 )
-from apps.loyalty.models import BadgeAward, PointTransaction, PointWallet
+
+from apps.loyalty.models import (
+    BadgeAward,
+    PointTransaction,
+    PointWallet,
+    RewardRuleConfig,
+)
 from apps.loyalty.validators import BadgeValidator, PointValidator
 
 
@@ -44,12 +59,35 @@ def normalize_idempotency_key(value):
     return value or None
 
 
+def _resolve_reward_recipient_profile(user, profile=None):
+    if (
+        profile is not None
+        and profile.is_active
+        and profile.activated
+        and profile.is_valid
+        and getattr(profile, "deleted", None) is None
+    ):
+        return profile
+    if user is not None:
+        active = Profile.objects.filter(
+            user=user,
+            is_active=True,
+            activated=True,
+            is_valid=True,
+            deleted__isnull=True,
+        ).first()
+        if active is not None:
+            return active
+    return profile
+
+
 class PointService:
     """Ledger-style point wallet mutations with optional idempotency keys."""
 
     @staticmethod
     def get_or_create_wallet(user):
-        user = UserAccount.objects.get(pk=user.pk)
+        user_id = getattr(user, "pk", user)
+        user = UserAccount.objects.get(pk=user_id)
         try:
             wallet, _ = PointWallet.objects.get_or_create(user=user)
         except IntegrityError:
@@ -145,7 +183,8 @@ class PointService:
     ):
         """Create one transaction and update the wallet balance atomically."""
 
-        user = UserAccount.objects.get(pk=user.pk)
+        user_id = getattr(user, "pk", user)
+        user = UserAccount.objects.get(pk=user_id)
         profile = PointValidator.validate_profile_belongs_to_user(
             profile,
             user,
@@ -174,6 +213,20 @@ class PointService:
 
         wallet = PointService.get_or_create_wallet(user)
         wallet = PointWallet.objects.select_for_update().get(pk=wallet.pk)
+        existing_transaction = PointService._get_idempotent_transaction(idempotency_key)
+        if existing_transaction is not None:
+            PointService._validate_idempotent_match(
+                existing_transaction,
+                user=user,
+                profile=profile,
+                transaction_type=transaction_type,
+                points=points,
+                reason=reason,
+                source_type=source_type,
+                source_id=source_id,
+                metadata=metadata,
+            )
+            return existing_transaction
         next_balance = PointService._next_balance(
             wallet.balance,
             transaction_type,
@@ -183,7 +236,7 @@ class PointService:
         wallet.balance = next_balance
         wallet.save(update_fields=["balance", "modified"])
 
-        return PointTransaction.objects.create(
+        point_tx = PointTransaction.objects.create(
             wallet=wallet,
             user=user,
             profile=profile,
@@ -196,6 +249,75 @@ class PointService:
             idempotency_key=idempotency_key,
             metadata=metadata,
         )
+        if transaction_type == PointTransactionType.EARN and point_tx.points > 0:
+            PointService._create_points_earned_notification(point_tx)
+        return point_tx
+
+    @staticmethod
+    def _build_points_earned_body(points: int, source_type: str | None) -> str:
+        normalized_source = str(source_type or "").strip()
+        if normalized_source == RewardSourceType.ONBOARDING:
+            return f"Congratulations! You earned {points} PP Coins for joining."
+        if normalized_source in {
+            RewardSourceType.REFERRAL_APPROVED,
+            RewardSourceType.REFERRAL_ACCEPTED,
+            RewardSourceType.REFERRAL_FIRST_BID,
+        }:
+            return (
+                f"Congratulations! You earned {points} PP Coins from a referral."
+            )
+        if normalized_source in {
+            RewardSourceType.DEAL_COMPLETED,
+            RewardSourceType.DEAL_COMPLETION_BONUS,
+            RewardSourceType.SUCCESSFUL_SALE,
+            RewardSourceType.AUCTION_COMPLETED,
+            RewardSourceType.ORDER_COMPLETED_AMOUNT,
+            RewardSourceType.ORDER_COMPLETED_BONUS,
+        }:
+            return (
+                f"Congratulations! You earned {points} PP Coins for a completed deal."
+            )
+        if normalized_source == RewardSourceType.SEASON_WINNER:
+            return (
+                f"Congratulations! You earned {points} PP Coins as a season winner."
+            )
+        if normalized_source == RewardSourceType.LUCKY_WHEEL:
+            return (
+                f"Congratulations! You earned {points} PP Coins from Lucky Wheel."
+            )
+        return f"Congratulations! You earned {points} PP Coins."
+
+    @staticmethod
+    def _create_points_earned_notification(point_tx):
+        from apps.notifications.models import NotificationType
+        from apps.notifications.services import NotificationService
+
+        recipient_profile = _resolve_reward_recipient_profile(
+            point_tx.user,
+            point_tx.profile,
+        )
+        if recipient_profile is None:
+            return None
+
+        return NotificationService.create_notification(
+            recipient_profile=recipient_profile,
+            notification_type=NotificationType.POINTS_EARNED,
+            title=_("Congratulations! Points earned"),
+            body=PointService._build_points_earned_body(
+                point_tx.points,
+                point_tx.source_type,
+            ),
+            object_type="point_transaction",
+            object_id=point_tx.pk,
+            metadata={
+                "point_transaction_id": point_tx.pk,
+                "points": point_tx.points,
+                "source_type": point_tx.source_type,
+                "source_id": point_tx.source_id,
+            },
+            idempotency_key=f"points_earned:{point_tx.pk}",
+        )
+
 
     @staticmethod
     def _next_balance(current_balance, transaction_type, points):
@@ -321,11 +443,12 @@ class BadgeService:
             "metadata": metadata or {},
         }
         try:
-            award = BadgeAward.objects.create(
-                profile=profile,
-                badge_type=badge_type,
-                **defaults,
-            )
+            with transaction.atomic():
+                award = BadgeAward.objects.create(
+                    profile=profile,
+                    badge_type=badge_type,
+                    **defaults,
+                )
             created_new = True
         except IntegrityError:
             if idempotency_key is not None:
@@ -372,24 +495,137 @@ class BadgeService:
 
     @staticmethod
     def _schedule_badge_awarded_notification(award):
+        from apps.notifications.models import NotificationType
         from apps.notifications.services import NotificationService
 
+        recipient_profile = _resolve_reward_recipient_profile(
+            award.profile.user,
+            award.profile,
+        )
+        if recipient_profile is None:
+            return None
+
         badge_name = BADGE_DEFINITIONS[award.badge_type]["name"]
-        transaction.on_commit(
-            lambda: NotificationService.safe_create_notification(
-                recipient_profile=award.profile,
-                notification_type="badge_awarded",
-                title=_("Badge awarded"),
-                body=f"You earned the {badge_name} badge.",
-                object_type="badge_award",
-                object_id=award.pk,
-                metadata={
-                    "badge_award_id": award.pk,
-                    "profile_id": award.profile_id,
-                    "badge_type": award.badge_type,
+        return NotificationService.create_notification(
+            recipient_profile=recipient_profile,
+            notification_type=NotificationType.BADGE_AWARDED,
+            title=_("Badge awarded"),
+            body=f"Congratulations! You earned the {badge_name} badge.",
+            object_type="badge_award",
+            object_id=award.pk,
+            metadata={
+                "badge_award_id": award.pk,
+                "profile_id": award.profile_id,
+                "badge_type": award.badge_type,
+            },
+            idempotency_key=f"badge_awarded:{award.pk}",
+        )
+
+
+@dataclass(frozen=True)
+class RewardRule:
+    code: str
+    label: str
+    enabled: bool
+    points: int | None
+    multiplier: Decimal | None
+    threshold: int | None
+    configuration: dict
+    required_fields: tuple
+    is_implemented: bool
+    is_overridden: bool
+    updated_by_id: int | None = None
+    updated_at: datetime | None = None
+
+
+class RewardRuleService:
+    """Resolve reward rule values: manager override row, else canonical default.
+
+    Codes are system-defined in ``RewardRuleCode``; unknown codes raise instead
+    of silently resolving to zero. Changes only affect rewards granted after
+    the change, because awarded ``PointTransaction`` rows are never rewritten.
+    """
+
+    @staticmethod
+    def is_known_code(code):
+        return code in RewardRuleCode.values
+
+    @staticmethod
+    def list_rules():
+        overrides = {row.code: row for row in RewardRuleConfig.objects.all()}
+        return [
+            RewardRuleService._build_rule(code, overrides.get(code))
+            for code in RewardRuleCode.values
+        ]
+
+    @staticmethod
+    def get_rule(code):
+        code = RewardRuleService._require_known_code(code)
+        override = RewardRuleConfig.objects.filter(code=code).first()
+        return RewardRuleService._build_rule(code, override)
+
+    @staticmethod
+    def is_enabled(code):
+        return RewardRuleService.get_rule(code).enabled
+
+    @staticmethod
+    def get_points(code):
+        return RewardRuleService.get_rule(code).points
+
+    @staticmethod
+    def get_threshold(code):
+        return RewardRuleService.get_rule(code).threshold
+
+    @staticmethod
+    @transaction.atomic
+    def update_rule(code, *, updated_by, **changes):
+        """Create or update the override row, starting from the current default."""
+
+        code = RewardRuleService._require_known_code(code)
+        default = DEFAULT_REWARD_RULES[code]
+        config, _created = (
+            RewardRuleConfig.objects.select_for_update().get_or_create(
+                code=code,
+                defaults={
+                    field: deepcopy(default[field])
+                    for field in REWARD_RULE_TUNABLE_FIELDS
                 },
-                idempotency_key=f"badge_awarded:{award.pk}",
             )
+        )
+        for field, value in changes.items():
+            if field not in REWARD_RULE_TUNABLE_FIELDS:
+                raise ValidationError({field: _("This field cannot be changed.")})
+            setattr(config, field, value)
+        config.updated_by = updated_by
+        config.save()
+        return RewardRuleService._build_rule(code, config)
+
+    @staticmethod
+    def _require_known_code(code):
+        if not RewardRuleService.is_known_code(code):
+            raise ValidationError({"code": _("Unknown reward rule code.")})
+        return str(code)
+
+    @staticmethod
+    def _build_rule(code, override):
+        default = DEFAULT_REWARD_RULES[code]
+        if override is None:
+            values = {
+                field: deepcopy(default[field]) for field in REWARD_RULE_TUNABLE_FIELDS
+            }
+        else:
+            values = {
+                field: getattr(override, field) for field in REWARD_RULE_TUNABLE_FIELDS
+            }
+        return RewardRule(
+            code=code,
+            label=str(RewardRuleCode(code).label),
+            required_fields=default["required_fields"],
+            is_implemented=default["is_implemented"],
+            is_overridden=override is not None,
+            updated_by_id=getattr(override, "updated_by_id", None),
+            updated_at=getattr(override, "modified", None),
+            **values,
         )
 
 

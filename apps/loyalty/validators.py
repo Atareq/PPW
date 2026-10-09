@@ -13,7 +13,8 @@ class PointValidator:
         if not getattr(profile, "pk", None):
             raise ValidationError({"profile": _("Profile was not found.")})
 
-        if profile.user_id != user.pk:
+        user_id = getattr(user, "pk", user)
+        if profile.user_id != user_id:
             raise ValidationError({"profile": _("Profile must belong to the user.")})
 
         return profile

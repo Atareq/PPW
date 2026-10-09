@@ -1,7 +1,12 @@
 from rest_framework import serializers
 
-from apps.loyalty.constants import BADGE_DEFINITIONS, BadgeType
-from apps.loyalty.models import BadgeAward, PointTransaction
+from apps.loyalty.constants import (
+    BADGE_DEFINITIONS,
+    DEAL_POINTS_RATE_KEY_PREFIX,
+    REWARD_RULE_CONFIGURATION_MAX_KEYS,
+    BadgeType,
+)
+from apps.loyalty.models import BadgeAward, PointTransaction, RewardRuleConfig
 from apps.loyalty.services import BadgeService
 from apps.promotions.services import CashbackService
 from apps.users.constants import ProfileType
@@ -168,3 +173,76 @@ class BuyPointsWithCashbackResponseSerializer(serializers.Serializer):
     points_awarded = serializers.IntegerField(read_only=True)
     cashback_transaction_id = serializers.IntegerField(read_only=True)
     point_transaction_id = serializers.IntegerField(read_only=True)
+
+
+class RewardRuleSerializer(serializers.Serializer):
+    """Effective value of one system-defined reward rule."""
+
+    code = serializers.CharField(read_only=True)
+    label = serializers.CharField(read_only=True)
+    enabled = serializers.BooleanField(read_only=True)
+    points = serializers.IntegerField(read_only=True, allow_null=True)
+    multiplier = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        read_only=True,
+        allow_null=True,
+    )
+    threshold = serializers.IntegerField(read_only=True, allow_null=True)
+    configuration = serializers.JSONField(read_only=True)
+    required_fields = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+    )
+    is_implemented = serializers.BooleanField(read_only=True)
+    is_overridden = serializers.BooleanField(read_only=True)
+    updated_by_id = serializers.IntegerField(read_only=True, allow_null=True)
+    updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
+
+
+class RewardRuleUpdateSerializer(serializers.ModelSerializer):
+    """Partial update of tunable values; ``context["rule"]`` is the current rule."""
+
+    class Meta:
+        model = RewardRuleConfig
+        fields = ["enabled", "points", "multiplier", "threshold", "configuration"]
+        extra_kwargs = {
+            "points": {"min_value": 0},
+            "threshold": {"min_value": 0},
+        }
+
+    def validate_configuration(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(_("Configuration must be a JSON object."))
+        if len(value) > REWARD_RULE_CONFIGURATION_MAX_KEYS:
+            raise serializers.ValidationError(
+                _("Configuration can have at most %(count)d keys.")
+                % {"count": REWARD_RULE_CONFIGURATION_MAX_KEYS}
+            )
+        for item in value.values():
+            items = item if isinstance(item, list) else [item]
+            if any(isinstance(entry, (dict, list)) for entry in items):
+                raise serializers.ValidationError(
+                    _("Configuration values must be plain values or lists of them.")
+                )
+        for key, item in value.items():
+            if str(key).startswith(DEAL_POINTS_RATE_KEY_PREFIX) and (
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or item < 0
+            ):
+                raise serializers.ValidationError(
+                    _("Points-per-unit rates must be non-negative numbers.")
+                )
+        return value
+
+    def validate(self, attrs):
+        rule = self.context["rule"]
+        missing = {
+            field: _("This field is required for this reward rule.")
+            for field in rule.required_fields
+            if attrs.get(field, getattr(rule, field)) is None
+        }
+        if missing:
+            raise serializers.ValidationError(missing)
+        return attrs

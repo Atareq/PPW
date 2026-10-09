@@ -19,6 +19,7 @@ from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeDocument,
     PedigreeDocumentStatus,
+    RegisteredPedigree,
 )
 from apps.pedigrees.serializers import (
     PedigreeBirdSerializer,
@@ -28,12 +29,15 @@ from apps.pedigrees.serializers import (
     PedigreeDocumentUploadSerializer,
     PedigreeReportGenerateSerializer,
     PedigreeReportMetadataQuerySerializer,
+    RegisteredPedigreeAdminSerializer,
+    RegisteredPedigreeSerializer,
 )
 from apps.pedigrees.services import (
     PedigreeDocumentService,
     PedigreeProviderDiagnosticService,
     PedigreeReportClient,
     PedigreeReportGenerationService,
+    RegisteredPedigreeService,
     pedigree_document_queryset,
 )
 from apps.users.constants import ProfileType
@@ -232,14 +236,90 @@ class PedigreeBirdViewSet(viewsets.ModelViewSet):
         return queryset.filter(owner_id=active_profile.pk)
 
 
+REGISTERED_PEDIGREE_READ_DESCRIPTION = (
+    "Customers and sellers see public registered pedigrees plus private ones "
+    "assigned to their UserAccount; anything else returns 404. Managers see "
+    "every registered pedigree and also receive `user_ids`, `created`, and "
+    "`modified`."
+)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Pedigrees"],
+        responses={200: RegisteredPedigreeSerializer(many=True)},
+        description=REGISTERED_PEDIGREE_READ_DESCRIPTION,
+    ),
+    retrieve=extend_schema(
+        tags=["Pedigrees"],
+        responses={200: RegisteredPedigreeSerializer},
+        description=REGISTERED_PEDIGREE_READ_DESCRIPTION,
+    ),
+    create=extend_schema(
+        tags=["Pedigrees"],
+        request=RegisteredPedigreeAdminSerializer,
+        responses={201: RegisteredPedigreeAdminSerializer},
+        description=(
+            "Manager registers a FastReport pdf_id/shape. `user_ids` lists the "
+            "UserAccounts allowed to see it while private."
+        ),
+    ),
+    partial_update=extend_schema(
+        tags=["Pedigrees"],
+        request=RegisteredPedigreeAdminSerializer,
+        responses={200: RegisteredPedigreeAdminSerializer},
+        description=(
+            "Manager update. A supplied `user_ids` replaces the whole "
+            "assignment set (`[]` clears it); omitting it keeps assignments."
+        ),
+    ),
+    destroy=extend_schema(tags=["Pedigrees"]),
+)
+class RegisteredPedigreeViewSet(viewsets.ModelViewSet):
+    """Registry of FastReport pedigree ids with public/private visibility."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "REGISTERED_PEDIGREE"
+    manager_permission_map = {
+        "list": "pedigrees.registered.list",
+        "retrieve": "pedigrees.registered.retrieve",
+        "create": "pedigrees.registered.create",
+        "partial_update": "pedigrees.registered.update",
+        "destroy": "pedigrees.registered.delete",
+    }
+    allow_scoped_read_access = True
+    queryset = RegisteredPedigree.objects.all()
+    http_method_names = ["get", "post", "patch", "delete"]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ["pedigree_id", "is_public"]
+    ordering_fields = ["pedigree_id", "created"]
+
+    def get_serializer_class(self):
+        if getattr(self, "swagger_fake_view", False):
+            return RegisteredPedigreeAdminSerializer
+        if RegisteredPedigreeService.is_unrestricted(self.request.user):
+            return RegisteredPedigreeAdminSerializer
+        return RegisteredPedigreeSerializer
+
+    def get_queryset(self):
+        queryset = RegisteredPedigreeService.visible_queryset(
+            self.request.user
+        )
+        if RegisteredPedigreeService.is_unrestricted(self.request.user):
+            queryset = queryset.prefetch_related("users")
+        return queryset.order_by("pedigree_id")
+
+
 @extend_schema_view(
     list=extend_schema(
         tags=["Pedigrees"],
         responses={200: OpenApiTypes.BINARY},
         description=(
-            "Proxy the external FastReport reports list. PPW passes through "
-            "the upstream status, body, Content-Type, and safe response "
-            "headers without storing or reshaping the report definitions."
+            "Managers: raw proxy of the external FastReport reports list. "
+            "Customers and sellers: unavailable (503, no provider call) until "
+            "server-side filtering against the registered-pedigree visibility "
+            "is implemented for the verified provider response shape; use "
+            "/api/pedigrees/registered/ for the pedigree ids they may use."
         ),
     ),
 )
@@ -255,6 +335,13 @@ class PedigreeReportListProxyViewSet(
     queryset = PedigreeBird.objects.none()
 
     def list(self, request, *args, **kwargs):
+        if not RegisteredPedigreeService.is_unrestricted(request.user):
+            # Fail closed: the unfiltered provider list would leak private
+            # and unregistered pedigree ids.
+            return Response(
+                {"detail": _("The pedigree template list is unavailable.")},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         try:
             upstream_response = PedigreeReportClient().get_reports()
         except requests.exceptions.Timeout as exc:
@@ -273,9 +360,10 @@ class PedigreeReportListProxyViewSet(
         responses={200: OpenApiTypes.BINARY},
         description=(
             "Proxy the external FastReport schema for one shape/generation. "
-            "PPW validates the generation query parameter, then passes "
-            "through the upstream status, body, Content-Type, and safe "
-            "response headers without local storage or reshaping."
+            "PPW validates the generation query parameter and returns 404 "
+            "unless the shape is a registered pedigree visible to the user, "
+            "then passes through the upstream status, body, Content-Type, and "
+            "safe response headers without local storage or reshaping."
         ),
     ),
 )
@@ -296,6 +384,7 @@ class PedigreeReportSchemaProxyViewSet(
         serializer.is_valid(raise_exception=True)
         generation = serializer.validated_data["generation"]
         shape = kwargs["shape"]
+        RegisteredPedigreeService.require_visible(request.user, shape)
         try:
             upstream_response = PedigreeReportClient().get_schema(
                 shape=shape,
@@ -327,9 +416,11 @@ class PedigreeReportSchemaProxyViewSet(
         responses={200: OpenApiTypes.BINARY},
         description=(
             "Proxy the external FastReport style parameters for one "
-            "shape/generation. PPW validates the generation query parameter, "
-            "then passes through the upstream status, body, Content-Type, and "
-            "safe response headers without local storage or reshaping."
+            "shape/generation. PPW validates the generation query parameter "
+            "and returns 404 unless the shape is a registered pedigree visible "
+            "to the user, then passes through the upstream status, body, "
+            "Content-Type, and safe response headers without local storage or "
+            "reshaping."
         ),
     ),
 )
@@ -350,6 +441,7 @@ class PedigreeReportStyleParametersProxyViewSet(
         serializer.is_valid(raise_exception=True)
         generation = serializer.validated_data["generation"]
         shape = kwargs["shape"]
+        RegisteredPedigreeService.require_visible(request.user, shape)
         try:
             upstream_response = PedigreeReportClient().get_style_parameters(
                 shape=shape,
@@ -422,9 +514,11 @@ class PedigreeProviderTestViewSet(viewsets.GenericViewSet):
         request=PedigreeReportGenerateSerializer,
         responses={200: OpenApiTypes.BINARY},
         description=(
-            "Build a provider payload from the frontend report object and the "
-            "current PedigreeBird graph, call the external FastReport PDF "
-            "endpoint synchronously, and pass through the upstream response."
+            "Return 404 unless pdf_id is a registered pedigree visible to the "
+            "user, then build a provider payload from the frontend report "
+            "object and the current PedigreeBird graph, call the external "
+            "FastReport PDF endpoint synchronously, and pass through the "
+            "upstream response."
         ),
     ),
 )
@@ -444,6 +538,7 @@ class PedigreeReportGenerateViewSet(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        RegisteredPedigreeService.require_visible(request.user, data["pdf_id"])
         provider_payload = (
             PedigreeReportGenerationService.build_provider_payload(
                 subject_bird_id=data["subject_bird_id"],

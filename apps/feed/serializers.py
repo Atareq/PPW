@@ -163,6 +163,7 @@ class SellerDiscoverySerializer(serializers.Serializer):
     completed_orders_count = serializers.IntegerField(read_only=True)
     seller_level = serializers.SerializerMethodField()
     seller_level_label = serializers.SerializerMethodField()
+    rooms = serializers.SerializerMethodField()
 
     def get_description(self, obj):
         return getattr(obj, "description", "") or ""
@@ -175,6 +176,16 @@ class SellerDiscoverySerializer(serializers.Serializer):
 
     def get_seller_level_label(self, obj):
         return SellerLevelService.get_level(_seller_completed_orders_count(obj)).label
+
+    def get_rooms(self, obj):
+        from apps.users.serializers import SellerRoomPublicSerializer
+        from apps.users.services import SellerRoomService
+
+        return SellerRoomPublicSerializer(
+            SellerRoomService.rooms_for_owner(obj),
+            many=True,
+            context=self.context,
+        ).data
 
 
 class SellerFollowSerializer(serializers.ModelSerializer):

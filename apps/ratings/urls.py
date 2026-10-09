@@ -4,9 +4,14 @@ from rest_framework.routers import DefaultRouter
 from apps.ratings.views import (
     AssetCommentViewSet,
     AssetRatingViewSet,
+    DealRatingStatusViewSet,
+    DealRatingViewSet,
     SellerCommentViewSet,
     SellerRatingViewSet,
 )
+
+CREATE_ACTION = {"post": "create"}
+RETRIEVE_ACTION = {"get": "retrieve"}
 
 router = DefaultRouter()
 router.register(
@@ -31,5 +36,15 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        "deal-ratings/",
+        DealRatingViewSet.as_view(CREATE_ACTION),
+        name="deal-rating-create",
+    ),
+    path(
+        "deal-ratings/deals/<int:deal_id>/",
+        DealRatingStatusViewSet.as_view(RETRIEVE_ACTION),
+        name="deal-rating-status",
+    ),
     path("", include(router.urls)),
 ]

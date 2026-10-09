@@ -9,17 +9,12 @@ from apps.loyalty.constants import BadgeType, RewardEventType
 from apps.loyalty.models import BadgeAward, PointTransaction
 from apps.loyalty.reward_engine import RewardEngine
 from apps.loyalty.services import BadgeService, PointService
-from apps.payments.models import (
-    PaymentRequest,
-    PaymentRequestStatus,
-    PaymentRequestType,
-)
 from apps.users.constants import ProfileType
 from tests.factories import (
     AuctionFactory,
     AuctionItemFactory,
     BadgeAwardFactory,
-    SupplyFactory,
+    CompletedDealFactory,
     UserAccountFactory,
 )
 
@@ -166,22 +161,18 @@ def test_deferred_or_unknown_rule_does_not_crash():
         "badges_awarded": [],
         "already_awarded": [],
         "deferred_tasks": [],
+        "skipped": [],
     }
 
 
 def test_trusted_buyer_aggregate_awards_threshold_badge():
     buyer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-    asset = SupplyFactory(owner=seller.active_profile)
-    for _ in range(10):
-        PaymentRequest.objects.create(
-            buyer=buyer.active_profile,
-            seller=seller.active_profile,
-            asset=asset,
-            amount=Decimal("10.00"),
-            status=PaymentRequestStatus.APPROVED,
-            request_type=PaymentRequestType.MARKET,
-        )
+    CompletedDealFactory.create_batch(
+        10,
+        buyer_profile=buyer.active_profile,
+        seller_profile=seller.active_profile,
+    )
 
     RewardEngine.evaluate_trusted_buyer(buyer.active_profile.pk)
 
@@ -193,16 +184,11 @@ def test_trusted_buyer_aggregate_awards_threshold_badge():
 
 def test_trusted_seller_aggregate_awards_threshold_badge():
     seller = UserAccountFactory(with_profile=ProfileType.SELLER)
-    asset = SupplyFactory(owner=seller.active_profile)
     for _ in range(10):
         buyer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
-        PaymentRequest.objects.create(
-            buyer=buyer.active_profile,
-            seller=seller.active_profile,
-            asset=asset,
-            amount=Decimal("10.00"),
-            status=PaymentRequestStatus.APPROVED,
-            request_type=PaymentRequestType.MARKET,
+        CompletedDealFactory(
+            buyer_profile=buyer.active_profile,
+            seller_profile=seller.active_profile,
         )
 
     RewardEngine.evaluate_trusted_seller(seller.active_profile.pk)

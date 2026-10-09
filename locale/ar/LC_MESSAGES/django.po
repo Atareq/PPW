@@ -2848,8 +2848,1158 @@ msgstr "البائع الملف الشخصي created successfully"
 msgid "Manager accounts cannot create customer profiles"
 msgstr "المدير accounts cannot create العميل الملفات الشخصية"
 
+#: apps/loyalty/constants.py
+msgid "Account Onboarding"
+msgstr "تسجيل الحساب"
+
+#: apps/loyalty/constants.py
+msgid "Active Auction Bidder"
+msgstr "مزايد نشط في المزاد"
+
+#: apps/loyalty/constants.py
+msgid "Deal Completed"
+msgstr "إتمام صفقة"
+
+#: apps/loyalty/constants.py
+msgid "Positive Rating"
+msgstr "تقييم إيجابي"
+
+#: apps/loyalty/constants.py
+msgid "Mutual Rating"
+msgstr "تقييم متبادل"
+
+#: apps/loyalty/constants.py
+msgid "Referral Approved"
+msgstr "قبول الإحالة"
+
+#: apps/loyalty/constants.py
+msgid "Referral First Bid"
+msgstr "أول مزايدة للمُحال"
+
+#: apps/users/manager_permissions.py
+msgid "Reward Rules"
+msgstr "قواعد المكافآت"
+
+#: apps/users/manager_permissions.py
+msgid "List reward rules"
+msgstr "عرض قواعد المكافآت"
+
+#: apps/users/manager_permissions.py
+msgid "View reward rule configuration."
+msgstr "عرض إعدادات قواعد المكافآت."
+
+#: apps/users/manager_permissions.py
+msgid "View reward rule details"
+msgstr "عرض تفاصيل قاعدة المكافأة"
+
+#: apps/users/manager_permissions.py
+msgid "View one reward rule configuration."
+msgstr "عرض إعدادات قاعدة مكافأة واحدة."
+
+#: apps/users/manager_permissions.py
+msgid "Update reward rules"
+msgstr "تحديث قواعد المكافآت"
+
+#: apps/users/manager_permissions.py
+msgid "Tune values of system-defined reward rules."
+msgstr "ضبط قيم قواعد المكافآت المعرّفة في النظام."
+
+#: apps/loyalty/services.py
+msgid "This field cannot be changed."
+msgstr "لا يمكن تغيير هذا الحقل."
+
+#: apps/loyalty/services.py
+msgid "Unknown reward rule code."
+msgstr "رمز قاعدة المكافأة غير معروف."
+
+#: apps/loyalty/serializers.py
+msgid "Configuration must be a JSON object."
+msgstr "يجب أن تكون الإعدادات كائن JSON."
+
+#: apps/loyalty/serializers.py
+#, python-format
+msgid "Configuration can have at most %(count)d keys."
+msgstr "يمكن أن تحتوي الإعدادات على %(count)d مفتاح كحد أقصى."
+
+#: apps/loyalty/serializers.py
+msgid "Configuration values must be plain values or lists of them."
+msgstr "يجب أن تكون قيم الإعدادات قيمًا بسيطة أو قوائم منها."
+
+#: apps/loyalty/serializers.py
+msgid "This field is required for this reward rule."
+msgstr "هذا الحقل مطلوب لقاعدة المكافأة هذه."
+
+#: apps/loyalty/views.py
+msgid "Reward rule was not found."
+msgstr "لم يتم العثور على قاعدة المكافأة."
+
+#: apps/deals/models.py
+msgid "Auction Item"
+msgstr "عنصر المزاد"
+
+#: apps/deals/models.py
+msgid "Order Item"
+msgstr "عنصر الطلب"
+
+#: apps/deals/validators.py
+msgid "Buyer profile must belong to the buyer account."
+msgstr "يجب أن ينتمي ملف المشتري إلى حساب المشتري."
+
+#: apps/deals/validators.py
+msgid "Seller profile must belong to the seller account."
+msgstr "يجب أن ينتمي ملف البائع إلى حساب البائع."
+
+#: apps/deals/models.py
+msgid "Completed deals cannot be changed."
+msgstr "لا يمكن تعديل الصفقات المكتملة."
+
+#: apps/deals/models.py
+msgid "Completed deals cannot be deleted."
+msgstr "لا يمكن حذف الصفقات المكتملة."
+
+#: apps/deals/services.py
+msgid "Order item is not completed."
+msgstr "عنصر الطلب غير مكتمل."
+
+#: apps/deals/services.py
+msgid "Deal has no approved confirmation."
+msgstr "لا يوجد تأكيد معتمد لهذه الصفقة."
+
+#: apps/deals/services.py
+msgid "Auction item is not sold to a winner."
+msgstr "عنصر المزاد غير مباع لفائز."
+
+#: apps/deals/services.py
+msgid "Deal confirmation parties do not match the source."
+msgstr "أطراف تأكيد الصفقة لا تطابق المصدر."
+
+#: apps/deals/services.py
+msgid "Deal confirmation has no approval time."
+msgstr "تأكيد الصفقة لا يحتوي على وقت الاعتماد."
+
+#: apps/loyalty/constants.py
+msgid "Deal Completion Bonus"
+msgstr "مكافأة إتمام الصفقة"
+
+#: apps/loyalty/serializers.py
+msgid "Points-per-unit rates must be non-negative numbers."
+msgstr "يجب أن تكون معدلات النقاط لكل وحدة أرقامًا غير سالبة."
+
+#: apps/loyalty/constants.py
+msgid "Successful Sale"
+msgstr "بيع ناجح"
+
+#: apps/ratings/models.py
+msgid "Buyer to Seller"
+msgstr "من المشتري إلى البائع"
+
+#: apps/ratings/models.py
+msgid "Seller to Buyer"
+msgstr "من البائع إلى المشتري"
+
+#: apps/ratings/services.py
+msgid "You have already rated this deal."
+msgstr "لقد قمت بتقييم هذه الصفقة بالفعل."
+
+#: apps/ratings/services.py
+msgid "Completed deal was not found."
+msgstr "لم يتم العثور على الصفقة المكتملة."
+
+#: apps/referrals/services.py
+msgid "This account has already redeemed a referral code."
+msgstr "استخدم هذا الحساب رمز إحالة بالفعل."
+
+#: apps/referrals/services.py
+msgid "Only pending referrals can be approved."
+msgstr "يمكن قبول الإحالات المعلقة فقط."
+
+#: apps/referrals/services.py
+msgid "Only pending referrals can be rejected."
+msgstr "يمكن رفض الإحالات المعلقة فقط."
+
+#: apps/referrals/services.py
+msgid "Referral was not found."
+msgstr "لم يتم العثور على الإحالة."
+
+#: apps/users/manager_permissions.py
+msgid "Referrals"
+msgstr "الإحالات"
+
+#: apps/users/manager_permissions.py
+msgid "List referrals"
+msgstr "عرض الإحالات"
+
+#: apps/users/manager_permissions.py
+msgid "View referral relationships and their review status."
+msgstr "عرض علاقات الإحالة وحالة مراجعتها."
+
+#: apps/users/manager_permissions.py
+msgid "Approve referrals"
+msgstr "قبول الإحالات"
+
+#: apps/users/manager_permissions.py
+msgid "Approve a pending referral; the inviter reward follows."
+msgstr "قبول إحالة معلقة؛ تُمنح مكافأة الداعي بعد ذلك."
+
+#: apps/users/manager_permissions.py
+msgid "Reject referrals"
+msgstr "رفض الإحالات"
+
+#: apps/users/manager_permissions.py
+msgid "Reject a pending referral without any reward."
+msgstr "رفض إحالة معلقة دون أي مكافأة."
+
+#: apps/referrals/models.py
+msgid "Review"
+msgstr "مراجعة"
+
+#: apps/referrals/models.py
+msgid "iPhone"
+msgstr "آيفون"
+
+#: apps/referrals/models.py
+msgid "AirPods"
+msgstr "سماعات AirPods"
+
+#: apps/referrals/models.py
+msgid "Annual Loft subscription"
+msgstr "اشتراك Loft سنوي"
+
+#: apps/referrals/models.py
+msgid "Referral challenge winners cannot be changed."
+msgstr "لا يمكن تغيير الفائزين في تحدي الإحالة."
+
+#: apps/referrals/models.py
+msgid "Referral challenge winners cannot be deleted."
+msgstr "لا يمكن حذف الفائزين في تحدي الإحالة."
+
+#: apps/referrals/services.py
+msgid "Finalized referral challenges cannot be changed."
+msgstr "لا يمكن تغيير تحديات الإحالة المنتهية."
+
+#: apps/referrals/services.py
+msgid "Dates and prizes cannot be changed after the challenge starts."
+msgstr "لا يمكن تغيير التواريخ والجوائز بعد بدء التحدي."
+
+#: apps/referrals/serializers.py apps/referrals/services.py
+msgid "The challenge must end after it starts."
+msgstr "يجب أن ينتهي التحدي بعد بدايته."
+
+#: apps/referrals/services.py
+msgid "A referral challenge can be finalized only after it ends."
+msgstr "لا يمكن إنهاء تحدي الإحالة إلا بعد انتهائه."
+
+#: apps/referrals/services.py
+msgid "Challenge has pending referrals awaiting review."
+msgstr "يحتوي التحدي على إحالات معلقة بانتظار المراجعة."
+
+#: apps/referrals/services.py
+msgid "Referral challenge periods cannot overlap."
+msgstr "لا يمكن أن تتداخل فترات تحديات الإحالة."
+
+#: apps/referrals/services.py
+msgid "Referral challenge was not found."
+msgstr "لم يتم العثور على تحدي الإحالة."
+
+#: apps/referrals/services.py
+msgid "No referral challenge is running or scheduled."
+msgstr "لا يوجد تحدي إحالة جارٍ أو مجدول."
+
+#: apps/referrals/serializers.py
+msgid "Each prize rank can be used once."
+msgstr "يمكن استخدام كل مرتبة جائزة مرة واحدة فقط."
+
+#: apps/users/manager_permissions.py
+msgid "Referral challenges"
+msgstr "تحديات الإحالة"
+
+#: apps/users/manager_permissions.py
+msgid "List referral challenges"
+msgstr "عرض تحديات الإحالة"
+
+#: apps/users/manager_permissions.py
+msgid "View monthly referral challenges."
+msgstr "عرض تحديات الإحالة الشهرية."
+
+#: apps/users/manager_permissions.py
+msgid "View referral challenge"
+msgstr "عرض تحدي إحالة"
+
+#: apps/users/manager_permissions.py
+msgid "View one challenge with its live leaderboard and winners."
+msgstr "عرض تحدٍ واحد مع لوحة الصدارة الحالية والفائزين."
+
+#: apps/users/manager_permissions.py
+msgid "Create referral challenge"
+msgstr "إنشاء تحدي إحالة"
+
+#: apps/users/manager_permissions.py
+msgid "Create a new monthly referral challenge."
+msgstr "إنشاء تحدي إحالة شهري جديد."
+
+#: apps/users/manager_permissions.py
+msgid "Update referral challenge"
+msgstr "تحديث تحدي إحالة"
+
+#: apps/users/manager_permissions.py
+msgid "Edit a challenge; dates and prizes only before it starts."
+msgstr "تعديل تحدٍ؛ التواريخ والجوائز قبل بدايته فقط."
+
+#: apps/users/manager_permissions.py
+msgid "Finalize referral challenge"
+msgstr "إنهاء تحدي إحالة"
+
+#: apps/users/manager_permissions.py
+msgid "Freeze the Top 3 winners of an ended challenge."
+msgstr "تثبيت أفضل 3 فائزين في تحدٍ منتهٍ."
+
+#: apps/seasons/services.py
+msgid "Season cannot be finalized before it ends."
+msgstr "لا يمكن إنهاء الموسم قبل انتهائه."
+
+#: apps/seasons/services.py
+msgid "Finalized seasons cannot be recalculated."
+msgstr "لا يمكن إعادة احتساب المواسم المنتهية."
+
+#: apps/seasons/models.py apps/seasons/serializers.py
+msgid "Finalized season dates cannot be modified."
+msgstr "لا يمكن تعديل تواريخ الموسم المنتهي."
+
+#: apps/seasons/models.py
+msgid "Finalized season prizes cannot be modified."
+msgstr "لا يمكن تعديل جوائز الموسم المنتهي."
+
+#: apps/seasons/models.py
+msgid "Season prizes can only be modified while the season is in draft."
+msgstr "يمكن تعديل جوائز الموسم فقط عندما يكون الموسم في حالة مسودة."
+
+#: apps/seasons/models.py
+msgid "Season prizes cannot be modified after the season starts."
+msgstr "لا يمكن تعديل جوائز الموسم بعد بدء الموسم."
+
+#: apps/seasons/models.py apps/seasons/serializers.py
+msgid "Season prize rank must be between 1 and 3."
+msgstr "يجب أن تكون مرتبة جائزة الموسم بين 1 و 3."
+
+#: apps/seasons/models.py apps/seasons/serializers.py
+msgid "Season prize points must be zero or positive."
+msgstr "يجب أن تكون نقاط جائزة الموسم صفرًا أو رقمًا موجبًا."
+
+#: apps/seasons/models.py apps/seasons/services.py
+msgid "A prize for this rank already exists in this season."
+msgstr "توجد جائزة لهذه المرتبة بالفعل في هذا الموسم."
+
+#: apps/seasons/services.py
+msgid "Season prize configuration is incomplete."
+msgstr "إعدادات جوائز الموسم غير مكتملة."
+
+#: apps/users/manager_permissions.py
+msgid "Season Prizes"
+msgstr "جوائز الموسم"
+
+#: apps/users/manager_permissions.py
+msgid "List season prizes"
+msgstr "عرض جوائز الموسم"
+
+#: apps/users/manager_permissions.py
+msgid "View configured rank prizes for a reward season."
+msgstr "عرض جوائز المراتب المهيأة لموسم مكافآت."
+
+#: apps/users/manager_permissions.py
+msgid "Create season prizes"
+msgstr "إنشاء جوائز الموسم"
+
+#: apps/users/manager_permissions.py
+msgid "Create rank prize configuration for a draft reward season before it starts."
+msgstr "إنشاء إعدادات جوائز المراتب لموسم مكافآت في حالة مسودة قبل بدايته."
+
+#: apps/users/manager_permissions.py
+msgid "Update season prizes"
+msgstr "تحديث جوائز الموسم"
+
+#: apps/users/manager_permissions.py
+msgid "Update rank prize configuration for a draft reward season before it starts."
+msgstr "تحديث إعدادات جوائز المراتب لموسم مكافآت في حالة مسودة قبل بدايته."
+
+#: apps/users/manager_permissions.py
+msgid "Delete season prizes"
+msgstr "حذف جوائز الموسم"
+
+#: apps/users/manager_permissions.py
+msgid "Delete rank prize configuration for a draft reward season before it starts."
+msgstr "حذف إعدادات جوائز المراتب لموسم مكافآت في حالة مسودة قبل بدايته."
+
 #~ msgid "SECRET_KEY is not set"
 #~ msgstr "لم يتم ضبط SECRET_KEY"
 
 #~ msgid "ALLOWED_HOSTS is not set"
 #~ msgstr "لم يتم ضبط ALLOWED_HOSTS"
+
+msgid "Monthly"
+msgstr "شهري"
+
+msgid "Seasonal"
+msgstr "موسمي"
+
+msgid "Flash"
+msgstr "خاطف"
+
+msgid "Disabled"
+msgstr "معطل"
+
+msgid "Scheduled"
+msgstr "مجدول"
+
+msgid "Campaign name is required."
+msgstr "اسم الحملة الترويجية مطلوب."
+
+msgid "Invalid promotion campaign type."
+msgstr "نوع الحملة الترويجية غير صالح."
+
+msgid "Campaign start time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت بدء الحملة المنطقة الزمنية."
+
+msgid "Campaign end time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت انتهاء الحملة المنطقة الزمنية."
+
+msgid "Campaign start time must be earlier than end time."
+msgstr "يجب أن يكون وقت بدء الحملة أسبق من وقت انتهائها."
+
+msgid "Campaign metadata must be a JSON object."
+msgstr "يجب أن تكون البيانات الوصفية للحملة كائن JSON."
+
+msgid "Evaluation time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت التقييم المنطقة الزمنية."
+
+msgid "Datetime value must be timezone-aware."
+msgstr "يجب أن تتضمن قيمة التاريخ والوقت المنطقة الزمنية."
+
+msgid "Promotion campaign was not found."
+msgstr "لم يتم العثور على الحملة الترويجية."
+
+msgid "Ended promotion campaigns cannot modify schedule or type."
+msgstr "لا يمكن تعديل الجدول الزمني أو النوع للحملات الترويجية المنتهية."
+
+msgid "Campaign schedule and type cannot be modified after the campaign starts."
+msgstr "لا يمكن تعديل الجدول الزمني ونوع الحملة بعد بدئها."
+
+msgid "Invalid effective status filter."
+msgstr "مرشح الحالة الفعلية غير صالح."
+
+msgid "Promotion Campaigns"
+msgstr "الحملات الترويجية"
+
+msgid "List promotion campaigns"
+msgstr "عرض الحملات الترويجية"
+
+msgid "View scheduled promotion campaigns."
+msgstr "عرض الحملات الترويجية المجدولة."
+
+msgid "View promotion campaign details"
+msgstr "عرض تفاصيل الحملة الترويجية"
+
+msgid "Open one scheduled promotion campaign."
+msgstr "فتح سجل حملة ترويجية مجدولة واحدة."
+
+msgid "Create promotion campaigns"
+msgstr "إنشاء الحملات الترويجية"
+
+msgid "Create scheduled promotion campaigns."
+msgstr "إنشاء حملات ترويجية مجدولة."
+
+msgid "Update promotion campaigns"
+msgstr "تحديث الحملات الترويجية"
+
+msgid "Update scheduled promotion campaigns."
+msgstr "تحديث الحملات الترويجية المجدولة."
+
+msgid "Enable promotion campaigns"
+msgstr "تفعيل الحملات الترويجية"
+
+msgid "Enable a scheduled promotion campaign."
+msgstr "تفعيل حملة ترويجية مجدولة."
+
+msgid "Disable promotion campaigns"
+msgstr "تعطيل الحملات الترويجية"
+
+msgid "Disable a scheduled promotion campaign."
+msgstr "تعطيل حملة ترويجية مجدولة."
+
+msgid "Percentage Discount"
+msgstr "خصم نسبي"
+
+msgid "Seller Package"
+msgstr "باقة البائع"
+
+msgid "Auction Highlight"
+msgstr "تمييز المزاد"
+
+msgid "Loft Subscription"
+msgstr "اشتراك اللوفت"
+
+msgid "Promotion campaign is required."
+msgstr "الحملة الترويجية مطلوبة."
+
+msgid "Invalid promotion effect type."
+msgstr "نوع تأثير الحملة الترويجية غير صالح."
+
+msgid "Invalid promotion target type."
+msgstr "نوع هدف الحملة الترويجية غير صالح."
+
+msgid "Discount percentage must use Decimal precision, not float."
+msgstr "يجب أن تستخدم نسبة الخصم الدقة العشرية وليس الأعداد العائمة."
+
+msgid "Discount percentage is required."
+msgstr "نسبة الخصم مطلوبة."
+
+msgid "Invalid discount percentage."
+msgstr "نسبة الخصم غير صالحة."
+
+msgid "Discount percentage must be greater than 0 and at most 100."
+msgstr "يجب أن تكون نسبة الخصم أكبر من 0 وبحد أقصى 100."
+
+msgid "Subscription duration target is only valid for LOFT_SUBSCRIPTION effects."
+msgstr "هدف مدة الاشتراك صالح فقط لتأثيرات اشتراك اللوفت."
+
+msgid "Seller package effects use target_package instead of target_code."
+msgstr "تستخدم تأثيرات باقات البائع حقل الباقة المستهدفة بدلاً من رمز الهدف."
+
+msgid "Seller package target is only valid for SELLER_PACKAGE effects."
+msgstr "هدف باقة البائع صالح فقط لتأثيرات باقات البائع."
+
+msgid "Target code does not match the selected subscription duration."
+msgstr "رمز الهدف لا يطابق مدة الاشتراك المحددة."
+
+msgid "Seller package target is not valid for AUCTION_HIGHLIGHT effects."
+msgstr "هدف باقة البائع غير صالح لتأثيرات تمييز المزاد."
+
+msgid "Subscription duration target is not valid for AUCTION_HIGHLIGHT effects."
+msgstr "هدف مدة الاشتراك غير صالح لتأثيرات تمييز المزاد."
+
+msgid "Effect metadata must be a JSON object."
+msgstr "يجب أن تكون البيانات الوصفية للتأثير كائن JSON."
+
+msgid "A promotion effect for this target already exists in the campaign."
+msgstr "يوجد تأثير ترويجي لهذا الهدف بالفعل في الحملة."
+
+msgid "Campaign effects cannot be modified after the campaign starts."
+msgstr "لا يمكن تعديل تأثيرات الحملة بعد بدء الحملة."
+
+msgid "Target seller package was not found."
+msgstr "لم يتم العثور على باقة البائع المستهدفة."
+
+msgid "Target subscription duration option was not found."
+msgstr "لم يتم العثور على خيار مدة الاشتراك المستهدف."
+
+msgid "Promotion campaign effect was not found."
+msgstr "لم يتم العثور على تأثير الحملة الترويجية."
+
+msgid "Base price must use Decimal precision, not float."
+msgstr "يجب أن يستخدم السعر الأساسي الدقة العشرية وليس الأعداد العائمة."
+
+msgid "Invalid base price."
+msgstr "السعر الأساسي غير صالح."
+
+msgid "Base price cannot be negative."
+msgstr "لا يمكن أن يكون السعر الأساسي سالباً."
+
+msgid "Invalid seller package target identifier."
+msgstr "معرف هدف باقة البائع غير صالح."
+
+msgid "Invalid subscription duration target identifier."
+msgstr "معرف هدف مدة الاشتراك غير صالح."
+
+msgid "Promotion Campaign Effects"
+msgstr "تأثيرات الحملات الترويجية"
+
+msgid "List promotion campaign effects"
+msgstr "عرض تأثيرات الحملات الترويجية"
+
+msgid "View service-level discount effects for a promotion campaign."
+msgstr "عرض تأثيرات الخصم على مستوى الخدمة لحملة ترويجية."
+
+msgid "View promotion campaign effect details"
+msgstr "عرض تفاصيل تأثير الحملة الترويجية"
+
+msgid "Open one service-level promotion campaign effect."
+msgstr "فتح سجل تأثير حملة ترويجية واحد على مستوى الخدمة."
+
+msgid "Create promotion campaign effects"
+msgstr "إنشاء تأثيرات الحملات الترويجية"
+
+msgid "Create service-level discount effects for a scheduled promotion campaign."
+msgstr "إنشاء تأثيرات خصم على مستوى الخدمة لحملة ترويجية مجدولة."
+
+msgid "Update promotion campaign effects"
+msgstr "تحديث تأثيرات الحملات الترويجية"
+
+msgid "Update service-level discount effects before a promotion campaign starts."
+msgstr "تحديث تأثيرات الخصم على مستوى الخدمة قبل بدء الحملة الترويجية."
+
+msgid "Delete promotion campaign effects"
+msgstr "حذف تأثيرات الحملات الترويجية"
+
+msgid "Delete service-level discount effects before a promotion campaign starts."
+msgstr "حذف تأثيرات الخصم على مستوى الخدمة قبل بدء الحملة الترويجية."
+
+msgid "Weekly Draws"
+msgstr "السحوبات الأسبوعية"
+
+msgid "List weekly draws"
+msgstr "عرض السحوبات الأسبوعية"
+
+msgid "View scheduled weekly onboarding draws."
+msgstr "عرض السحوبات الأسبوعية المجدولة للتسجيل."
+
+msgid "View weekly draw details"
+msgstr "عرض تفاصيل السحب الأسبوعي"
+
+msgid "Open one scheduled weekly onboarding draw."
+msgstr "فتح سحب أسبوعي مجدول واحد."
+
+msgid "Create weekly draws"
+msgstr "إنشاء السحوبات الأسبوعية"
+
+msgid "Create scheduled weekly onboarding draws."
+msgstr "إنشاء سحوبات أسبوعية مجدولة للتسجيل."
+
+msgid "Update weekly draws"
+msgstr "تحديث السحوبات الأسبوعية"
+
+msgid "Update scheduled weekly onboarding draws before start or assignment."
+msgstr "تحديث السحوبات الأسبوعية المجدولة قبل البدء أو التخصيص."
+
+msgid "Open weekly draws"
+msgstr "فتح السحوبات الأسبوعية"
+
+msgid "Open a draft weekly onboarding draw and assign pending entries."
+msgstr "فتح مسودة سحب أسبوعي وتخصيص الاشتراكات المعلقة."
+
+msgid "Close weekly draws"
+msgstr "إغلاق السحوبات الأسبوعية"
+
+msgid "Close an open weekly onboarding draw."
+msgstr "إغلاق سحب أسبوعي مفتوح."
+
+msgid "List weekly draw entries"
+msgstr "عرض اشتراكات السحب الأسبوعي"
+
+msgid "View entries assigned to a weekly onboarding draw."
+msgstr "عرض الاشتراكات المخصصة لسحب أسبوعي."
+
+msgid "Finalize weekly draws"
+msgstr "اعتماد السحوبات الأسبوعية"
+
+msgid "Execute the weekly onboarding draw finalization freeze after its end time."
+msgstr "تجميد واعتماد السحب الأسبوعي الترحيبي بعد انتهاء وقته."
+
+msgid "Weekly draw cannot be closed before its end time."
+msgstr "لا يمكن إغلاق السحب الأسبوعي قبل وقت انتهائه."
+
+msgid "Weekly draw cannot be finalized before its end time."
+msgstr "لا يمكن اعتماد السحب الأسبوعي قبل وقت انتهائه."
+
+msgid "Draft weekly draws cannot be finalized."
+msgstr "لا يمكن اعتماد مسودة السحب الأسبوعي."
+
+msgid "Closed weekly draws cannot be reopened."
+msgstr "لا يمكن إعادة فتح السحوبات الأسبوعية المغلقة."
+
+msgid "Closed or finalized weekly draws cannot be deleted."
+msgstr "لا يمكن حذف السحوبات الأسبوعية المغلقة أو المعتمدة."
+
+msgid "Assigned weekly draw entries cannot be modified after the draw is closed or finalized."
+msgstr "لا يمكن تعديل مشاركات السحب الأسبوعي بعد إغلاق السحب أو اعتماده."
+
+msgid "Assigned weekly draw entries cannot be deleted."
+msgstr "لا يمكن حذف مشاركات السحب الأسبوعي المعينة."
+
+msgid "A valid winner profile is required."
+msgstr "مطلوب ملف فائز صالح."
+
+msgid "Only buyer customer profiles can receive auction completion wheel attempts."
+msgstr "يمكن لملفات العملاء المشترين فقط الحصول على محاولات عجلة الحظ عند إتمام المزاد."
+
+msgid "A valid auction item is required."
+msgstr "مطلوب عنصر مزاد صالح."
+
+msgid "Profile is required."
+msgstr "الملف الشخصي مطلوب."
+
+msgid "Invalid lucky wheel grant source type."
+msgstr "نوع مصدر منحة عجلة الحظ غير صالح."
+
+msgid "Manager profiles cannot receive lucky wheel attempts."
+msgstr "لا يمكن لملفات المديرين الحصول على محاولات عجلة الحظ."
+
+msgid "Idempotency key has already been used for a different grant."
+msgstr "تم استخدام مفتاح عدم التكرار بالفعل لمنحة مختلفة."
+
+msgid "Profile does not belong to the authenticated user."
+msgstr "الملف الشخصي لا ينتمي إلى المستخدم المصادق عليه."
+
+msgid "Idempotency key has already been used."
+msgstr "تم استخدام مفتاح عدم التكرار بالفعل."
+
+msgid "Client cannot specify prize, outcome, slot, or grant parameters."
+msgstr "لا يمكن للعميل تحديد الجائزة أو النتيجة أو الخانة أو معلمات المنحة."
+
+msgid "Prize weight must be greater than 0."
+msgstr "يجب أن يكون وزن الجائزة أكبر من 0."
+
+msgid "PP coin prizes require points amount."
+msgstr "تتطلب جوائز عملات PP تحديد قيمة النقاط."
+
+msgid "PP coin prizes cannot define a discount offer."
+msgstr "لا يمكن لجوائز عملات PP تحديد عرض خصم."
+
+msgid "PP coin prizes cannot define a cashback offer."
+msgstr "لا يمكن لجوائز عملات PP تحديد عرض استرداد نقدي."
+
+msgid "PP coin prizes cannot define a badge type."
+msgstr "لا يمكن لجوائز عملات PP تحديد نوع شارة."
+
+msgid "Discount offer prize requires an offer."
+msgstr "تتطلب جائزة عرض الخصم تحديد عرض."
+
+msgid "Discount offer must be active."
+msgstr "يجب أن يكون عرض الخصم نشطاً."
+
+msgid "Offer trigger type must be lucky_wheel."
+msgstr "يجب أن يكون نوع مشغل العرض هو عجلة الحظ."
+
+msgid "Discount offer prizes cannot define points amount."
+msgstr "لا يمكن لجوائز عروض الخصم تحديد قيمة النقاط."
+
+msgid "Discount offer prizes cannot define a cashback offer."
+msgstr "لا يمكن لجوائز عروض الخصم تحديد عرض استرداد نقدي."
+
+msgid "Discount offer prizes cannot define a badge type."
+msgstr "لا يمكن لجوائز عروض الخصم تحديد نوع شارة."
+
+msgid "Cashback offer prize requires an offer."
+msgstr "تتطلب جائزة عرض الاسترداد النقدي تحديد عرض."
+
+msgid "Cashback offer must be active."
+msgstr "يجب أن يكون عرض الاسترداد النقدي نشطاً."
+
+msgid "Cashback offer prizes cannot define points amount."
+msgstr "لا يمكن لجوائز عروض الاسترداد النقدي تحديد قيمة النقاط."
+
+msgid "Cashback offer prizes cannot define a discount offer."
+msgstr "لا يمكن لجوائز عروض الاسترداد النقدي تحديد عرض خصم."
+
+msgid "Cashback offer prizes cannot define a badge type."
+msgstr "لا يمكن لجوائز عروض الاسترداد النقدي تحديد نوع شارة."
+
+msgid "Badge prize requires badge type."
+msgstr "تتطلب جائزة الشارة تحديد نوع الشارة."
+
+msgid "Badge type is not in BadgeType."
+msgstr "نوع الشارة غير صالح."
+
+msgid "Badge prizes cannot define points amount."
+msgstr "لا يمكن لجوائز الشارات تحديد قيمة النقاط."
+
+msgid "Badge prizes cannot define a discount offer."
+msgstr "لا يمكن لجوائز الشارات تحديد عرض خصم."
+
+msgid "Badge prizes cannot define a cashback offer."
+msgstr "لا يمكن لجوائز الشارات تحديد عرض استرداد نقدي."
+
+msgid "No-prize rows cannot define reward fields."
+msgstr "لا يمكن لخانات عدم الفوز تحديد حقول مكافأة."
+
+msgid "Quantity total must be greater than 0 when specified."
+msgstr "يجب أن يكون إجمالي الكمية أكبر من 0 عند تحديده."
+
+msgid "Quantity awarded cannot exceed quantity total."
+msgstr "لا يمكن أن تتجاوز الكمية الممنوحة إجمالي الكمية."
+
+msgid "Prize validity days must be a positive integer."
+msgstr "يجب أن تكون أيام صلاحية الجائزة عدداً صحيحاً موجباً."
+
+msgid "No lucky wheel prizes are available."
+msgstr "لا توجد جوائز متاحة في عجلة الحظ."
+
+msgid "Random selection pick is out of bounds."
+msgstr "قيمة الاختيار العشوائي خارج النطاق المسموح."
+
+msgid "Discount offer is no longer active."
+msgstr "لم يعد عرض الخصم نشطاً."
+
+msgid "Cashback offer is no longer active."
+msgstr "لم يعد عرض الاسترداد النقدي نشطاً."
+
+msgid "A valid profile is required to award a badge prize."
+msgstr "مطلوب ملف شخصي صالح لمنح جائزة الشارة."
+
+msgid "Referral Challenge"
+msgstr "تحدي الإحالات"
+
+msgid "Digital Automatic"
+msgstr "رقمي تلقائي"
+
+msgid "Claim Required"
+msgstr "يتطلب مطالبة"
+
+msgid "Fulfilled"
+msgstr "تم التسليم"
+
+msgid "Recipient user is required."
+msgstr "المستخدم المستفيد مطلوب."
+
+msgid "Invalid profile."
+msgstr "ملف تعريفي غير صالح."
+
+msgid "Profile does not belong to the specified user."
+msgstr "الملف التعريفي لا ينتمي إلى المستخدم المحدد."
+
+msgid "Invalid prize award source type."
+msgstr "نوع مصدر الجائزة غير صالح."
+
+msgid "Prize award source ID is required."
+msgstr "معرف مصدر الجائزة مطلوب."
+
+msgid "Invalid prize award fulfillment type."
+msgstr "نوع استيفاء الجائزة غير صالح."
+
+msgid "Invalid prize award status."
+msgstr "حالة الجائزة غير صالحة."
+
+msgid "Prize award title is required."
+msgstr "عنوان الجائزة مطلوب."
+
+msgid "Prize snapshot must be a JSON object."
+msgstr "يجب أن تكون بيانات الجائزة كائن JSON."
+
+msgid "Prize snapshot cannot contain claim PII fields."
+msgstr "لا يمكن أن تحتوي بيانات الجائزة على بيانات شخصية للمطالبة."
+
+msgid "Prize award metadata must be a JSON object."
+msgstr "يجب أن تكون البيانات الوصفية للجائزة كائن JSON."
+
+msgid "Prize award metadata cannot contain claim PII fields."
+msgstr "لا يمكن أن تحتوي البيانات الوصفية للجائزة على بيانات شخصية للمطالبة."
+
+msgid "Awarded timestamp is required."
+msgstr "وقت منح الجائزة مطلوب."
+
+msgid "Digital automatic prize awards must have fulfilled status."
+msgstr "يجب أن تكون الجوائز الرقمية التلقائية بحالة تم التسليم."
+
+msgid "Fulfilled prize awards must have a fulfilled_at timestamp."
+msgstr "يجب أن تحتوي الجوائز المسلمة على وقت التسليم."
+
+msgid "Pending prize awards cannot have a fulfilled_at timestamp."
+msgstr "لا يمكن أن تحتوي الجوائز قيد الانتظار على وقت التسليم."
+
+msgid "Prize award recipient cannot be modified after creation."
+msgstr "لا يمكن تعديل المستفيد من الجائزة بعد إنشائها."
+
+msgid "Prize award profile attribution cannot be modified after creation."
+msgstr "لا يمكن تعديل الملف التعريفي للجائزة بعد إنشائها."
+
+msgid "Prize award source identity cannot be modified after creation."
+msgstr "لا يمكن تعديل هوية مصدر الجائزة بعد إنشائها."
+
+msgid "Prize award fulfillment type cannot be modified after creation."
+msgstr "لا يمكن تعديل نوع استيفاء الجائزة بعد إنشائها."
+
+msgid "Prize award snapshot cannot be modified after creation."
+msgstr "لا يمكن تعديل لقطة الجائزة بعد إنشائها."
+
+msgid "Prize award timestamp cannot be modified after creation."
+msgstr "لا يمكن تعديل وقت منح الجائزة بعد إنشائها."
+
+msgid "Prize award idempotency key cannot be modified after creation."
+msgstr "لا يمكن تعديل مفتاح عدم التكرار للجائزة بعد إنشائها."
+
+msgid "Fulfilled prize awards cannot be reverted."
+msgstr "لا يمكن التراجع عن الجوائز المسلمة."
+
+msgid "Prize award ledger records cannot be deleted."
+msgstr "لا يمكن حذف سجلات دفتر الجوائز."
+
+msgid "Idempotency key has already been used for a different prize award."
+msgstr "تم استخدام مفتاح عدم التكرار بالفعل لجائزة أخرى."
+
+msgid "Prize Awards"
+msgstr "سجلات الجوائز"
+
+msgid "List prize awards"
+msgstr "عرض الجوائز الممنوحة"
+
+msgid "View cross-domain prize awards and fulfillment status."
+msgstr "عرض الجوائز الممنوحة عبر النظام وحالة تسليمها."
+
+msgid "View prize award details"
+msgstr "عرض تفاصيل الجائزة"
+
+msgid "Open one prize award record."
+msgstr "فتح سجل جائزة ممنوحة واحد."
+
+msgid "Submitted"
+msgstr "مُقدَّم"
+
+msgid "Delivered"
+msgstr "تم التسليم"
+
+msgid "Prize claim"
+msgstr "مطالبة جائزة"
+
+msgid "Prize claims"
+msgstr "مطالبات الجوائز"
+
+msgid "Claim-required prize awards must start in pending status."
+msgstr "يجب أن تبدأ الجوائز التي تتطلب مطالبة بحالة قيد الانتظار."
+
+msgid "Claim-required prize awards can only be fulfilled when their claim is delivered."
+msgstr "لا يمكن تسليم الجوائز التي تتطلب مطالبة إلا بعد تسليم المطالبة الخاصة بها."
+
+msgid "Prize award is required."
+msgstr "الجائزة الممنوحة مطلوبة."
+
+msgid "Claims are only supported for claim-required prize awards."
+msgstr "المطالبات متاحة فقط للجوائز التي تتطلب مطالبة."
+
+msgid "Full name is required."
+msgstr "الاسم الكامل مطلوب."
+
+msgid "Full name cannot exceed 255 characters."
+msgstr "لا يمكن أن يتجاوز الاسم الكامل 255 حرفًا."
+
+msgid "Address is required."
+msgstr "العنوان مطلوب."
+
+msgid "Identity number is required."
+msgstr "رقم الهوية مطلوب."
+
+msgid "Identity number cannot exceed 100 characters."
+msgstr "لا يمكن أن يتجاوز رقم الهوية 100 حرف."
+
+msgid "Invalid prize claim status."
+msgstr "حالة مطالبة الجائزة غير صالحة."
+
+msgid "Submitted timestamp is required."
+msgstr "وقت تقديم المطالبة مطلوب."
+
+msgid "Claim prize award cannot be modified after submission."
+msgstr "لا يمكن تعديل الجائزة المرتبطة بالمطالبة بعد التقديم."
+
+msgid "Claimant full name cannot be modified after submission."
+msgstr "لا يمكن تعديل الاسم الكامل بعد تقديم المطالبة."
+
+msgid "Claimant address cannot be modified after submission."
+msgstr "لا يمكن تعديل العنوان بعد تقديم المطالبة."
+
+msgid "Claimant identity number cannot be modified after submission."
+msgstr "لا يمكن تعديل رقم الهوية بعد تقديم المطالبة."
+
+msgid "Claim submitted timestamp cannot be modified after submission."
+msgstr "لا يمكن تعديل وقت تقديم المطالبة بعد التقديم."
+
+msgid "Claims must be reviewed before they can be marked delivered."
+msgstr "يجب مراجعة المطالبة أولاً قبل تحديدها كمسلمة."
+
+msgid "Reviewed or delivered claims cannot revert to submitted."
+msgstr "لا يمكن إعادة المطالبات التي تمت مراجعتها أو تسليمها إلى حالة التقديم."
+
+msgid "Claim review timestamp cannot be modified after review."
+msgstr "لا يمكن تعديل وقت مراجعة المطالبة بعد المراجعة."
+
+msgid "Claim reviewer cannot be modified after review."
+msgstr "لا يمكن تعديل مراجع المطالبة بعد المراجعة."
+
+msgid "Delivered claims cannot be reverted."
+msgstr "لا يمكن التراجع عن المطالبات المسلمة."
+
+msgid "Claim delivery timestamp cannot be modified after delivery."
+msgstr "لا يمكن تعديل وقت تسليم المطالبة بعد التسليم."
+
+msgid "Claim deliverer cannot be modified after delivery."
+msgstr "لا يمكن تعديل مُسلِّم المطالبة بعد التسليم."
+
+msgid "Submitted claims cannot have review or delivery metadata."
+msgstr "لا يمكن أن تحتوي المطالبات المقدمة على بيانات مراجعة أو تسليم."
+
+msgid "Reviewed claims must record reviewed_at and reviewed_by."
+msgstr "يجب أن تسجل المطالبات التي تمت مراجعتها وقت المراجعة والمراجع."
+
+msgid "Reviewed claims cannot have delivery metadata before delivery."
+msgstr "لا يمكن أن تحتوي المطالبات المراجعة على بيانات تسليم قبل التسليم."
+
+msgid "Delivered claims must record delivered_at and delivered_by."
+msgstr "يجب أن تسجل المطالبات المسلمة وقت التسليم والمُسلِّم."
+
+msgid "Prize claim records cannot be deleted."
+msgstr "لا يمكن حذف سجلات مطالبات الجوائز."
+
+msgid "Authentication is required."
+msgstr "تسجيل الدخول مطلوب."
+
+msgid "Prize award not found."
+msgstr "الجائزة الممنوحة غير موجودة."
+
+msgid "This prize award does not require a claim."
+msgstr "هذه الجائزة لا تتطلب تقديم مطالبة."
+
+msgid "A claim has already been submitted for this prize award."
+msgstr "تم تقديم مطالبة بالفعل لهذه الجائزة."
+
+msgid "This prize award has already been fulfilled."
+msgstr "تم تسليم هذه الجائزة بالفعل."
+
+msgid "Prize claim not found."
+msgstr "مطالبة الجائزة غير موجودة."
+
+msgid "Delivered claims cannot be reviewed again."
+msgstr "لا يمكن مراجعة المطالبات المسلمة مرة أخرى."
+
+msgid "Only submitted claims can be reviewed."
+msgstr "يمكن مراجعة المطالبات المقدمة فقط."
+
+msgid "Prize Claims"
+msgstr "مطالبات الجوائز"
+
+msgid "List prize claims"
+msgstr "عرض مطالبات الجوائز"
+
+msgid "View submitted prize claims."
+msgstr "عرض مطالبات الجوائز المقدمة."
+
+msgid "View prize claim details"
+msgstr "عرض تفاصيل مطالبة الجائزة"
+
+msgid "Open one submitted prize claim record."
+msgstr "فتح سجل مطالبة جائزة واحد."
+
+msgid "Review prize claims"
+msgstr "مراجعة مطالبات الجوائز"
+
+msgid "Mark a submitted prize claim as reviewed."
+msgstr "تحديد مطالبة الجائزة المقدمة كتمت مراجعتها."
+
+msgid "Deliver prize claims"
+msgstr "تسليم مطالبات الجوائز"
+
+msgid "Mark a reviewed prize claim as delivered and fulfill its award."
+msgstr "تحديد مطالبة الجائزة التي تمت مراجعتها كمسلمة وإتمام الجائزة."
+
+msgid "Congratulations! Points earned"
+msgstr "تهانينا! ربحت نقاطاً"
+
+#, python-format
+msgid "Congratulations! You earned %(points)s PP Coins."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP."
+
+#, python-format
+msgid "Congratulations! You earned the %(badge_name)s badge."
+msgstr "تهانينا! لقد حصلت على وسام %(badge_name)s."
+
+msgid "Congratulations! You are a winner"
+msgstr "تهانينا! أنت من الفائزين"
+
+#, python-format
+msgid "Congratulations! You won a prize: %(prize_title)s."
+msgstr "تهانينا! لقد فزت بجائزة: %(prize_title)s."
+
+msgid "Announcements"
+msgstr "الإعلانات"
+
+msgid "List announcements"
+msgstr "عرض الإعلانات"
+
+msgid "View admin announcement bar records."
+msgstr "عرض سجلات شريط الإعلانات الإدارية."
+
+msgid "View announcement details"
+msgstr "عرض تفاصيل الإعلان"
+
+msgid "Open one admin announcement bar record."
+msgstr "فتح سجل شريط إعلان إداري واحد."
+
+msgid "Create announcements"
+msgstr "إنشاء الإعلانات"
+
+msgid "Create admin announcement bar records."
+msgstr "إنشاء سجلات شريط الإعلانات الإدارية."
+
+msgid "Update announcements"
+msgstr "تحديث الإعلانات"
+
+msgid "Update admin announcement bar records."
+msgstr "تحديث سجلات شريط الإعلانات الإدارية."
+
+msgid "Delete announcements"
+msgstr "حذف الإعلانات"
+
+msgid "Delete admin announcement bar records."
+msgstr "حذف سجلات شريط الإعلانات الإدارية."
+
+msgid "Hours"
+msgstr "ساعات"
+
+msgid "Days"
+msgstr "أيام"
+
+msgid "Announcement text is required."
+msgstr "نص الإعلان مطلوب."
+
+msgid "Announcement start time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت بدء الإعلان المنطقة الزمنية."
+
+msgid "Announcement expiration time must be timezone-aware."
+msgstr "يجب أن يتضمن وقت انتهاء الإعلان المنطقة الزمنية."
+
+msgid "Announcement expiration time must be later than start time."
+msgstr "يجب أن يكون وقت انتهاء الإعلان بعد وقت البدء."
+
+msgid "Unsupported duration unit."
+msgstr "وحدة المدة غير مدعومة."
+
+msgid "Announcement was not found."
+msgstr "لم يتم العثور على الإعلان."
+
+msgid "Client cannot specify user, profile, or dismissal parameters."
+msgstr "لا يمكن للعميل تحديد المستخدم أو الملف الشخصي أو معلمات الإغلاق."
+
+msgid "Both duration_value and duration_unit are required when specifying duration."
+msgstr "يجب تحديد قيمة المدة ووحدة المدة معًا عند تحديد المدة."
+
+msgid "Provide either expires_at or duration_value with duration_unit, not both."
+msgstr "يرجى تقديم إما وقت الانتهاء أو قيمة المدة مع وحدتها، وليس كليهما."
+
+msgid "Either expires_at or duration_value with duration_unit is required."
+msgstr "مطلوب إما وقت الانتهاء أو قيمة المدة مع وحدتها."
+
+msgid "Auction not found"
+msgstr "لم يتم العثور على المزاد"
+
+msgid "DND start time is required when DND is enabled."
+msgstr "وقت بدء عدم الإزعاج مطلوب عند تفعيله."
+
+msgid "DND end time is required when DND is enabled."
+msgstr "وقت انتهاء عدم الإزعاج مطلوب عند تفعيله."
+
+msgid "DND start and end times must be different when DND is enabled."
+msgstr "يجب أن يختلف وقت البدء عن وقت الانتهاء عند تفعيل عدم الإزعاج."
+
+msgid "This field is not allowed."
+msgstr "هذا الحقل غير مسموح به."
+
+msgid "Congratulations! You earned %(points)s PP Coins for joining."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP لانضمامك."
+
+msgid "Congratulations! You earned %(points)s PP Coins from a referral."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP من الإحالة."
+
+msgid "Congratulations! You earned %(points)s PP Coins for a completed deal."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP لإتمام صفقة."
+
+msgid "Congratulations! You earned %(points)s PP Coins as a season winner."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP كفائز بالموسم."
+
+msgid "Congratulations! You earned %(points)s PP Coins from Lucky Wheel."
+msgstr "تهانينا! لقد ربحت %(points)s نقطة PP من عجلة الحظ."
+

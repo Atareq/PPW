@@ -18,11 +18,13 @@ Including another URLconf
 from django.conf import settings
 from django.urls import include, path
 
+from apps.users.urls import seller_room_urlpatterns
 from ppw.schema import InternalSchemaAPIView, InternalSwaggerUIView
 
 urlpatterns = [
     path("api/auth/", include("apps.authentication.urls")),
     path("api/users/", include("apps.users.urls")),
+    path("api/seller-rooms/", include((seller_room_urlpatterns, "seller-rooms"))),
     path("api/assets/", include("apps.assets.urls")),
     path("api/auctions/", include("apps.auctions.urls")),
     path("api/orders/", include("apps.orders.urls")),
@@ -42,6 +44,8 @@ urlpatterns = [
     path("api/pedigrees/", include("apps.pedigrees.urls")),
     path("api/loft-subscriptions/", include("apps.loft_subscriptions.urls")),
     path("api/seasons/", include("apps.seasons.urls")),
+    path("api/prizes/", include("apps.prizes.urls")),
+    path("api/announcements/", include("apps.general.urls")),
     path(
         "api/schema/",
         InternalSchemaAPIView.as_view(),

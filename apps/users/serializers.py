@@ -13,11 +13,15 @@ from apps.users.models import (
     ProfileBalanceTransaction,
     ProfileDataChangeSource,
     SellerProfile,
+    SellerRoom,
+    SellerRoomFollow,
 )
 from apps.users.services import (
     ManagerPermissionService,
     ProfileBalanceService,
     ProfileDataChangeService,
+    SellerRoomFollowService,
+    SellerRoomService,
 )
 
 
@@ -87,10 +91,11 @@ class SellerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSer
     completed_orders_count = serializers.SerializerMethodField()
     seller_level = serializers.SerializerMethodField()
     seller_level_label = serializers.SerializerMethodField()
+    rooms = serializers.SerializerMethodField()
 
     class Meta:
         model = SellerProfile
-        fields = "__all__"
+        exclude = ("bank_account", "wallet", "transfer_phone")
 
     def get_successful_invites_count(self, obj):
         return _successful_invites_count(obj)
@@ -103,6 +108,13 @@ class SellerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSer
 
     def get_seller_level_label(self, obj):
         return SellerLevelService.get_level(self.get_completed_orders_count(obj)).label
+
+    def get_rooms(self, obj):
+        return SellerRoomPublicSerializer(
+            SellerRoomService.rooms_for_owner(obj),
+            many=True,
+            context=self.context,
+        ).data
 
 
 class CustomerProfileAdminSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
@@ -152,10 +164,20 @@ class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSe
 
     username = serializers.CharField(source="user.username", read_only=True)
     phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    bank_account = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    wallet = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True
+    )
+    transfer_phone = serializers.CharField(
+        max_length=50, required=False, allow_blank=True, allow_null=True
+    )
     successful_invites_count = serializers.SerializerMethodField()
     completed_orders_count = serializers.SerializerMethodField()
     seller_level = serializers.SerializerMethodField()
     seller_level_label = serializers.SerializerMethodField()
+    rooms = serializers.SerializerMethodField()
 
     class Meta:
         model = SellerProfile
@@ -167,6 +189,9 @@ class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSe
             "phone_number",
             "country",
             "currency",
+            "bank_account",
+            "wallet",
+            "transfer_phone",
             "recoded_voice",
             "avg_rating",
             "ratings_count",
@@ -179,6 +204,7 @@ class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSe
             "completed_orders_count",
             "seller_level",
             "seller_level_label",
+            "rooms",
             "activated",
             "is_active",
             "is_valid",
@@ -195,11 +221,21 @@ class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSe
             "completed_orders_count",
             "seller_level",
             "seller_level_label",
+            "rooms",
             "activated",
             "is_active",
             "is_valid",
             "created",
         ]
+
+    def validate_bank_account(self, value):
+        return (value or "").strip()
+
+    def validate_wallet(self, value):
+        return (value or "").strip()
+
+    def validate_transfer_phone(self, value):
+        return (value or "").strip()
 
     def get_successful_invites_count(self, obj):
         return _successful_invites_count(obj)
@@ -212,6 +248,13 @@ class SellerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSe
 
     def get_seller_level_label(self, obj):
         return SellerLevelService.get_level(self.get_completed_orders_count(obj)).label
+
+    def get_rooms(self, obj):
+        return SellerRoomPublicSerializer(
+            SellerRoomService.rooms_for_owner(obj),
+            many=True,
+            context=self.context,
+        ).data
 
 
 class CustomerProfileMobileSerializer(UserSecondaryPhoneMixin, serializers.ModelSerializer):
@@ -492,12 +535,11 @@ class ProfileBalanceAdjustmentSerializer(serializers.Serializer):
 
 
 def _successful_invites_count(profile):
-    from apps.referrals.models import LinkSharingCode
+    """Approved referrals only; a consumed code is not a successful invite."""
 
-    return LinkSharingCode.objects.filter(
-        owner_profile_id=profile.pk,
-        is_used=True,
-    ).count()
+    from apps.referrals.services import ReferralService
+
+    return ReferralService.approved_count(profile)
 
 
 def _completed_seller_orders_count(profile):
@@ -535,3 +577,152 @@ def _active_profile_or_none(user):
         return user.active_profile
     except Exception:
         return None
+
+
+class SellerRoomPublicSerializer(serializers.ModelSerializer):
+    """Public-safe representation of a seller room without private seller fields."""
+
+    seller_id = serializers.IntegerField(source="seller.id", read_only=True)
+    seller_nickname = serializers.CharField(
+        source="seller.nickname",
+        read_only=True,
+        allow_blank=True,
+    )
+    followers_count = serializers.SerializerMethodField()
+    is_followed = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SellerRoom
+        fields = [
+            "id",
+            "seller",
+            "seller_id",
+            "seller_nickname",
+            "name",
+            "description",
+            "followers_count",
+            "is_followed",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+    def get_followers_count(self, obj) -> int:
+        annotated = getattr(obj, "followers_count", None)
+        if annotated is not None:
+            return int(annotated)
+        return SellerRoomFollow.objects.filter(
+            room=obj,
+            deleted__isnull=True,
+        ).count()
+
+    def get_is_followed(self, obj) -> bool:
+        request = self.context.get("request") if hasattr(self, "context") else None
+        user = getattr(request, "user", None)
+        return SellerRoomFollowService.is_following(user=user, room=obj)
+
+
+class SellerRoomSerializer(serializers.ModelSerializer):
+    """Seller-owned room CRUD serializer; seller ownership is strictly read-only."""
+
+    seller_id = serializers.IntegerField(source="seller.id", read_only=True)
+    seller_nickname = serializers.CharField(
+        source="seller.nickname",
+        read_only=True,
+        allow_blank=True,
+    )
+    name = serializers.CharField(max_length=150, trim_whitespace=True)
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    followers_count = serializers.SerializerMethodField()
+    is_followed = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SellerRoom
+        fields = [
+            "id",
+            "seller",
+            "seller_id",
+            "seller_nickname",
+            "name",
+            "description",
+            "followers_count",
+            "is_followed",
+            "created",
+            "modified",
+        ]
+        read_only_fields = [
+            "id",
+            "seller",
+            "seller_id",
+            "seller_nickname",
+            "followers_count",
+            "is_followed",
+            "created",
+            "modified",
+        ]
+
+    def validate_name(self, value):
+        cleaned = (value or "").strip()
+        if not cleaned:
+            raise serializers.ValidationError(_("Room name cannot be blank."))
+        return cleaned
+
+    def get_followers_count(self, obj) -> int:
+        annotated = getattr(obj, "followers_count", None)
+        if annotated is not None:
+            return int(annotated)
+        return SellerRoomFollow.objects.filter(
+            room=obj,
+            deleted__isnull=True,
+        ).count()
+
+    def get_is_followed(self, obj) -> bool:
+        request = self.context.get("request") if hasattr(self, "context") else None
+        user = getattr(request, "user", None)
+        return SellerRoomFollowService.is_following(user=user, room=obj)
+
+
+class SellerRoomFollowActionSerializer(serializers.Serializer):
+    """Reject client-supplied user/profile parameters on room follow/unfollow."""
+
+    def validate(self, attrs):
+        if isinstance(self.initial_data, dict) and self.initial_data:
+            raise serializers.ValidationError(
+                {
+                    field: [
+                        _(
+                            "Client cannot specify user, profile, or follow parameters."
+                        )
+                    ]
+                    for field in sorted(self.initial_data.keys())
+                }
+            )
+        return attrs
+
+
+class SellerRoomFollowSerializer(serializers.ModelSerializer):
+    room_id = serializers.IntegerField(source="room.id", read_only=True)
+    room = SellerRoomPublicSerializer(read_only=True)
+    is_followed = serializers.BooleanField(read_only=True, default=True)
+
+    class Meta:
+        model = SellerRoomFollow
+        fields = [
+            "id",
+            "room_id",
+            "room",
+            "is_followed",
+            "created",
+            "modified",
+        ]
+        read_only_fields = fields
+
+
+class SellerRoomUnfollowResponseSerializer(serializers.Serializer):
+    room_id = serializers.IntegerField(read_only=True)
+    is_followed = serializers.BooleanField(read_only=True)
+

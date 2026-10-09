@@ -36,6 +36,7 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "corsheaders",
+    "channels",
     "django_extensions",
     "safedelete",
     "rest_framework",
@@ -59,6 +60,7 @@ APPS = [
     "apps.lucky_wheel",
     "apps.notifications",
     "apps.payments",
+    "apps.deals",
     "apps.promotions",
     "apps.referrals",
     "apps.complaints",
@@ -68,6 +70,8 @@ APPS = [
     "apps.pedigrees",
     "apps.loft_subscriptions",
     "apps.seasons",
+    "apps.draws",
+    "apps.prizes",
 ]
 
 DEBUG_APPS = []
@@ -104,6 +108,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "ppw.wsgi.application"
+ASGI_APPLICATION = "ppw.asgi.application"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -195,6 +200,21 @@ CELERY_TASK_EAGER_PROPAGATES = env_bool(
     "CELERY_TASK_EAGER_PROPAGATES",
     CELERY_TASK_ALWAYS_EAGER,
 )
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv("CHANNEL_REDIS_URL", CELERY_BROKER_URL)],
+        },
+    }
+}
+
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
+FIREBASE_CLIENT_EMAIL = os.getenv("FIREBASE_CLIENT_EMAIL", "")
+FIREBASE_PRIVATE_KEY = os.getenv("FIREBASE_PRIVATE_KEY", "")
+FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
+
 ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS = int(
     os.getenv("ORDER_ITEM_SELLER_DECISION_TIMEOUT_DAYS", "3")
 )

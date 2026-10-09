@@ -1,8 +1,9 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.assets.models import AssetCategory
@@ -422,6 +423,52 @@ class UserPromotionGrant(BaseModel):
         if errors:
             raise ValidationError(errors)
 
+    @property
+    def consumed_at(self):
+        return self.redeemed_at
+
+    @property
+    def is_onboarding_highlight_benefit(self) -> bool:
+        if (
+            self.user_id
+            and self.idempotency_key
+            == f"promotion:onboarding_highlight:user:{self.user_id}"
+        ):
+            return True
+        metadata = self.metadata if isinstance(self.metadata, dict) else {}
+        return (
+            metadata.get("benefit_code")
+            == "onboarding_first_auction_highlight_20_pct"
+        )
+
+    @property
+    def discount_percent(self) -> Decimal:
+        if (
+            self.grant_type == UserPromotionGrantType.DISCOUNT
+            and self.discount_offer_id
+            and self.discount_offer is not None
+        ):
+            if self.discount_offer.value_type == OfferValueType.PERCENTAGE:
+                return Decimal(str(self.discount_offer.value)).quantize(
+                    Decimal("0.01")
+                )
+            return Decimal("0.00")
+        if self.is_onboarding_highlight_benefit:
+            return Decimal("20.00")
+        return Decimal("0.00")
+
+    @property
+    def is_available(self) -> bool:
+        if self.status != UserPromotionGrantStatus.ACTIVE:
+            return False
+        if self.expires_at is not None and self.expires_at <= timezone.now():
+            return False
+        return True
+
+    @property
+    def is_consumed(self) -> bool:
+        return self.status == UserPromotionGrantStatus.REDEEMED
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
@@ -522,3 +569,432 @@ class CashbackTransaction(BaseModel):
         return (
             f"CashbackTransaction #{self.pk} " f"{self.transaction_type} {self.amount}"
         )
+
+
+class PromotionCampaignType(models.TextChoices):
+    MONTHLY = "MONTHLY", _("Monthly")
+    SEASONAL = "SEASONAL", _("Seasonal")
+    FLASH = "FLASH", _("Flash")
+
+
+class PromotionCampaignStatus(models.TextChoices):
+    DISABLED = "DISABLED", _("Disabled")
+    SCHEDULED = "SCHEDULED", _("Scheduled")
+    ACTIVE = "ACTIVE", _("Active")
+    ENDED = "ENDED", _("Ended")
+
+
+class PromotionCampaign(BaseModel):
+    """Admin-managed scheduled promotion campaign window (BE-PRO-01).
+
+    Owns campaign family classification (MONTHLY, SEASONAL, FLASH), timezone-aware
+    half-open scheduling [starts_at, ends_at), and enable/disable state.
+    Service-level economic effects and target application belong to BE-PRO-02.
+    """
+
+    name = models.CharField(max_length=255)
+    campaign_type = models.CharField(
+        max_length=20,
+        choices=PromotionCampaignType.choices,
+        db_index=True,
+    )
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    is_enabled = models.BooleanField(default=True, db_index=True)
+    description = models.TextField(blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        related_name="created_promotion_campaigns",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["starts_at", "id"]
+        indexes = [
+            models.Index(
+                fields=["is_enabled", "starts_at", "ends_at"],
+                name="promo_campaign_active_win_idx",
+            ),
+            models.Index(
+                fields=["campaign_type", "starts_at", "ends_at"],
+                name="promo_campaign_type_win_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(starts_at__lt=models.F("ends_at")),
+                name="promo_campaign_starts_before_ends_ck",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.campaign_type})"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if not self.name or not str(self.name).strip():
+            errors["name"] = _("Campaign name is required.")
+        if self.campaign_type not in PromotionCampaignType.values:
+            errors["campaign_type"] = _("Invalid promotion campaign type.")
+        if self.starts_at is not None and timezone.is_naive(self.starts_at):
+            errors["starts_at"] = _("Campaign start time must be timezone-aware.")
+        if self.ends_at is not None and timezone.is_naive(self.ends_at):
+            errors["ends_at"] = _("Campaign end time must be timezone-aware.")
+        if (
+            self.starts_at is not None
+            and self.ends_at is not None
+            and "starts_at" not in errors
+            and "ends_at" not in errors
+            and self.starts_at >= self.ends_at
+        ):
+            errors["ends_at"] = _(
+                "Campaign start time must be earlier than end time."
+            )
+        if self.metadata is not None and not isinstance(self.metadata, dict):
+            errors["metadata"] = _("Campaign metadata must be a JSON object.")
+        if errors:
+            raise ValidationError(errors)
+
+    def effective_status(self, now=None) -> str:
+        """Derive effective lifecycle status at `now` using half-open [starts_at, ends_at)."""
+        now = now or timezone.now()
+        if timezone.is_naive(now):
+            raise ValidationError(
+                {"now": _("Evaluation time must be timezone-aware.")}
+            )
+        if not self.is_enabled:
+            return PromotionCampaignStatus.DISABLED
+        if now < self.starts_at:
+            return PromotionCampaignStatus.SCHEDULED
+        if self.starts_at <= now < self.ends_at:
+            return PromotionCampaignStatus.ACTIVE
+        return PromotionCampaignStatus.ENDED
+
+    def is_active_at(self, now=None) -> bool:
+        return self.effective_status(now=now) == PromotionCampaignStatus.ACTIVE
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+
+class PromotionEffectType(models.TextChoices):
+    PERCENT_DISCOUNT = "PERCENT_DISCOUNT", _("Percentage Discount")
+
+
+class PromotionTargetType(models.TextChoices):
+    SELLER_PACKAGE = "SELLER_PACKAGE", _("Seller Package")
+    AUCTION_HIGHLIGHT = "AUCTION_HIGHLIGHT", _("Auction Highlight")
+    LOFT_SUBSCRIPTION = "LOFT_SUBSCRIPTION", _("Loft Subscription")
+
+
+class PromotionCampaignEffect(BaseModel):
+    """Service-level percentage discount effect belonging to a PromotionCampaign (BE-PRO-02).
+
+    Editable only while `timezone.now() < campaign.starts_at`. Once the campaign
+    starts, effect parameters and targets are frozen.
+    """
+
+    campaign = models.ForeignKey(
+        PromotionCampaign,
+        on_delete=models.CASCADE,
+        related_name="effects",
+        db_index=True,
+    )
+    effect_type = models.CharField(
+        max_length=30,
+        choices=PromotionEffectType.choices,
+        default=PromotionEffectType.PERCENT_DISCOUNT,
+        db_index=True,
+    )
+    target_type = models.CharField(
+        max_length=30,
+        choices=PromotionTargetType.choices,
+        db_index=True,
+    )
+    target_package = models.ForeignKey(
+        "packages.Package",
+        on_delete=models.PROTECT,
+        related_name="promotion_campaign_effects",
+        null=True,
+        blank=True,
+    )
+    target_subscription_duration = models.ForeignKey(
+        "loft_subscriptions.SubscriptionDurationOption",
+        on_delete=models.PROTECT,
+        related_name="promotion_campaign_effects",
+        null=True,
+        blank=True,
+    )
+    target_code = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+    discount_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[
+            MinValueValidator(Decimal("0.01")),
+            MaxValueValidator(Decimal("100.00")),
+        ],
+    )
+    description = models.TextField(blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        related_name="created_promotion_campaign_effects",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-discount_percent", "id"]
+        indexes = [
+            models.Index(
+                fields=["campaign", "target_type", "effect_type"],
+                name="promo_eff_camp_target_idx",
+            ),
+            models.Index(
+                fields=["target_type", "discount_percent", "id"],
+                name="promo_eff_target_disc_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(
+                    discount_percent__gt=Decimal("0.00"),
+                    discount_percent__lte=Decimal("100.00"),
+                ),
+                name="promo_eff_discount_pct_range_ck",
+            ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(
+                        target_type="SELLER_PACKAGE",
+                        target_subscription_duration__isnull=True,
+                    )
+                    | models.Q(
+                        target_type="LOFT_SUBSCRIPTION",
+                        target_package__isnull=True,
+                    )
+                    | models.Q(
+                        target_type="AUCTION_HIGHLIGHT",
+                        target_package__isnull=True,
+                        target_subscription_duration__isnull=True,
+                    )
+                ),
+                name="promo_eff_target_fk_matches_type_ck",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"PromotionCampaignEffect #{self.pk} ({self.target_type} "
+            f"-{self.discount_percent}%)"
+        )
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if not self.campaign_id:
+            errors["campaign"] = _("Promotion campaign is required.")
+
+        if self.effect_type not in PromotionEffectType.values:
+            errors["effect_type"] = _("Invalid promotion effect type.")
+
+        if self.target_type not in PromotionTargetType.values:
+            errors["target_type"] = _("Invalid promotion target type.")
+
+        if isinstance(self.discount_percent, float):
+            errors["discount_percent"] = _(
+                "Discount percentage must use Decimal precision, not float."
+            )
+        elif self.discount_percent is None:
+            errors["discount_percent"] = _("Discount percentage is required.")
+        else:
+            try:
+                pct = Decimal(str(self.discount_percent))
+            except Exception:
+                errors["discount_percent"] = _("Invalid discount percentage.")
+            else:
+                if pct <= Decimal("0.00") or pct > Decimal("100.00"):
+                    errors["discount_percent"] = _(
+                        "Discount percentage must be greater than 0 and at most 100."
+                    )
+
+        if self.target_type == PromotionTargetType.SELLER_PACKAGE:
+            if self.target_subscription_duration_id is not None:
+                errors["target_subscription_duration"] = _(
+                    "Subscription duration target is only valid for LOFT_SUBSCRIPTION effects."
+                )
+            if self.target_code:
+                errors["target_code"] = _(
+                    "Seller package effects use target_package instead of target_code."
+                )
+        elif self.target_type == PromotionTargetType.LOFT_SUBSCRIPTION:
+            if self.target_package_id is not None:
+                errors["target_package"] = _(
+                    "Seller package target is only valid for SELLER_PACKAGE effects."
+                )
+            if (
+                self.target_subscription_duration_id is not None
+                and self.target_subscription_duration is not None
+            ):
+                if (
+                    self.target_code
+                    and self.target_code != self.target_subscription_duration.code
+                ):
+                    errors["target_code"] = _(
+                        "Target code does not match the selected subscription duration."
+                    )
+                self.target_code = self.target_subscription_duration.code
+        elif self.target_type == PromotionTargetType.AUCTION_HIGHLIGHT:
+            if self.target_package_id is not None:
+                errors["target_package"] = _(
+                    "Seller package target is not valid for AUCTION_HIGHLIGHT effects."
+                )
+            if self.target_subscription_duration_id is not None:
+                errors["target_subscription_duration"] = _(
+                    "Subscription duration target is not valid for AUCTION_HIGHLIGHT effects."
+                )
+
+        if self.metadata is not None and not isinstance(self.metadata, dict):
+            errors["metadata"] = _("Effect metadata must be a JSON object.")
+
+        if not errors and self.campaign_id:
+            dup_qs = PromotionCampaignEffect.objects.filter(
+                campaign_id=self.campaign_id,
+                deleted__isnull=True,
+                effect_type=self.effect_type,
+                target_type=self.target_type,
+                target_package_id=self.target_package_id,
+                target_subscription_duration_id=self.target_subscription_duration_id,
+                target_code=self.target_code or "",
+            )
+            if self.pk:
+                dup_qs = dup_qs.exclude(pk=self.pk)
+            if dup_qs.exists():
+                errors["target_type"] = _(
+                    "A promotion effect for this target already exists in the campaign."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def _assert_campaign_not_started(self, now=None):
+        if not self.campaign_id:
+            return
+        now = now or timezone.now()
+        if now >= self.campaign.starts_at:
+            raise ValidationError(
+                {
+                    "campaign": _(
+                        "Campaign effects cannot be modified after the campaign starts."
+                    )
+                }
+            )
+
+    def save(self, *args, now=None, **kwargs):
+        if isinstance(self.discount_percent, float):
+            raise ValidationError(
+                {
+                    "discount_percent": _(
+                        "Discount percentage must use Decimal precision, not float."
+                    )
+                }
+            )
+        self._assert_campaign_not_started(now=now)
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, now=None, **kwargs):
+        self._assert_campaign_not_started(now=now)
+        return super().delete(*args, **kwargs)
+
+
+class SellerPackagePromotionSnapshot(BaseModel):
+    """Durable snapshot of the promotion discount resolved when a SellerPackage was requested (BE-PRO-02)."""
+
+    seller_package = models.OneToOneField(
+        "packages.SellerPackage",
+        on_delete=models.CASCADE,
+        related_name="promotion_snapshot",
+    )
+    package = models.ForeignKey(
+        "packages.Package",
+        on_delete=models.PROTECT,
+        related_name="promotion_snapshots",
+    )
+    promotion_campaign = models.ForeignKey(
+        PromotionCampaign,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="seller_package_snapshots",
+    )
+    promotion_effect = models.ForeignKey(
+        PromotionCampaignEffect,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="seller_package_snapshots",
+    )
+    base_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    discount_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+            MaxValueValidator(Decimal("100.00")),
+        ],
+    )
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    final_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+
+    class Meta:
+        ordering = ["-created"]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(
+                    base_price__gte=Decimal("0.00"),
+                    discount_percent__gte=Decimal("0.00"),
+                    discount_percent__lte=Decimal("100.00"),
+                    discount_amount__gte=Decimal("0.00"),
+                    final_price__gte=Decimal("0.00"),
+                ),
+                name="promo_pkg_snap_amounts_non_neg_ck",
+            ),
+        ]
+
+    def as_dict(self):
+        return {
+            "promotion_campaign_id": self.promotion_campaign_id,
+            "promotion_effect_id": self.promotion_effect_id,
+            "base_price": f"{self.base_price:.2f}",
+            "discount_percent": f"{self.discount_percent:.2f}",
+            "discount_amount": f"{self.discount_amount:.2f}",
+            "final_price": f"{self.final_price:.2f}",
+        }

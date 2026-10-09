@@ -94,6 +94,18 @@ class SubscriptionPricingResult:
     subtotal: Decimal
     total: Decimal
     entitlement_snapshot: dict
+    discount_percent: Decimal = Decimal("0.00")
+    discount_amount: Decimal = Decimal("0.00")
+    promotion_campaign_id: int | None = None
+    promotion_effect_id: int | None = None
+
+    @property
+    def base_amount(self) -> Decimal:
+        return self.subtotal
+
+    @property
+    def final_amount(self) -> Decimal:
+        return self.total
 
     @property
     def selected_addon_ids(self):
@@ -117,13 +129,27 @@ class SubscriptionPricingResult:
         }
 
     def pricing_snapshot(self):
-        return {
+        snapshot = {
             "currency": self.currency,
             "lines": [line.as_dict() for line in self.lines],
             "subtotal": f"{self.subtotal:.2f}",
             "total": f"{self.total:.2f}",
             "entitlement_snapshot": self.entitlement_snapshot,
         }
+        if (
+            self.promotion_effect_id is not None
+            or self.discount_percent > Decimal("0.00")
+            or self.discount_amount > Decimal("0.00")
+        ):
+            snapshot["promotion"] = {
+                "promotion_campaign_id": self.promotion_campaign_id,
+                "promotion_effect_id": self.promotion_effect_id,
+                "base_amount": f"{self.subtotal:.2f}",
+                "discount_percent": f"{self.discount_percent:.2f}",
+                "discount_amount": f"{self.discount_amount:.2f}",
+                "final_amount": f"{self.total:.2f}",
+            }
+        return snapshot
 
 
 @dataclass(frozen=True)
@@ -139,7 +165,7 @@ class CheckoutResult:
 
 class SubscriptionPricingService:
     @classmethod
-    def calculate(cls, *, profile, validated_selection):
+    def calculate(cls, *, profile, validated_selection, now=None):
         cls._validate_owner_profile(profile)
         duration = cls._get_duration(validated_selection["duration_id"])
         pedigree_package = cls._get_pedigree_package(
@@ -222,6 +248,29 @@ class SubscriptionPricingService:
             )
             entitlement_snapshot["included_ai_operations_per_month"] = 0
 
+        total = subtotal
+        discount_percent = Decimal("0.00")
+        discount_amount = Decimal("0.00")
+        promotion_campaign_id = None
+        promotion_effect_id = None
+
+        if not duration.is_trial and subtotal > Decimal("0.00"):
+            from apps.promotions.models import PromotionTargetType
+            from apps.promotions.services import PromotionPricingService
+
+            resolution = PromotionPricingService.resolve_service_discount(
+                target_type=PromotionTargetType.LOFT_SUBSCRIPTION,
+                target_subscription_duration=duration,
+                target_code=duration.code,
+                base_price=subtotal,
+                now=now,
+            )
+            total = resolution.final_price
+            discount_percent = resolution.discount_percent
+            discount_amount = resolution.discount_amount
+            promotion_campaign_id = resolution.campaign_id
+            promotion_effect_id = resolution.effect_id
+
         return SubscriptionPricingResult(
             duration=duration,
             pedigree_package=pedigree_package,
@@ -231,8 +280,12 @@ class SubscriptionPricingService:
             currency=LOFT_SUBSCRIPTION_CURRENCY,
             lines=lines,
             subtotal=subtotal,
-            total=subtotal,
+            total=total,
             entitlement_snapshot=entitlement_snapshot,
+            discount_percent=discount_percent,
+            discount_amount=discount_amount,
+            promotion_campaign_id=promotion_campaign_id,
+            promotion_effect_id=promotion_effect_id,
         )
 
     @staticmethod
@@ -381,10 +434,12 @@ class SubscriptionCheckoutService:
         dry_run,
         quote_token=None,
         idempotency_key=None,
+        now=None,
     ):
         pricing = SubscriptionPricingService.calculate(
             profile=profile,
             validated_selection=validated_selection,
+            now=now,
         )
         if dry_run:
             quote_token = signing.dumps(
@@ -439,6 +494,7 @@ class SubscriptionCheckoutService:
             pricing = SubscriptionPricingService.calculate(
                 profile=profile,
                 validated_selection=validated_selection,
+                now=now,
             )
             cls._validate_quote_token(quote_token, pricing)
 
@@ -574,7 +630,7 @@ class SubscriptionActivationService:
         confirmed_at = confirmed_at or timezone.now()
         invoice = cls._get_locked_invoice(invoice_id)
 
-        if invoice.total <= 0:
+        if invoice.duration.is_trial or (invoice.total <= 0 and invoice.subtotal <= 0):
             raise ValidationError(
                 _("Only paid subscription invoices use payment confirmation.")
             )

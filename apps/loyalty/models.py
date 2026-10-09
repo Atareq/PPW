@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.general.models import BaseModel
-from apps.loyalty.constants import BadgeType, PointTransactionType
+from apps.loyalty.constants import BadgeType, PointTransactionType, RewardRuleCode
 
 
 class PointWallet(BaseModel):
@@ -138,3 +138,48 @@ class BadgeAward(BaseModel):
 
     def __str__(self):
         return f"BadgeAward #{self.pk} {self.badge_type}"
+
+
+class RewardRuleConfig(BaseModel):
+    """Manager override of one system-defined reward rule's tunable values.
+
+    A row exists only after a manager changes the rule; otherwise the canonical
+    default in ``DEFAULT_REWARD_RULES`` applies. Read it through
+    ``RewardRuleService``, never directly.
+    """
+
+    code = models.CharField(max_length=50, choices=RewardRuleCode.choices)
+    enabled = models.BooleanField(default=True)
+    points = models.PositiveIntegerField(null=True, blank=True)
+    multiplier = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    threshold = models.PositiveIntegerField(null=True, blank=True)
+    configuration = models.JSONField(default=dict, blank=True)
+    updated_by = models.ForeignKey(
+        "authentication.UserAccount",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["code"],
+                condition=Q(deleted__isnull=True),
+                name="loyalty_unique_live_reward_rule_code",
+            ),
+            models.CheckConstraint(
+                check=Q(multiplier__isnull=True) | Q(multiplier__gte=0),
+                name="loyalty_reward_rule_multiplier_gte_0",
+            ),
+        ]
+
+    def __str__(self):
+        return f"RewardRuleConfig {self.code}"

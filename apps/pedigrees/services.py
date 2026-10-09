@@ -10,6 +10,7 @@ from PIL import Image, ImageEnhance, ImageOps
 import cv2
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 import numpy as np
@@ -22,6 +23,7 @@ from apps.pedigrees.models import (
     PedigreeBirdSex,
     PedigreeDocument,
     PedigreeDocumentStatus,
+    RegisteredPedigree,
     normalize_ring_number,
 )
 from apps.users.constants import ProfileType
@@ -263,6 +265,45 @@ def pedigree_document_queryset():
         "owner",
         "bird",
     ).order_by("-created")
+
+
+class RegisteredPedigreeService:
+    """PPW authorization source of truth for FastReport pedigree ids."""
+
+    @staticmethod
+    def is_unrestricted(user):
+        """Managers and superusers are not limited by user visibility."""
+        return (
+            user.is_superuser
+            or user.active_profile.type == ProfileType.MANAGER
+        )
+
+    @classmethod
+    def visible_queryset(cls, user):
+        """Registered pedigrees visible to the user's account.
+
+        Visibility is account-level, so switching Customer/Seller mode never
+        changes it. Unauthorized private rows never enter the queryset.
+        """
+        queryset = RegisteredPedigree.objects.all()
+        if cls.is_unrestricted(user):
+            return queryset
+        return queryset.filter(
+            Q(is_public=True) | Q(assignments__user=user)
+        ).distinct()
+
+    @classmethod
+    def require_visible(cls, user, pedigree_id):
+        """Raise 404 unless a non-manager user may use this pedigree id.
+
+        Must run before any provider call. Unregistered and private
+        unassigned ids both return 404 so their existence is not leaked.
+        """
+        if cls.is_unrestricted(user):
+            return
+        visible = cls.visible_queryset(user).filter(pedigree_id=pedigree_id)
+        if not visible.exists():
+            raise NotFound(_("Pedigree was not found."))
 
 
 class PedigreeBirdValidator:

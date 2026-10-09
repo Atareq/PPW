@@ -5,6 +5,7 @@ from apps.assets.models import Asset
 from apps.ratings.models import (
     AssetComment,
     AssetRating,
+    DealRating,
     SellerComment,
     SellerRating,
 )
@@ -249,3 +250,46 @@ class SellerRatingSerializer(serializers.ModelSerializer):
             "modified",
         ]
         read_only_fields = fields
+
+
+class DealRatingCreateSerializer(serializers.Serializer):
+    """Rate the other party of a completed deal; the direction is derived."""
+
+    deal_id = serializers.IntegerField(min_value=1)
+    stars = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        default="",
+    )
+
+
+class DealRatingSerializer(serializers.ModelSerializer):
+    deal_id = serializers.IntegerField(read_only=True)
+    rater_profile_id = serializers.IntegerField(read_only=True)
+    rated_profile_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = DealRating
+        fields = [
+            "id",
+            "deal_id",
+            "direction",
+            "rater_profile_id",
+            "rated_profile_id",
+            "stars",
+            "comment",
+            "created",
+        ]
+        read_only_fields = fields
+
+
+class DealRatingStatusSerializer(serializers.Serializer):
+    deal_id = serializers.IntegerField(read_only=True)
+    role = serializers.CharField(read_only=True)
+    has_rated = serializers.BooleanField(read_only=True)
+    counterparty_has_rated = serializers.BooleanField(read_only=True)
+    is_mutual = serializers.BooleanField(read_only=True)
+    my_rating = DealRatingSerializer(read_only=True, allow_null=True)
+    counterparty_rating = DealRatingSerializer(read_only=True, allow_null=True)
