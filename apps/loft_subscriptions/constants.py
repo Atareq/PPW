@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.utils.translation import gettext_lazy as _
 
 
@@ -6,6 +8,8 @@ INCLUDED_AI_OPERATIONS_PER_MONTH = 10
 TRIAL_AI_OPERATIONS_TOTAL = 10
 SUBSCRIPTION_QUOTE_MAX_AGE_SECONDS = 600
 SUBSCRIPTION_QUOTE_SALT = "loft-subscription-quote-v1"
+# Charged per selected private (non-public) RegisteredPedigree; never discounted.
+PRIVATE_TEMPLATE_FEE = Decimal("500.00")
 
 
 class SubscriptionErrorCode:

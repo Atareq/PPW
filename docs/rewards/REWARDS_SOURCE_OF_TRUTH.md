@@ -3901,9 +3901,74 @@ Status: **DONE**
 5. **Short, simple source-specific reward copy & non-duplication**:
    - `PointService._build_points_earned_body(points, source_type)` maps known `PointTransaction.source_type` values (`onboarding`, `referral_*`, `deal_completed` / `deal_completion_bonus` / `successful_sale` / `auction_completed`, `season_winner`, `lucky_wheel`) to short, simple Arabic/English sentences (`apps/loyalty/services.py`, `apps/notifications/payload.py`, `locale/{ar,en}/LC_MESSAGES/django.po`) without adding extra metadata or a template engine.
    - Non-duplication invariants remain unchanged: at most `1` `POINTS_EARNED` per positive `EARN` `PointTransaction`, `1` `BADGE_AWARDED` per new `BadgeAward`, `1` `PRIZE_AWARDED` per new `CLAIM_REQUIRED` `PrizeAward`, `0` generic prize notifications on `DIGITAL_AUTOMATIC` `PrizeAward`, and `0` weekly onboarding draw notifications (feature cancelled in `BE-DRW-CANCEL-01`).
-   - Cross-profile in-app notification history (`Notification.recipient_profile`) and per-category notification preferences are intentionally not redesigned in `BE-NOT-02A`.
+    - Cross-profile in-app notification history (`Notification.recipient_profile`) and per-category notification preferences are intentionally not redesigned in `BE-NOT-02A`.
 
-## 32. Task Status
+## 32. Permanent Buyer & Seller Levels Foundation (BE-LTY-01A)
+
+Status: **PARTIAL / BLOCKED** (Static verified Buyer & Seller level tables, single-currency threshold evaluation, and per-currency `CompletedDeal` aggregation implemented with `0` migrations; automatic cross-currency threshold evaluation is `LEVEL METRIC CURRENCY UNIT — BLOCKED` and all 10 operational level benefits are `LEVEL BENEFIT — BLOCKED`)
+
+### 32.1 CONFIRMED LEVEL RULES
+
+1. **Separate Buyer & Seller Levels**:
+   - Buyer progression belongs to `CustomerProfile` (`BUYER TOTAL PURCHASES` / `إجمالي المشتريات`).
+   - Seller progression belongs to `SellerProfile` (`SELLER TOTAL SALES` / `إجمالي المبيعات`).
+   - Both may coexist independently on the same `UserAccount`. Buyer purchases never increase seller level, and seller sales never increase buyer level.
+   - `PointWallet` remains strictly `UserAccount`-owned (`BE-REW-01`).
+2. **Permanent / Never Downgrade / Never Reset**:
+   - Once a level is reached, it can never go down.
+   - Levels never reset monthly, yearly, on `Season` calculation/finalization, when PP Coins are spent (`PointService.spend_points`), or when active profile switches (`switch_user_profile`).
+   - Because `CompletedDeal` is immutable (`save()` forbids updates and `delete()` forbids deletion), cumulative `CompletedDeal.amount` is strictly non-decreasing without requiring a persisted level table or column (`0` migrations).
+3. **Confirmed Seller Level Table (`SELLER_LEVEL_TABLE`)**:
+
+| Threshold | Level # | Code | Exact Level Name | Product-Stated Benefit (Display-Only Label) | Operational Enforcement Status |
+| --- | --- | --- | --- | --- | --- |
+| `< 100` | `None` | `None` | `None` (no earned level) | `None` | N/A |
+| `100` | `1` | `verified_account` | `حساب موثّق` | `شارة + ثقة` | `LEVEL BENEFIT — BLOCKED` |
+| `500` | `2` | `certified_seller` | `بائع معتمد` | `شارة + ترتيب أعلى` | `LEVEL BENEFIT — BLOCKED` |
+| `1,000` | `3` | `golden_seller` | `بائع ذهبي` | `حجل ذهبي + إبراز` | `LEVEL BENEFIT — BLOCKED` |
+| `5,000` | `4` | `elite_seller` | `بائع نخبة` | `Banner + عمولة أقل` | `LEVEL BENEFIT — BLOCKED` |
+| `10,000+` | `5` | `legendary_seller` | `أسطوري` | `توثيق دائم + دعم P` | `LEVEL BENEFIT — BLOCKED` |
+
+4. **Confirmed Buyer Level Table (`BUYER_LEVEL_TABLE`)**:
+
+| Threshold | Level # | Code | Exact Level Name | Product-Stated Benefit (Display-Only Label) | Operational Enforcement Status |
+| --- | --- | --- | --- | --- | --- |
+| `< 100` | `None` | `None` | `None` (no earned level) | `None` | N/A |
+| `100` | `1` | `trusted_buyer` | `مشتري موثوق` | `مزايدة بدون عربون` | `LEVEL BENEFIT — BLOCKED` |
+| `500` | `2` | `active_buyer` | `مشتري نشط` | `خصم 2%` | `LEVEL BENEFIT — BLOCKED` |
+| `1,000` | `3` | `golden_buyer` | `مشتري ذهبي` | `كاش باك 1%` | `LEVEL BENEFIT — BLOCKED` |
+| `5,000` | `4` | `ep_buyer` | `مشتري EP` | `مهلة سداد أطول` | `LEVEL BENEFIT — BLOCKED` |
+| `10,000+` | `5` | `elite_buyer` | `Elite Buyer` | `دعوات خاصة + شحن مجاني` | `LEVEL BENEFIT — BLOCKED` |
+
+### 32.2 IMPLEMENTED LEVEL CALCULATION (`apps/loyalty/constants.py`, `apps/loyalty/services.py`)
+
+- `PermanentLevelSpec`, `SELLER_LEVEL_TABLE`, and `BUYER_LEVEL_TABLE` in `apps/loyalty/constants.py` define the exact static thresholds (`100`, `500`, `1,000`, `5,000`, `10,000`), exact level names, and display-only benefit descriptions.
+- `BuyerLevelService` and `SellerLevelService` in `apps/loyalty/services.py` provide:
+  - `resolve_level_for_total(total_amount, *, currency=None) -> PermanentLevelStatus` (inclusive lower bounds; `< 100` returns `current_level=None, level_name=None, next_level_threshold=Decimal("100")`).
+  - `get_completed_deal_totals_by_currency(profile) -> dict[str, Decimal]` (aggregates `CompletedDeal.amount` grouped by `CompletedDeal.currency` across both `ORDER_ITEM` and `AUCTION_ITEM` deals; incomplete orders, unapproved/rejected `PaymentRequest` rows, bids, and carts contribute `0`).
+  - `evaluate_permanent_level(profile, *, canonical_currency=None) -> PermanentLevelStatus`:
+    - When `canonical_currency` is omitted (`None`) or when `CompletedDeal` rows for `profile` contain any currency other than `canonical_currency` (e.g., mixed `EGP` + `USD` deals or blank currency), returns `is_blocked=True`, `blocker_code="LEVEL METRIC CURRENCY UNIT — BLOCKED"`, refusing to sum across currencies or invent exchange rates.
+    - When `canonical_currency` is explicitly provided and all `CompletedDeal` rows for `profile` match `canonical_currency` (or the profile has `0` deals), resolves the permanent level from cumulative `CompletedDeal.amount`.
+- Legacy `completed_orders_count`-based summary methods (`SellerLevelService.get_level`, `CustomerLevelService.get_level`, `get_discount_percent`, `get_cashback_percent`) remain intact on profile/feed serializers so existing API contracts remain backward-compatible while `LEVEL METRIC CURRENCY UNIT — BLOCKED` is pending product resolution.
+
+### 32.3 DISPLAY-ONLY BENEFITS vs BLOCKED BENEFIT EFFECTS
+
+All 10 product-stated level benefits have their exact labels stored on `SELLER_LEVEL_TABLE` and `BUYER_LEVEL_TABLE` (`DISPLAY ONLY`), while operational enforcement is `LEVEL BENEFIT — BLOCKED`:
+
+| Role & Threshold | Level Name | Benefit Label | Status | Exact Blocker Reason |
+| --- | --- | --- | --- | --- |
+| Seller `100` | `حساب موثّق` | `شارة + ثقة` | `DISPLAY ONLY` / `BLOCKED` | No canonical level-100 `BadgeType` or automatic identity verification rule exists; identity/profile activation is admin-controlled. |
+| Seller `500` | `بائع معتمد` | `شارة + ترتيب أعلى` | `DISPLAY ONLY` / `BLOCKED` | No canonical level-500 `BadgeType` and no seller feed/search ranking boost formula or weight exists. |
+| Seller `1,000` | `بائع ذهبي` | `حجل ذهبي + إبراز` | `DISPLAY ONLY` / `BLOCKED` | `"حجل ذهبي"` has no domain model/definition in the repository, and `"إبراز"` (auction highlight) has no defined quantity, duration, or recurrence rule. |
+| Seller `5,000` | `بائع نخبة` | `Banner + عمولة أقل` | `DISPLAY ONLY` / `BLOCKED` | Only global `AdminAnnouncement` bars exist (`apps.general`) — no seller-owned Banner model exists; PPW has no platform commission engine and the exact commission reduction percentage is not specified. |
+| Seller `10,000+` | `أسطوري` | `توثيق دائم + دعم P` | `DISPLAY ONLY` / `BLOCKED` | No verification expiry model exists to make "permanent", and `"دعم P"` is not defined in the repository or product specs. |
+| Buyer `100` | `مشتري موثوق` | `مزايدة بدون عربون` | `DISPLAY ONLY` / `BLOCKED` | `Auction.deposit_required` and `Auction.deposit` are metadata fields on `Auction`, with no deposit collection/escrow/waiver enforcement flow in `BidService`. |
+| Buyer `500` | `مشتري نشط` | `خصم 2%` | `DISPLAY ONLY` / `BLOCKED` | The target of the `2%` discount (market product price, auction price, seller package, Loft subscription, or highlight fee) is not specified by product rules. |
+| Buyer `1,000` | `مشتري ذهبي` | `كاش باك 1%` | `DISPLAY ONLY` / `BLOCKED` | Canonical cashback trigger/conversion/auction-usage rules remain blocked under `BE-CB-01`; no second cashback path may be created. |
+| Buyer `5,000` | `مشتري EP` | `مهلة سداد أطول` | `DISPLAY ONLY` / `BLOCKED` | Exact additional payment deadline duration (hours/days) and enforcement hook on `Auction.payment_deadline_days` are not specified. |
+| Buyer `10,000+` | `Elite Buyer` | `دعوات خاصة + شحن مجاني` | `DISPLAY ONLY` / `BLOCKED` | No invitation-only auction/event model exists, and PPW stores only shipping method + ETA (`BE-SHIP-01`) with no shipping price/payment/reimbursement engine. |
+
+## 33. Task Status
 
 | Task | Description | Status |
 | --- | --- | --- |
@@ -3940,8 +4005,10 @@ Status: **DONE**
 | BE-PRZ-03 | Referral Challenge `ANNUAL_LOFT_SUBSCRIPTION` prize provisioning audit & gate | BLOCKED (requires product/config decision on `UserAccount` vs `Profile` subscription recipient, `PedigreeTemplatePackage` tier & `selected_template_ids`, add-ons/AI quota, and non-nullable `LoftSubscription.invoice` provisioning) |
 | BE-REW-AUDIT-01 | Final rewards / prizes / notifications consistency & contract audit | DONE |
 | BE-CB-01 | Cashback product alignment audit & hardening (`CashbackService` post-lock idempotency, `buy_points_with_cashback` conflict & minimum-PP validation) | PARTIAL / BLOCKED (`1%–5%` rule selection, automatic vs manual PP conversion & currency rate, and auction spending mechanics require product decision) |
+| BE-LTY-01A | Permanent Buyer & Seller levels foundation (`SELLER_LEVEL_TABLE`, `BUYER_LEVEL_TABLE`, `SellerLevelService` / `BuyerLevelService` `CompletedDeal` evaluation & currency blocker guard) | PARTIAL / BLOCKED (`LEVEL METRIC CURRENCY UNIT — BLOCKED` for multi-currency `CompletedDeal` normalization and `LEVEL BENEFIT — BLOCKED` for all 10 operational level benefits) |
 
-Other reward work (`ANNUAL_LOFT_SUBSCRIPTION` prize provisioning once subscription package/recipient rules are confirmed, cashback `1%–5%` / automatic PP conversion / auction spending once product rules are confirmed, per-category notification preferences/digests, and buyer/seller level progression) is tracked in subsequent tickets.
+Other reward work (`ANNUAL_LOFT_SUBSCRIPTION` prize provisioning once subscription package/recipient rules are confirmed, cashback `1%–5%` / automatic PP conversion / auction spending once product rules are confirmed, per-category notification preferences/digests, and buyer/seller level currency unit & operational benefits once product rules are confirmed) is tracked in subsequent tickets.
+
 
 
 

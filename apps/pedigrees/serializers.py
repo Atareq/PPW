@@ -43,6 +43,27 @@ class PedigreeDocumentUploadSerializer(serializers.Serializer):
     )
 
 
+class PedigreeSpreadsheetImportSerializer(
+    RejectUnknownFieldsMixin, serializers.Serializer
+):
+    file = serializers.FileField()
+    user = serializers.PrimaryKeyRelatedField(queryset=get_user_model().objects.all())
+
+    def validate_file(self, value):
+        if not value.name.lower().endswith(".xlsx"):
+            raise serializers.ValidationError("A valid XLSX file is required.")
+        return value
+
+
+class PedigreeSpreadsheetImportResponseSerializer(serializers.Serializer):
+    rows_processed = serializers.IntegerField(read_only=True)
+    birds_created = serializers.IntegerField(read_only=True)
+    birds_reused = serializers.IntegerField(read_only=True)
+    relationships_created = serializers.IntegerField(read_only=True)
+    relationships_unchanged = serializers.IntegerField(read_only=True)
+    ignored_legacy_values = serializers.IntegerField(read_only=True)
+
+
 class PedigreeReviewedBirdNodeSerializer(
     RejectUnknownFieldsMixin,
     serializers.Serializer,
@@ -135,9 +156,7 @@ class PedigreeDocumentReviewSerializer(
 
     def validate_birds(self, birds):
         paths = [bird["path"] for bird in birds]
-        duplicate_paths = sorted(
-            {path for path in paths if paths.count(path) > 1}
-        )
+        duplicate_paths = sorted({path for path in paths if paths.count(path) > 1})
         if duplicate_paths:
             duplicate_path_text = ", ".join(duplicate_paths)
             raise serializers.ValidationError(
@@ -277,18 +296,28 @@ class PedigreeBirdSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+from django.utils.translation import gettext_lazy as _
+
+
 class RegisteredPedigreeSerializer(serializers.ModelSerializer):
     """User-facing view; never exposes other accounts' assignments."""
 
+    access_type = serializers.SerializerMethodField()
+
     class Meta:
         model = RegisteredPedigree
-        fields = ["id", "pedigree_id", "is_public"]
+        fields = ["id", "pedigree_id", "is_public", "access_type"]
         read_only_fields = fields
+
+    @extend_schema_field(serializers.ChoiceField(choices=["public", "custom"]))
+    def get_access_type(self, obj) -> str:
+        return "public" if obj.is_public else "custom"
 
 
 class RegisteredPedigreeAdminSerializer(serializers.ModelSerializer):
     """Manager CRUD; `user_ids` is the full desired private-access set."""
 
+    access_type = serializers.SerializerMethodField()
     user_ids = serializers.PrimaryKeyRelatedField(
         source="users",
         many=True,
@@ -302,11 +331,16 @@ class RegisteredPedigreeAdminSerializer(serializers.ModelSerializer):
             "id",
             "pedigree_id",
             "is_public",
+            "access_type",
             "user_ids",
             "created",
             "modified",
         ]
-        read_only_fields = ["id", "created", "modified"]
+        read_only_fields = ["id", "access_type", "created", "modified"]
+
+    @extend_schema_field(serializers.ChoiceField(choices=["public", "custom"]))
+    def get_access_type(self, obj) -> str:
+        return "public" if obj.is_public else "custom"
 
     @transaction.atomic
     def create(self, validated_data):
@@ -320,7 +354,8 @@ class RegisteredPedigreeAdminSerializer(serializers.ModelSerializer):
 
 class PedigreeReportGenerateSerializer(serializers.Serializer):
     subject_bird_id = serializers.IntegerField()
-    pdf_id = serializers.IntegerField(min_value=1)
+    pdf_id = serializers.IntegerField(min_value=1, required=False)
+    pedigree_id = serializers.IntegerField(min_value=1, required=False)
     generation_depth = serializers.IntegerField(
         min_value=1,
         max_value=PEDIGREE_MAX_GENERATION_DEPTH,
@@ -328,6 +363,21 @@ class PedigreeReportGenerateSerializer(serializers.Serializer):
     report = serializers.DictField()
     owner = serializers.DictField(required=False)
     customization = serializers.DictField(required=False)
+
+    def validate(self, attrs):
+        pdf_id = attrs.get("pdf_id") or attrs.get("pedigree_id")
+        if not pdf_id:
+            raise serializers.ValidationError({"pdf_id": _("This field is required.")})
+        if (
+            attrs.get("pdf_id")
+            and attrs.get("pedigree_id")
+            and attrs["pdf_id"] != attrs["pedigree_id"]
+        ):
+            raise serializers.ValidationError(
+                {"pedigree_id": _("pedigree_id must match pdf_id.")}
+            )
+        attrs["pdf_id"] = pdf_id
+        return attrs
 
     def validate_report(self, value):
         parameters = value.get("parameters")

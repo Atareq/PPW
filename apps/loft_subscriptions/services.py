@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
 
@@ -13,6 +13,7 @@ from apps.authentication.models import UserAccount
 from apps.loft_subscriptions.constants import (
     INCLUDED_AI_OPERATIONS_PER_MONTH,
     LOFT_SUBSCRIPTION_CURRENCY,
+    PRIVATE_TEMPLATE_FEE,
     SUBSCRIPTION_ACCESS_MESSAGES,
     SUBSCRIPTION_QUOTE_MAX_AGE_SECONDS,
     SUBSCRIPTION_QUOTE_SALT,
@@ -98,6 +99,8 @@ class SubscriptionPricingResult:
     discount_amount: Decimal = Decimal("0.00")
     promotion_campaign_id: int | None = None
     promotion_effect_id: int | None = None
+    private_template_ids: list[int] = field(default_factory=list)
+    private_template_fee: Decimal = Decimal("0.00")
 
     @property
     def base_amount(self) -> Decimal:
@@ -136,18 +139,25 @@ class SubscriptionPricingResult:
             "total": f"{self.total:.2f}",
             "entitlement_snapshot": self.entitlement_snapshot,
         }
+        if self.private_template_ids:
+            snapshot["private_template_fee"] = {
+                "template_ids": self.private_template_ids,
+                "amount": f"{self.private_template_fee:.2f}",
+            }
         if (
             self.promotion_effect_id is not None
             or self.discount_percent > Decimal("0.00")
             or self.discount_amount > Decimal("0.00")
         ):
+            # The promotion only covers the discountable amount; private
+            # template fees sit outside it.
             snapshot["promotion"] = {
                 "promotion_campaign_id": self.promotion_campaign_id,
                 "promotion_effect_id": self.promotion_effect_id,
-                "base_amount": f"{self.subtotal:.2f}",
+                "base_amount": f"{self.subtotal - self.private_template_fee:.2f}",
                 "discount_percent": f"{self.discount_percent:.2f}",
                 "discount_amount": f"{self.discount_amount:.2f}",
-                "final_amount": f"{self.total:.2f}",
+                "final_amount": f"{self.total - self.private_template_fee:.2f}",
             }
         return snapshot
 
@@ -206,6 +216,14 @@ class SubscriptionPricingService:
             ai_package=ai_package,
             template_ids=selected_template_ids,
         )
+        private_template_ids = cls._get_private_template_ids(
+            profile=profile,
+            template_ids=selected_template_ids,
+        )
+        if duration.is_trial and private_template_ids:
+            raise ValidationError(
+                {"template_ids": _("The trial is available for public templates only.")}
+            )
 
         lines = [
             PricingLine(
@@ -232,7 +250,20 @@ class SubscriptionPricingService:
                 )
             )
 
-        subtotal = money(sum((line.amount for line in lines), Decimal("0.00")))
+        discountable_amount = money(
+            sum((line.amount for line in lines), Decimal("0.00"))
+        )
+        private_template_fee = money(PRIVATE_TEMPLATE_FEE * len(private_template_ids))
+        lines.extend(
+            PricingLine(
+                "private_template_fee",
+                f"private_template_{template_id}",
+                f"Private pedigree template #{template_id}",
+                money(PRIVATE_TEMPLATE_FEE),
+            )
+            for template_id in private_template_ids
+        )
+        subtotal = money(discountable_amount + private_template_fee)
         entitlement_snapshot = {
             "is_trial": duration.is_trial,
             "pedigree_template_limit": pedigree_package.template_limit,
@@ -254,7 +285,7 @@ class SubscriptionPricingService:
         promotion_campaign_id = None
         promotion_effect_id = None
 
-        if not duration.is_trial and subtotal > Decimal("0.00"):
+        if not duration.is_trial and discountable_amount > Decimal("0.00"):
             from apps.promotions.models import PromotionTargetType
             from apps.promotions.services import PromotionPricingService
 
@@ -262,10 +293,12 @@ class SubscriptionPricingService:
                 target_type=PromotionTargetType.LOFT_SUBSCRIPTION,
                 target_subscription_duration=duration,
                 target_code=duration.code,
-                base_price=subtotal,
+                base_price=discountable_amount,
                 now=now,
             )
-            total = resolution.final_price
+            # Private template fees are added after the campaign discount so
+            # they are never discounted.
+            total = money(resolution.final_price + private_template_fee)
             discount_percent = resolution.discount_percent
             discount_amount = resolution.discount_amount
             promotion_campaign_id = resolution.campaign_id
@@ -286,6 +319,8 @@ class SubscriptionPricingService:
             discount_amount=discount_amount,
             promotion_campaign_id=promotion_campaign_id,
             promotion_effect_id=promotion_effect_id,
+            private_template_ids=private_template_ids,
+            private_template_fee=private_template_fee,
         )
 
     @staticmethod
@@ -385,6 +420,35 @@ class SubscriptionPricingService:
             raise ValidationError(
                 {"template_ids": _("At least one template must be selected.")}
             )
+
+    @staticmethod
+    def _get_private_template_ids(*, profile, template_ids):
+        """Return the selected private template ids after registry checks.
+
+        Every id must be a registered pedigree visible to the account, using
+        the same visibility as pedigree generation, so a template that cannot
+        be generated later cannot be bought. Unregistered and inaccessible ids
+        share one error so private ids are not leaked.
+        """
+
+        from apps.pedigrees.services import RegisteredPedigreeService
+
+        if not template_ids:
+            return []
+        is_public_by_id = dict(
+            RegisteredPedigreeService.visible_queryset(profile.user)
+            .filter(pedigree_id__in=template_ids)
+            .values_list("pedigree_id", "is_public")
+        )
+        if set(template_ids) - set(is_public_by_id):
+            raise ValidationError(
+                {"template_ids": _("One or more selected templates are not available.")}
+            )
+        return [
+            template_id
+            for template_id in template_ids
+            if not is_public_by_id[template_id]
+        ]
 
     @staticmethod
     def _validate_trial_selection(

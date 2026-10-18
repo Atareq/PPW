@@ -4,18 +4,24 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from apps.authentication.models import UserAccount
+from apps.users.constants import ProfileType
 from apps.users.models import Profile
 from rest_framework.exceptions import ValidationError
 
 from apps.loyalty.constants import (
     BADGE_DEFINITIONS,
+    BUYER_LEVEL_TABLE,
     DEFAULT_REWARD_RULES,
+    LEVEL_BENEFIT_BLOCKER_CODE,
+    LEVEL_METRIC_CURRENCY_BLOCKER_CODE,
     REWARD_RULE_TUNABLE_FIELDS,
+    SELLER_LEVEL_TABLE,
     BadgeType,
+    PermanentLevelSpec,
     PointTransactionType,
     RewardRuleCode,
     RewardSourceType,
@@ -629,7 +635,172 @@ class RewardRuleService:
         )
 
 
+@dataclass(frozen=True)
+class PermanentLevelStatus:
+    """Immutable permanent buyer/seller level evaluation result (BE-LTY-01A).
+
+    - Below 100 (`< 100`): `current_level`, `level_code`, `level_name`, and
+      `benefit_label` are `None` (no invented `"Bronze"` or `"Beginner"` level).
+    - Operational benefits are all `BLOCKED` pending product rules (`LEVEL BENEFIT — BLOCKED`);
+      `benefit_label` is display-only metadata.
+    - When `canonical_currency` is omitted or `CompletedDeal` history spans
+      multiple/mismatched currencies, automatic threshold evaluation returns
+      `is_blocked=True` with `blocker_code="LEVEL METRIC CURRENCY UNIT — BLOCKED"`.
+    """
+
+    current_level: int | None
+    level_code: str | None
+    level_name: str | None
+    benefit_label: str | None
+    benefit_status: str
+    progress_total: Decimal | None
+    next_level_threshold: Decimal | None
+    currency: str | None = None
+    is_blocked: bool = False
+    blocker_code: str | None = None
+
+
+def _resolve_permanent_level_for_total(
+    total_amount,
+    level_table: tuple[PermanentLevelSpec, ...],
+    *,
+    currency: str | None = None,
+) -> PermanentLevelStatus:
+    normalized_total = Decimal(str(total_amount if total_amount is not None else "0.00"))
+    if normalized_total < Decimal("0"):
+        raise ValidationError({"total_amount": _("Cumulative total cannot be negative.")})
+
+    earned_spec: PermanentLevelSpec | None = None
+    next_threshold: Decimal | None = None
+    for spec in level_table:
+        if normalized_total >= spec.threshold:
+            earned_spec = spec
+        elif next_threshold is None:
+            next_threshold = spec.threshold
+
+    if earned_spec is None:
+        return PermanentLevelStatus(
+            current_level=None,
+            level_code=None,
+            level_name=None,
+            benefit_label=None,
+            benefit_status=LEVEL_BENEFIT_BLOCKER_CODE,
+            progress_total=normalized_total,
+            next_level_threshold=next_threshold,
+            currency=currency,
+            is_blocked=False,
+            blocker_code=None,
+        )
+
+    return PermanentLevelStatus(
+        current_level=earned_spec.level_number,
+        level_code=earned_spec.code,
+        level_name=earned_spec.level_name,
+        benefit_label=earned_spec.benefit_label,
+        benefit_status=LEVEL_BENEFIT_BLOCKER_CODE,
+        progress_total=normalized_total,
+        next_level_threshold=next_threshold,
+        currency=currency,
+        is_blocked=False,
+        blocker_code=None,
+    )
+
+
+def _validate_level_profile(profile, *, expected_profile_type: str) -> int:
+    if profile is None or getattr(profile, "pk", None) is None:
+        raise ValidationError({"profile": _("A persisted profile is required.")})
+    profile_type = getattr(profile, "type", None)
+    if profile_type != expected_profile_type:
+        raise ValidationError(
+            {
+                "profile": _(
+                    f"Expected {expected_profile_type} profile for level evaluation."
+                )
+            }
+        )
+    return int(profile.pk)
+
+
+def _completed_deal_totals_by_currency(
+    profile,
+    *,
+    expected_profile_type: str,
+    deal_role_field: str,
+) -> dict[str, Decimal]:
+    from apps.deals.models import CompletedDeal
+
+    profile_id = _validate_level_profile(
+        profile,
+        expected_profile_type=expected_profile_type,
+    )
+    rows = (
+        CompletedDeal.objects.filter(**{deal_role_field: profile_id})
+        .values("currency")
+        .annotate(total=Sum("amount"))
+        .order_by("currency")
+    )
+    return {
+        (row["currency"] or ""): (row["total"] or Decimal("0.00"))
+        for row in rows
+    }
+
+
+def _evaluate_profile_permanent_level(
+    profile,
+    *,
+    expected_profile_type: str,
+    deal_role_field: str,
+    level_table: tuple[PermanentLevelSpec, ...],
+    canonical_currency: str | None = None,
+) -> PermanentLevelStatus:
+    totals_by_currency = _completed_deal_totals_by_currency(
+        profile,
+        expected_profile_type=expected_profile_type,
+        deal_role_field=deal_role_field,
+    )
+    norm_currency = (canonical_currency or "").strip().upper() or None
+    if norm_currency is None:
+        return PermanentLevelStatus(
+            current_level=None,
+            level_code=None,
+            level_name=None,
+            benefit_label=None,
+            benefit_status=LEVEL_BENEFIT_BLOCKER_CODE,
+            progress_total=None,
+            next_level_threshold=None,
+            currency=None,
+            is_blocked=True,
+            blocker_code=LEVEL_METRIC_CURRENCY_BLOCKER_CODE,
+        )
+
+    for deal_currency in totals_by_currency:
+        if deal_currency != norm_currency:
+            return PermanentLevelStatus(
+                current_level=None,
+                level_code=None,
+                level_name=None,
+                benefit_label=None,
+                benefit_status=LEVEL_BENEFIT_BLOCKER_CODE,
+                progress_total=None,
+                next_level_threshold=None,
+                currency=None,
+                is_blocked=True,
+                blocker_code=LEVEL_METRIC_CURRENCY_BLOCKER_CODE,
+            )
+
+    total_amount = totals_by_currency.get(norm_currency, Decimal("0.00"))
+    return _resolve_permanent_level_for_total(
+        total_amount,
+        level_table,
+        currency=norm_currency,
+    )
+
+
 class SellerLevelService:
+    """Seller level foundation (BE-LTY-01A) plus legacy order-count summary helper."""
+
+    LEVEL_TABLE = SELLER_LEVEL_TABLE
+
     @staticmethod
     def get_level(completed_orders_count):
         completed_orders_count = int(completed_orders_count or 0)
@@ -638,8 +809,88 @@ class SellerLevelService:
                 return level
         return BASIC_LEVEL
 
+    @classmethod
+    def resolve_level_for_total(
+        cls,
+        total_sales_amount,
+        *,
+        currency: str | None = None,
+    ) -> PermanentLevelStatus:
+        return _resolve_permanent_level_for_total(
+            total_sales_amount,
+            cls.LEVEL_TABLE,
+            currency=currency,
+        )
 
-class CustomerLevelService:
+    @staticmethod
+    def get_completed_deal_totals_by_currency(seller_profile) -> dict[str, Decimal]:
+        return _completed_deal_totals_by_currency(
+            seller_profile,
+            expected_profile_type=ProfileType.SELLER,
+            deal_role_field="seller_profile_id",
+        )
+
+    @classmethod
+    def evaluate_permanent_level(
+        cls,
+        seller_profile,
+        *,
+        canonical_currency: str | None = None,
+    ) -> PermanentLevelStatus:
+        return _evaluate_profile_permanent_level(
+            seller_profile,
+            expected_profile_type=ProfileType.SELLER,
+            deal_role_field="seller_profile_id",
+            level_table=cls.LEVEL_TABLE,
+            canonical_currency=canonical_currency,
+        )
+
+
+class BuyerLevelService:
+    """Permanent buyer level foundation (BE-LTY-01A) backed by CompletedDeal."""
+
+    LEVEL_TABLE = BUYER_LEVEL_TABLE
+
+    @classmethod
+    def resolve_level_for_total(
+        cls,
+        total_purchases_amount,
+        *,
+        currency: str | None = None,
+    ) -> PermanentLevelStatus:
+        return _resolve_permanent_level_for_total(
+            total_purchases_amount,
+            cls.LEVEL_TABLE,
+            currency=currency,
+        )
+
+    @staticmethod
+    def get_completed_deal_totals_by_currency(customer_profile) -> dict[str, Decimal]:
+        return _completed_deal_totals_by_currency(
+            customer_profile,
+            expected_profile_type=ProfileType.CUSTOMER,
+            deal_role_field="buyer_profile_id",
+        )
+
+    @classmethod
+    def evaluate_permanent_level(
+        cls,
+        customer_profile,
+        *,
+        canonical_currency: str | None = None,
+    ) -> PermanentLevelStatus:
+        return _evaluate_profile_permanent_level(
+            customer_profile,
+            expected_profile_type=ProfileType.CUSTOMER,
+            deal_role_field="buyer_profile_id",
+            level_table=cls.LEVEL_TABLE,
+            canonical_currency=canonical_currency,
+        )
+
+
+class CustomerLevelService(BuyerLevelService):
+    """Customer profile level helper preserving legacy serializer summary fields."""
+
     @staticmethod
     def get_level(completed_orders_count):
         completed_orders_count = int(completed_orders_count or 0)
@@ -669,3 +920,4 @@ class CustomerLevelService:
         if isinstance(profile_or_count, int):
             return profile_or_count
         return getattr(profile_or_count, "completed_orders_count", 0)
+

@@ -9,6 +9,7 @@ from apps.pedigrees.views import (
     PedigreeReportListProxyViewSet,
     PedigreeReportSchemaProxyViewSet,
     PedigreeReportStyleParametersProxyViewSet,
+    PedigreeSpreadsheetImportViewSet,
     RegisteredPedigreeViewSet,
 )
 
@@ -32,6 +33,11 @@ urlpatterns = [
         name="pedigree-bird-list",
     ),
     path(
+        "birds/import/",
+        PedigreeSpreadsheetImportViewSet.as_view(CREATE_ACTION),
+        name="pedigree-bird-import",
+    ),
+    path(
         "birds/<int:pk>/",
         PedigreeBirdViewSet.as_view(RETRIEVE_UPDATE_DESTROY_ACTION),
         name="pedigree-bird-detail",
@@ -45,6 +51,16 @@ urlpatterns = [
         "registered/<int:pk>/",
         RegisteredPedigreeViewSet.as_view(RETRIEVE_UPDATE_DESTROY_ACTION),
         name="registered-pedigree-detail",
+    ),
+    path(
+        "available/",
+        RegisteredPedigreeViewSet.as_view(LIST_ACTION),
+        name="available-pedigree-list",
+    ),
+    path(
+        "available/<int:pedigree_id>/",
+        RegisteredPedigreeViewSet.as_view(RETRIEVE_ACTION, lookup_field="pedigree_id"),
+        name="available-pedigree-detail",
     ),
     path(
         "templates/",

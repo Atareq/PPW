@@ -39,7 +39,7 @@ The platform currently supports and will continue to expand around:
 - loyalty reward automation for selected profile, bid, listing, rating, follow, and seller-approved payment-request events
 - ledger-backed Lucky Wheel attempts, backend-selected spins, and user-owned promotion prizes
 - link-sharing referral codes with manager-approved referrals, inviter PP Coin rewards, and a monthly referral challenge (Top 10 leaderboard, frozen Top 3 prize winners)
-- seller/customer level summaries derived from completed order counts
+- permanent buyer (`CustomerProfile`) and seller (`SellerProfile`) level tables (`100` / `500` / `1,000` / `5,000` / `10,000`) backed by `CompletedDeal` cumulative value (`BE-LTY-01A`, with automatic cross-currency threshold evaluation `LEVEL METRIC CURRENCY UNIT — BLOCKED` and all operational level benefits `BLOCKED` pending product rules; legacy `completed_orders_count` summary fields preserved on profile/feed serializers)
 - reward seasons with seller insight snapshots and idempotent top-seller PP Coin awards
 - future media, pedigree, expanded QR, reviews, expanded reward campaigns, realtime chat, and expanded promotion modules
 
@@ -1075,22 +1075,26 @@ Current pedigree API:
   - `POST`: active customer or seller creates a private pedigree bird owned by the active profile
 - `/api/pedigrees/birds/<id>/`
   - `GET` / `PATCH` / `DELETE`: owner-scoped private pedigree bird detail, update, and soft delete; managers require explicit bird permissions
-- `/api/pedigrees/registered/`
-  - `GET`: customer/seller lists public registered pedigrees plus private ones assigned to their `UserAccount` (`id`, `pedigree_id`, `is_public`); manager lists every registration with `pedigrees.registered.list`, including `user_ids`, `created`, and `modified`; supports `pedigree_id`, `is_public`, and `ordering` (`pedigree_id`, `created`) filters that only narrow the authorized queryset
-  - `POST`: manager with `pedigrees.registered.create` registers `{"pedigree_id": <pdf_id>, "is_public": <bool, default true>, "user_ids": [<UserAccount id>, ...]}`
+- `/api/pedigrees/birds/import/`
+  - `POST`: manager/superuser-only multipart XLSX import using exactly `file` and `user` (`UserAccount` id); reuses `pedigrees.birds.create` manager permission and returns aggregate import counts only
+- `/api/pedigrees/registered/` and `/api/pedigrees/available/`
+  - `GET`: customer/seller lists public registered pedigrees plus private ones assigned to their `UserAccount` (`id`, `pedigree_id`, `is_public`, `access_type`: `"public"` | `"custom"`); manager lists every registration with `pedigrees.registered.list`, including `user_ids`, `created`, and `modified`; supports `pedigree_id`, `is_public`, and `ordering` (`pedigree_id`, `created`) filters that only narrow the authorized queryset
+  - `POST` (`/api/pedigrees/registered/` only): manager with `pedigrees.registered.create` registers `{"pedigree_id": <pdf_id>, "is_public": <bool, default true>, "user_ids": [<UserAccount id>, ...]}`
 - `/api/pedigrees/registered/<id>/`
-  - `GET`: customer/seller retrieves a visible registration (otherwise `404`); manager retrieves any with `pedigrees.registered.retrieve`
+  - `GET`: customer/seller retrieves a visible registration by DB id (otherwise `404`); manager retrieves any with `pedigrees.registered.retrieve`
   - `PATCH`: manager with `pedigrees.registered.update` changes `pedigree_id`, `is_public`, and/or `user_ids`
   - `DELETE`: manager with `pedigrees.registered.delete` soft-deletes the registration
+- `/api/pedigrees/available/<pedigree_id>/`
+  - `GET`: customer/seller retrieves a visible registration directly by `pedigree_id` (FastReport shape/template id); returns `200` if public or assigned to current `UserAccount`, `404` otherwise (fail closed); manager retrieves any visible registration
 - `/api/pedigrees/templates/`
   - `GET`: manager raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/reports`; returns upstream status/body/content type without local storage or reshaping
-  - `GET`: customer/seller receives `503` without any provider call (fails closed) because server-side filtering of the provider list is blocked until the real provider response shape is verified; clients use `/api/pedigrees/registered/` for the pedigree ids they may use
+  - `GET`: customer/seller receives `503` without any provider call (fails closed) because server-side filtering of the provider list is blocked until the real provider response shape is verified; clients use `/api/pedigrees/available/` or `/api/pedigrees/registered/` for the pedigree ids they may use
 - `/api/pedigrees/templates/<shape>/schema/`
   - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/schema/{shape}?generation=<generation>`; validates the integer generation query, then returns `404` for customer/seller unless `shape` is a visible registered pedigree, before any provider call
 - `/api/pedigrees/templates/<shape>/style-parameters/`
   - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/style-parameters?pedigreeType=<shape>&generation=<generation>`; same registry gate as schema; returns provider-owned style metadata without local persistence or reshaping
 - `/api/pedigrees/generate/`
-  - `POST`: returns `404` for customer/seller unless `pdf_id` is a visible registered pedigree, then synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
+  - `POST`: returns `404` for customer/seller unless `pdf_id` (or alias `pedigree_id`) is a visible registered pedigree, then synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
 - `/api/pedigrees/provider-test/`
   - `POST`: manager-only dashboard diagnostic that calls provider `/health`, renders one deterministic in-memory Shape 04 Generation 6 synthetic PDF through `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/4`, validates the returned PDF, discards the bytes, and returns compact JSON health/generation timing and status data
 - `/api/pedigrees/documents/`
@@ -1108,6 +1112,9 @@ Current pedigree behavior:
 - one live pedigree bird per owner can use a normalized ring number; soft-deleted birds do not block reuse and ring numbers are not globally unique
 - `PedigreeBird` parent links are self-FKs for father and mother and are owner-scoped
 - pedigree bird validation rejects future birthday/record dates, self parents, same father/mother, cross-owner parents, wrong known parent sex, parent birthdays not before child birthdays, deleted parents, and direct or indirect cycles
+- the manager XLSX adapter imports only the verified legacy ring tree, root sex (`ذكر` / `أنثى` / `مجهول`), and canonical description text into `PedigreeBird`; it ignores all other legacy columns, sentinels (`0`, `102`, `ffffffff`, blanks), and `Estok_Date`, creates no marketplace `Bird` records, and has no commerce side effects
+- the XLSX adapter uses selected `UserAccount` ownership without consulting or switching `active_profile`: the target must have exactly one eligible live customer/seller profile; none or more than one is rejected rather than choosing a profile implicitly
+- XLSX import is fully transactional and idempotently reuses same-owner normalized rings; conflicting supplied/existing non-empty canonical scalar or parent data is rejected, while missing known parent links may be filled through `PedigreeBirdValidator`
 - `PEDIGREE_REPORT_BASE_URL` is required for report proxy calls and must come from environment configuration; Python code must not default to the provider IP
 - `PEDIGREE_REPORT_API_KEY` is required for FastReport provider calls and must only be sent backend-to-provider as `X-Api-Key`; do not expose it through PPW APIs, serializers, logs, or frontend configuration
 - `PEDIGREE_REPORT_TIMEOUT` is the single report-provider timeout setting
@@ -1678,6 +1685,13 @@ Current badge behavior:
 - `OrderItem` seller approval, payment request creation/update/rejection, cashback redemption/earning, complaint creation, shipping, handoff, and buyer receipt confirmation do not grant sale-completion rewards
 - `LAST_MINUTE_FIGHTER` is a 7-day temporary badge and uses the bid's pre-auto-extend final-window state
 - `TRUSTED_BUYER` and `TRUSTED_SELLER` aggregate checks count `CompletedDeal` rows per buyer/seller profile; they are Celery task entry points enqueued with `transaction.on_commit()` after a deal completes
+- **Permanent Buyer & Seller Levels Foundation (`BE-LTY-01A`, status `PARTIAL / BLOCKED`)**:
+  - **Confirmed level rules**: Buyer (`CustomerProfile`) and Seller (`SellerProfile`) levels are separate, coexist independently on the same `UserAccount`, are permanent (never downgrade), and never reset (monthly, yearly, by `Season`, when PP Coins are spent, or when active profile switches). `PointWallet` remains `UserAccount`-owned.
+  - **Confirmed Seller Level Table (`SELLER_LEVEL_TABLE`)**: `100` -> `حساب موثّق` (`شارة + ثقة`), `500` -> `بائع معتمد` (`شارة + ترتيب أعلى`), `1,000` -> `بائع ذهبي` (`حجل ذهبي + إبراز`), `5,000` -> `بائع نخبة` (`Banner + عمولة أقل`), `10,000+` -> `أسطوري` (`توثيق دائم + دعم P`); `< 100` has no earned level (`None`).
+  - **Confirmed Buyer Level Table (`BUYER_LEVEL_TABLE`)**: `100` -> `مشتري موثوق` (`مزايدة بدون عربون`), `500` -> `مشتري نشط` (`خصم 2%`), `1,000` -> `مشتري ذهبي` (`كاش باك 1%`), `5,000` -> `مشتري EP` (`مهلة سداد أطول`), `10,000+` -> `Elite Buyer` (`دعوات خاصة + شحن مجاني`); `< 100` has no earned level (`None`).
+  - **Implemented level calculation**: `BuyerLevelService` and `SellerLevelService` (`apps/loyalty/services.py`) provide `resolve_level_for_total()`, `get_completed_deal_totals_by_currency()` (summing immutable `CompletedDeal.amount` per currency across both `MARKET` and `AUCTION` deals, with 0 migrations needed because `CompletedDeal` cannot be updated or deleted), and `evaluate_permanent_level(profile, canonical_currency=...)`.
+  - **Blocked currency unit (`LEVEL METRIC CURRENCY UNIT — BLOCKED`)**: Because `CompletedDeal.currency` supports 20 `CurrencyOptions` (`EGP`, `USD`, `SAR`, `KWD`, etc.) plus blank `""` and PPW has no cross-currency normalization or confirmed canonical currency unit for `[100, 500, 1000, 5000, 10000]`, automatic multi-currency or unconfigured-currency threshold evaluation returns `is_blocked=True` (`blocker_code="LEVEL METRIC CURRENCY UNIT — BLOCKED"`) and never adds different currencies together or guesses a conversion rate. Legacy `completed_orders_count`-based serializer fields (`seller_level`, `customer_level`, `level_discount_percent`, `level_cashback_percent`) remain untouched for backward compatibility.
+  - **Display-only benefits vs blocked benefit effects (`LEVEL BENEFIT — BLOCKED`)**: All 10 product-stated level benefit labels are stored as display-only metadata on `SELLER_LEVEL_TABLE` / `BUYER_LEVEL_TABLE`; operational enforcement of every benefit (`شارة + ثقة`, `شارة + ترتيب أعلى`, `حجل ذهبي + إبراز`, `Banner + عمولة أقل`, `توثيق دائم + دعم P`, `مزايدة بدون عربون`, `خصم 2%`, `كاش باك 1%`, `مهلة سداد أطول`, `دعوات خاصة + شحن مجاني`) is `BLOCKED` pending explicit product rules. No level-up `Notification` is emitted.
 - `docs/rewards/REWARDS_SOURCE_OF_TRUTH.md` is the canonical rewards architecture/status document; the original MVP implementation report lives at `docs/rewards/rewarding-system-report.md`
 
 ### `apps.lucky_wheel`

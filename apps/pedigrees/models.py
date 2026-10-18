@@ -58,6 +58,7 @@ class PedigreeBirdLifeStatus(models.TextChoices):
     ALIVE = "alive", _("Alive")
     DECEASED = "deceased", _("Deceased")
     MISSING = "missing", _("Missing")
+    UNIDENTIFIED = "unidentified", _("Unidentified")
 
 
 class PedigreeBirdOwnershipStatus(models.TextChoices):
@@ -108,7 +109,7 @@ class PedigreeBird(OwnerBaseModel):
     life_status = models.CharField(
         max_length=20,
         choices=PedigreeBirdLifeStatus.choices,
-        default=PedigreeBirdLifeStatus.ALIVE,
+        default=PedigreeBirdLifeStatus.UNIDENTIFIED,
     )
     ownership_status = models.CharField(
         max_length=20,

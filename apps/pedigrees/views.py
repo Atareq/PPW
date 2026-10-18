@@ -6,7 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
 import requests
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, parsers, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import OrderingFilter
 from rest_framework.renderers import BaseRenderer, JSONRenderer
@@ -27,6 +27,8 @@ from apps.pedigrees.serializers import (
     PedigreeDocumentReviewResponseSerializer,
     PedigreeDocumentReviewSerializer,
     PedigreeDocumentUploadSerializer,
+    PedigreeSpreadsheetImportResponseSerializer,
+    PedigreeSpreadsheetImportSerializer,
     PedigreeReportGenerateSerializer,
     PedigreeReportMetadataQuerySerializer,
     RegisteredPedigreeAdminSerializer,
@@ -37,6 +39,7 @@ from apps.pedigrees.services import (
     PedigreeProviderDiagnosticService,
     PedigreeReportClient,
     PedigreeReportGenerationService,
+    PedigreeSpreadsheetImportService,
     RegisteredPedigreeService,
     pedigree_document_queryset,
 )
@@ -181,17 +184,63 @@ class PedigreeDocumentReviewViewSet(
 
 
 @extend_schema_view(
-    list=extend_schema(
-        tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}
+    create=extend_schema(
+        tags=["Pedigrees"],
+        request=PedigreeSpreadsheetImportSerializer,
+        responses={200: PedigreeSpreadsheetImportResponseSerializer},
+        description=(
+            "Manager-only XLSX import into the selected UserAccount's single "
+            "eligible private pedigree profile. The verified legacy layout "
+            "imports only ring identity, sex, descriptions, and father/mother "
+            "relationships; all other legacy columns are ignored."
+        ),
     ),
+)
+class PedigreeSpreadsheetImportViewSet(
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Import one verified legacy pedigree XLSX into PedigreeBird records."""
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "PEDIGREE_BIRD"
+    manager_permission_map = {"create": "pedigrees.birds.create"}
+    serializer_class = PedigreeSpreadsheetImportSerializer
+    queryset = PedigreeBird.objects.none()
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser]
+    http_method_names = ["post"]
+
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            try:
+                is_manager = request.user.active_profile.type == ProfileType.MANAGER
+            except PermissionDenied:
+                is_manager = False
+            if not is_manager:
+                raise PermissionDenied(
+                    _("Only manager profiles can import pedigree spreadsheets.")
+                )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = PedigreeSpreadsheetImportService.import_workbook(
+            workbook_file=serializer.validated_data["file"],
+            user=serializer.validated_data["user"],
+        )
+        return Response(
+            PedigreeSpreadsheetImportResponseSerializer(result).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}),
     create=extend_schema(
         tags=["Pedigrees"],
         request=PedigreeBirdSerializer,
         responses={201: PedigreeBirdSerializer},
     ),
-    retrieve=extend_schema(
-        tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}
-    ),
+    retrieve=extend_schema(tags=["Pedigrees"], responses={200: PedigreeBirdSerializer}),
     partial_update=extend_schema(
         tags=["Pedigrees"],
         request=PedigreeBirdSerializer,
@@ -302,9 +351,7 @@ class RegisteredPedigreeViewSet(viewsets.ModelViewSet):
         return RegisteredPedigreeSerializer
 
     def get_queryset(self):
-        queryset = RegisteredPedigreeService.visible_queryset(
-            self.request.user
-        )
+        queryset = RegisteredPedigreeService.visible_queryset(self.request.user)
         if RegisteredPedigreeService.is_unrestricted(self.request.user):
             queryset = queryset.prefetch_related("users")
         return queryset.order_by("pedigree_id")
@@ -323,9 +370,7 @@ class RegisteredPedigreeViewSet(viewsets.ModelViewSet):
         ),
     ),
 )
-class PedigreeReportListProxyViewSet(
-    mixins.ListModelMixin, viewsets.GenericViewSet
-):
+class PedigreeReportListProxyViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """Proxy the external reports list without local template persistence."""
 
     permission_classes = [HasAppAccess]
@@ -367,9 +412,7 @@ class PedigreeReportListProxyViewSet(
         ),
     ),
 )
-class PedigreeReportSchemaProxyViewSet(
-    mixins.ListModelMixin, viewsets.GenericViewSet
-):
+class PedigreeReportSchemaProxyViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """Proxy external schema metadata for one report shape."""
 
     permission_classes = [HasAppAccess]
@@ -495,10 +538,7 @@ class PedigreeProviderTestViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         active_profile = request.user.active_profile
-        if (
-            active_profile.type != ProfileType.MANAGER
-            and not request.user.is_superuser
-        ):
+        if active_profile.type != ProfileType.MANAGER and not request.user.is_superuser:
             raise PermissionDenied(
                 _("Only manager profiles can run provider diagnostics.")
             )
@@ -522,9 +562,7 @@ class PedigreeProviderTestViewSet(viewsets.GenericViewSet):
         ),
     ),
 )
-class PedigreeReportGenerateViewSet(
-    mixins.CreateModelMixin, viewsets.GenericViewSet
-):
+class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     """Synchronously generate one external report without local persistence."""
 
     permission_classes = [HasAppAccess]
@@ -539,15 +577,13 @@ class PedigreeReportGenerateViewSet(
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         RegisteredPedigreeService.require_visible(request.user, data["pdf_id"])
-        provider_payload = (
-            PedigreeReportGenerationService.build_provider_payload(
-                subject_bird_id=data["subject_bird_id"],
-                actor_profile=request.user.active_profile,
-                generation_depth=data["generation_depth"],
-                report=data["report"],
-                owner=data.get("owner") or {},
-                customization=data.get("customization") or {},
-            )
+        provider_payload = PedigreeReportGenerationService.build_provider_payload(
+            subject_bird_id=data["subject_bird_id"],
+            actor_profile=request.user.active_profile,
+            generation_depth=data["generation_depth"],
+            report=data["report"],
+            owner=data.get("owner") or {},
+            customization=data.get("customization") or {},
         )
         SubscriptionAccessService.require_pedigree_template(
             profile=request.user.active_profile,

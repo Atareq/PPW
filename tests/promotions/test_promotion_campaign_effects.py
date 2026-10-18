@@ -26,6 +26,7 @@ from apps.loyalty.models import PointTransaction
 from apps.loyalty.services import RewardRuleService
 from apps.packages.models import Package, SellerPackage
 from apps.packages.services import SellerPackageService
+from apps.pedigrees.models import RegisteredPedigree
 from apps.promotions.models import (
     CashbackOffer,
     DiscountOffer,
@@ -159,6 +160,9 @@ def ensure_paid_loft_catalog():
             "sort_order": 2,
         },
     )
+    # Loft pricing requires the selected template ids to be registered.
+    for pedigree_id in (1, 2):
+        RegisteredPedigree.objects.get_or_create(pedigree_id=pedigree_id)
     return duration, other_duration, pedigree_pkg
 
 
@@ -560,7 +564,7 @@ def test_17_monthly_campaign_applies_auction_highlight_discount():
 def test_18_seasonal_campaign_applies_loft_subscription_discount():
     now = timezone.now()
     duration, _, pedigree_pkg = ensure_paid_loft_catalog()
-    customer = CustomerProfileFactory()
+    customer = CustomerProfileFactory(is_active=True)
     campaign, effect = create_campaign_with_effect(
         name="Seasonal Loft Campaign",
         campaign_type=PromotionCampaignType.SEASONAL,
@@ -958,7 +962,7 @@ def test_30_seller_package_purchase_persists_discounted_price_snapshot():
 def test_31_loft_subscription_purchase_persists_discounted_price_snapshot():
     now = timezone.now()
     duration, _, pedigree_pkg = ensure_paid_loft_catalog()
-    customer = CustomerProfileFactory()
+    customer = CustomerProfileFactory(is_active=True)
     campaign, effect = create_campaign_with_effect(
         name="Loft Checkout Promo",
         campaign_type=PromotionCampaignType.SEASONAL,
@@ -1061,7 +1065,7 @@ def test_33_campaign_expiry_after_purchase_does_not_change_saved_snapshot():
 def test_34_campaign_disable_after_purchase_does_not_change_saved_snapshot():
     now = timezone.now()
     duration, _, pedigree_pkg = ensure_paid_loft_catalog()
-    customer = CustomerProfileFactory()
+    customer = CustomerProfileFactory(is_active=True)
     campaign, _ = create_campaign_with_effect(
         name="Disabling Promo",
         campaign_type=PromotionCampaignType.FLASH,
@@ -1100,7 +1104,7 @@ def test_34_campaign_disable_after_purchase_does_not_change_saved_snapshot():
 def test_35_100_percent_discount_results_in_zero_final_price_never_negative():
     now = timezone.now()
     duration, _, pedigree_pkg = ensure_paid_loft_catalog()
-    customer = CustomerProfileFactory()
+    customer = CustomerProfileFactory(is_active=True)
     manager = make_manager()
     create_campaign_with_effect(
         name="100% Free Promo",
@@ -1447,7 +1451,7 @@ def test_48_existing_seller_package_tests_pass():
 
 def test_49_existing_loft_subscription_tests_pass():
     duration, _, pedigree_pkg = ensure_paid_loft_catalog()
-    customer = CustomerProfileFactory()
+    customer = CustomerProfileFactory(is_active=True)
     pricing = SubscriptionPricingService.calculate(
         profile=customer,
         validated_selection={

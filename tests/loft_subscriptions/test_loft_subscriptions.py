@@ -5,10 +5,14 @@ from unittest.mock import patch
 from dateutil.relativedelta import relativedelta
 from django.utils import timezone
 import pytest
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from apps.authentication.services import build_token_for_user
-from apps.loft_subscriptions.constants import SubscriptionAddonCode
+from apps.loft_subscriptions.constants import (
+    PRIVATE_TEMPLATE_FEE,
+    SubscriptionAddonCode,
+)
 from apps.loft_subscriptions.models import (
     AIQuotaPackage,
     LoftSubscription,
@@ -24,11 +28,17 @@ from apps.loft_subscriptions.models import (
 )
 from apps.loft_subscriptions.services import (
     SubscriptionAccessService,
+    SubscriptionActivationService,
     SubscriptionAIQuotaService,
     SubscriptionCheckoutService,
     SubscriptionPricingService,
 )
 from apps.pedigrees.models import RegisteredPedigree
+from apps.promotions.models import PromotionCampaignType, PromotionTargetType
+from apps.promotions.services import (
+    PromotionCampaignEffectService,
+    PromotionCampaignService,
+)
 from apps.users.constants import ProfileType
 from tests.factories import (
     PedigreeBirdFactory,
@@ -37,6 +47,8 @@ from tests.factories import (
 )
 
 pytestmark = pytest.mark.django_db
+
+PUBLIC_TEMPLATE_IDS = range(1, 21)
 
 
 def authenticated_client(user):
@@ -128,6 +140,13 @@ def create_catalog():
         operation_count=300,
         price=Decimal("249.00"),
     )
+    # Selected template ids must be registered pedigrees.
+    RegisteredPedigree.objects.bulk_create(
+        [
+            RegisteredPedigree(pedigree_id=pedigree_id)
+            for pedigree_id in PUBLIC_TEMPLATE_IDS
+        ]
+    )
     return {
         "trial": trial,
         "month_1": month_1,
@@ -154,6 +173,19 @@ def selection(catalog, **overrides):
     }
     data.update(overrides)
     return data
+
+
+def register_private_template(pedigree_id, *users):
+    pedigree = RegisteredPedigree.objects.create(
+        pedigree_id=pedigree_id,
+        is_public=False,
+    )
+    pedigree.users.add(*users)
+    return pedigree
+
+
+def fee_lines(lines):
+    return [line for line in lines if line.item_type == "private_template_fee"]
 
 
 def test_pricing_one_month_with_one_free_shape_is_500():
@@ -578,3 +610,292 @@ def test_template_entitlement_allows_selected_and_rejects_unselected_template():
     assert SubscriptionAccessService.require_pedigree_template(profile, 7)
     with pytest.raises(Exception):
         SubscriptionAccessService.require_pedigree_template(profile, 8)
+
+
+def test_public_templates_keep_existing_pricing_without_fee():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+    result = SubscriptionPricingService.calculate(
+        profile=user.active_profile,
+        validated_selection=selection(catalog),
+    )
+
+    assert result.subtotal == Decimal("500.00")
+    assert result.total == Decimal("500.00")
+    assert [line.item_type for line in result.lines] == [
+        "duration",
+        "pedigree_package",
+    ]
+    assert result.private_template_ids == []
+    assert result.private_template_fee == Decimal("0.00")
+    assert "private_template_fee" not in result.pricing_snapshot()
+
+
+@pytest.mark.parametrize(
+    ("template_ids", "private_ids", "expected_total"),
+    [
+        ([101], [101], Decimal("1850.00")),
+        ([101, 102], [101, 102], Decimal("2350.00")),
+        ([1, 101, 2, 102, 3], [101, 102], Decimal("2350.00")),
+    ],
+)
+def test_each_selected_private_template_adds_fee(
+    template_ids,
+    private_ids,
+    expected_total,
+):
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    register_private_template(101, user)
+    register_private_template(102, user)
+
+    result = SubscriptionPricingService.calculate(
+        profile=user.active_profile,
+        validated_selection=selection(
+            catalog,
+            pedigree_package_id=catalog["shapes_10"].pk,
+            template_ids=template_ids,
+        ),
+    )
+
+    # month_1 (500) + shapes_10 (850) = 1350 before private template fees.
+    assert result.private_template_ids == private_ids
+    assert result.private_template_fee == PRIVATE_TEMPLATE_FEE * len(private_ids)
+    assert result.subtotal == expected_total
+    assert result.total == expected_total
+    assert [
+        (line.code, line.amount) for line in fee_lines(result.lines)
+    ] == [
+        (f"private_template_{pedigree_id}", Decimal("500.00"))
+        for pedigree_id in private_ids
+    ]
+
+
+def test_campaign_discount_does_not_reduce_private_template_fee():
+    now = timezone.now()
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    register_private_template(101, user)
+    register_private_template(102, user)
+    campaign = PromotionCampaignService.create(
+        name="Loft 10% Off",
+        campaign_type=PromotionCampaignType.SEASONAL,
+        starts_at=now - timedelta(hours=1),
+        ends_at=now + timedelta(hours=5),
+        is_enabled=True,
+    )
+    effect = PromotionCampaignEffectService.create(
+        campaign,
+        target_type=PromotionTargetType.LOFT_SUBSCRIPTION,
+        target_subscription_duration=catalog["month_12"],
+        discount_percent=Decimal("10.00"),
+        now=now - timedelta(hours=2),
+    )
+
+    result = SubscriptionPricingService.calculate(
+        profile=user.active_profile,
+        validated_selection=selection(
+            catalog,
+            duration_id=catalog["month_12"].pk,
+            pedigree_package_id=catalog["shapes_10"].pk,
+            template_ids=[1, 101, 102],
+        ),
+        now=now,
+    )
+
+    # month_12 (1700) + shapes_10 (850) = 2550 discountable; 10% = 255.
+    assert result.discount_amount == Decimal("255.00")
+    assert result.private_template_fee == Decimal("1000.00")
+    assert result.subtotal == Decimal("3550.00")
+    assert result.total == Decimal("3295.00")
+    snapshot = result.pricing_snapshot()
+    assert snapshot["promotion"] == {
+        "promotion_campaign_id": campaign.pk,
+        "promotion_effect_id": effect.pk,
+        "base_amount": "2550.00",
+        "discount_percent": "10.00",
+        "discount_amount": "255.00",
+        "final_amount": "2295.00",
+    }
+    assert snapshot["private_template_fee"] == {
+        "template_ids": [101, 102],
+        "amount": "1000.00",
+    }
+
+
+def test_unregistered_deleted_and_inaccessible_templates_are_rejected_alike():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    register_private_template(103, other)
+    RegisteredPedigree.objects.get(pedigree_id=20).delete()
+
+    errors = []
+    for template_id in (999, 20, 103):
+        with pytest.raises(ValidationError) as exc_info:
+            SubscriptionPricingService.calculate(
+                profile=user.active_profile,
+                validated_selection=selection(catalog, template_ids=[template_id]),
+            )
+        errors.append(exc_info.value.detail["template_ids"])
+
+    # One shared error, so private template ids are not leaked.
+    assert errors[0] == errors[1] == errors[2]
+
+
+def test_unavailable_template_is_rejected_by_revise_and_checkout_without_invoice():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    other = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    register_private_template(103, other)
+    client = authenticated_client(user)
+
+    revise = client.post(
+        "/api/loft-subscriptions/revise/",
+        selection(catalog, template_ids=[103]),
+        format="json",
+    )
+    checkout = client.post(
+        "/api/loft-subscriptions/checkout/",
+        {
+            **selection(catalog, template_ids=[103]),
+            "quote_token": "unused",
+            "idempotency_key": "inaccessible-private",
+        },
+        format="json",
+    )
+
+    assert revise.status_code == 400
+    assert "template_ids" in revise.data
+    assert checkout.status_code == 400
+    assert "template_ids" in checkout.data
+    assert not SubscriptionInvoice.objects.exists()
+    assert not SubscriptionPaymentRequest.objects.exists()
+
+
+def test_trial_with_public_template_is_unchanged():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+    result = SubscriptionPricingService.calculate(
+        profile=user.active_profile,
+        validated_selection=selection(
+            catalog,
+            duration_id=catalog["trial"].pk,
+            template_ids=[7],
+        ),
+    )
+
+    assert result.subtotal == Decimal("0.00")
+    assert result.total == Decimal("0.00")
+    assert fee_lines(result.lines) == []
+
+
+def test_trial_with_private_template_is_rejected():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    register_private_template(101, user)
+
+    with pytest.raises(ValidationError) as exc_info:
+        SubscriptionCheckoutService.execute(
+            profile=user.active_profile,
+            validated_selection=selection(
+                catalog,
+                duration_id=catalog["trial"].pk,
+                template_ids=[101],
+            ),
+            dry_run=True,
+        )
+
+    assert "template_ids" in exc_info.value.detail
+    assert not LoftSubscriptionTrialUsage.objects.exists()
+
+
+def test_template_turning_private_does_not_reprice_existing_invoice():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    profile = user.active_profile
+    dry_run = SubscriptionCheckoutService.execute(
+        profile=profile,
+        validated_selection=selection(catalog),
+        dry_run=True,
+    )
+    first = SubscriptionCheckoutService.execute(
+        profile=profile,
+        validated_selection=selection(catalog),
+        dry_run=False,
+        quote_token=dry_run.quote_token,
+        idempotency_key="before-private",
+    )
+
+    pedigree = RegisteredPedigree.objects.get(pedigree_id=7)
+    pedigree.is_public = False
+    pedigree.save(update_fields=["is_public", "modified"])
+    pedigree.users.add(user)
+
+    replay = SubscriptionCheckoutService.execute(
+        profile=profile,
+        validated_selection=selection(catalog),
+        dry_run=False,
+        quote_token=dry_run.quote_token,
+        idempotency_key="before-private",
+    )
+    subscription = SubscriptionActivationService.activate_paid_invoice(
+        invoice_id=first.invoice.pk,
+        confirmed_by=profile,
+    )
+    new_quote = SubscriptionCheckoutService.execute(
+        profile=profile,
+        validated_selection=selection(catalog),
+        dry_run=True,
+    )
+
+    invoice = SubscriptionInvoice.objects.get(pk=first.invoice.pk)
+    first.payment_request.refresh_from_db()
+    assert replay.invoice.pk == invoice.pk
+    assert invoice.subtotal == invoice.total == Decimal("500.00")
+    assert first.payment_request.amount == Decimal("500.00")
+    assert not invoice.lines.filter(item_type="private_template_fee").exists()
+    assert "private_template_fee" not in invoice.pricing_snapshot
+    assert subscription.selected_template_ids == [7]
+    assert new_quote.pricing.total == Decimal("1000.00")
+
+
+def test_private_template_fee_is_charged_once_through_revise_and_checkout():
+    catalog = create_catalog()
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    register_private_template(101, user)
+    client = authenticated_client(user)
+    revise = client.post(
+        "/api/loft-subscriptions/revise/",
+        selection(catalog, template_ids=[101]),
+        format="json",
+    )
+
+    checkout = client.post(
+        "/api/loft-subscriptions/checkout/",
+        {
+            **selection(catalog, template_ids=[101]),
+            "quote_token": revise.data["quote_token"],
+            "idempotency_key": "private-once",
+        },
+        format="json",
+    )
+
+    invoice = SubscriptionInvoice.objects.get()
+    fee_rows = invoice.lines.filter(item_type="private_template_fee")
+    assert revise.status_code == 200
+    assert revise.data["total"] == Decimal("1000.00")
+    assert checkout.status_code == 201
+    assert checkout.data["pricing"]["total"] == Decimal("1000.00")
+    assert invoice.subtotal == invoice.total == Decimal("1000.00")
+    assert invoice.payment_request.amount == Decimal("1000.00")
+    assert [(row.item_code, row.total_amount) for row in fee_rows] == [
+        ("private_template_101", Decimal("500.00"))
+    ]
+    assert sum(row.total_amount for row in invoice.lines.all()) == invoice.subtotal
+    assert invoice.pricing_snapshot["private_template_fee"] == {
+        "template_ids": [101],
+        "amount": "500.00",
+    }

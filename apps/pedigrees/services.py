@@ -3,8 +3,10 @@ from dataclasses import dataclass
 from datetime import date
 import json
 import logging
+from numbers import Number
 from time import perf_counter
 from urllib.parse import urljoin, urlparse
+from zipfile import BadZipFile
 
 from PIL import Image, ImageEnhance, ImageOps
 import cv2
@@ -14,12 +16,15 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 import numpy as np
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 import pytesseract
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from apps.assets.models import Bird
 from apps.pedigrees.models import (
     PedigreeBird,
+    PedigreeBirdLifeStatus,
     PedigreeBirdSex,
     PedigreeDocument,
     PedigreeDocumentStatus,
@@ -27,6 +32,7 @@ from apps.pedigrees.models import (
     normalize_ring_number,
 )
 from apps.users.constants import ProfileType
+from apps.users.models import Profile
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +51,7 @@ def validate_pedigree_owner_profile(owner):
         raise ValidationError(
             {
                 "owner": _(
-                    "Only active customer or seller profiles can own pedigree "
-                    "birds."
+                    "Only active customer or seller profiles can own pedigree " "birds."
                 )
             }
         )
@@ -273,10 +278,7 @@ class RegisteredPedigreeService:
     @staticmethod
     def is_unrestricted(user):
         """Managers and superusers are not limited by user visibility."""
-        return (
-            user.is_superuser
-            or user.active_profile.type == ProfileType.MANAGER
-        )
+        return user.is_superuser or user.active_profile.type == ProfileType.MANAGER
 
     @classmethod
     def visible_queryset(cls, user):
@@ -288,9 +290,7 @@ class RegisteredPedigreeService:
         queryset = RegisteredPedigree.objects.all()
         if cls.is_unrestricted(user):
             return queryset
-        return queryset.filter(
-            Q(is_public=True) | Q(assignments__user=user)
-        ).distinct()
+        return queryset.filter(Q(is_public=True) | Q(assignments__user=user)).distinct()
 
     @classmethod
     def require_visible(cls, user, pedigree_id):
@@ -349,9 +349,7 @@ class PedigreeBirdValidator:
         birthday = data.get("birthday")
         record_date = data.get("record_date")
         if birthday and birthday > today:
-            raise ValidationError(
-                {"birthday": _("Birthday cannot be in the future.")}
-            )
+            raise ValidationError({"birthday": _("Birthday cannot be in the future.")})
         if record_date and record_date > today:
             raise ValidationError(
                 {"record_date": _("Record date cannot be in the future.")}
@@ -369,11 +367,7 @@ class PedigreeBirdValidator:
             queryset = queryset.exclude(pk=instance.pk)
         if queryset.exists():
             raise ValidationError(
-                {
-                    "ring_number": _(
-                        "A live pedigree bird with this ring number exists."
-                    )
-                }
+                {"ring_number": _("A live pedigree bird with this ring number exists.")}
             )
 
     @classmethod
@@ -382,13 +376,9 @@ class PedigreeBirdValidator:
         mother = data.get("mother")
 
         if father and instance and father.pk == instance.pk:
-            raise ValidationError(
-                {"father": _("A bird cannot be its own father.")}
-            )
+            raise ValidationError({"father": _("A bird cannot be its own father.")})
         if mother and instance and mother.pk == instance.pk:
-            raise ValidationError(
-                {"mother": _("A bird cannot be its own mother.")}
-            )
+            raise ValidationError({"mother": _("A bird cannot be its own mother.")})
         if father and mother and father.pk == mother.pk:
             raise ValidationError(
                 {"mother": _("Father and mother cannot be the same bird.")}
@@ -424,17 +414,9 @@ class PedigreeBirdValidator:
         child_birthday = data.get("birthday")
         if child_birthday:
             for field, parent in (("father", father), ("mother", mother)):
-                if (
-                    parent
-                    and parent.birthday
-                    and parent.birthday >= child_birthday
-                ):
+                if parent and parent.birthday and parent.birthday >= child_birthday:
                     raise ValidationError(
-                        {
-                            field: _(
-                                "Parent birthday must be before child birthday."
-                            )
-                        }
+                        {field: _("Parent birthday must be before child birthday.")}
                     )
 
         if instance is not None:
@@ -484,6 +466,485 @@ class PedigreeBirdValidator:
         )
 
 
+@dataclass
+class PedigreeSpreadsheetImportResult:
+    rows_processed: int
+    birds_created: int
+    birds_reused: int
+    relationships_created: int
+    relationships_unchanged: int
+    ignored_legacy_values: int
+
+
+@dataclass
+class _PedigreeSpreadsheetCandidate:
+    ring_number: str
+    sex: str | None = None
+    description: str | None = None
+    father_ring: str | None = None
+    mother_ring: str | None = None
+
+
+class PedigreeSpreadsheetImportService:
+    """Adapt the verified legacy XLSX layout into the PedigreeBird graph."""
+
+    ROOT_RING_HEADER = "Estok_No"
+    ROOT_SEX_HEADER = "Estok_Type"
+    ROOT_DESCRIPTION_HEADER = "Estok_Notes"
+    NO_DATA_SENTINELS = {"0", "102", "ffffffff"}
+    COUNTRY_ONLY_RING_SENTINELS = {"dv", "nl", "nld", "be", "bel", "eg", "egy"}
+    SEX_BY_LEGACY_VALUE = {
+        "ذكر": PedigreeBirdSex.MALE,
+        "أنثى": PedigreeBirdSex.FEMALE,
+        "مجهول": PedigreeBirdSex.UNKNOWN,
+    }
+
+    @classmethod
+    def import_workbook(cls, *, workbook_file, user):
+        candidates, rows_processed, ignored_legacy_values = cls._parse_workbook(
+            workbook_file
+        )
+
+        with transaction.atomic():
+            owner = cls._resolve_owner(user)
+            birds_by_ring = {
+                bird.normalized_ring_number: bird
+                for bird in PedigreeBird.objects.select_for_update().filter(
+                    owner_id=owner.pk,
+                    normalized_ring_number__in=candidates,
+                    deleted__isnull=True,
+                )
+            }
+            created_count = 0
+            reused_count = 0
+
+            for normalized_ring, candidate in candidates.items():
+                bird = birds_by_ring.get(normalized_ring)
+                if bird is None:
+                    # Only new birds get a status; reused birds keep theirs.
+                    attrs = {
+                        "ring_number": candidate.ring_number,
+                        "life_status": PedigreeBirdLifeStatus.UNIDENTIFIED,
+                    }
+                    if candidate.sex is not None:
+                        attrs["sex"] = candidate.sex
+                    if candidate.description is not None:
+                        attrs["description"] = candidate.description
+                    PedigreeBirdValidator.validate(
+                        attrs=attrs,
+                        owner=owner,
+                    )
+                    birds_by_ring[normalized_ring] = PedigreeBird.objects.create(
+                        owner=owner,
+                        **attrs,
+                    )
+                    created_count += 1
+                    continue
+
+                reused_count += 1
+                cls._enrich_existing_bird(
+                    bird=bird,
+                    candidate=candidate,
+                    owner=owner,
+                )
+
+            relationships_created, relationships_unchanged = cls._connect_relationships(
+                candidates=candidates,
+                birds_by_ring=birds_by_ring,
+                owner=owner,
+            )
+
+        return PedigreeSpreadsheetImportResult(
+            rows_processed=rows_processed,
+            birds_created=created_count,
+            birds_reused=reused_count,
+            relationships_created=relationships_created,
+            relationships_unchanged=relationships_unchanged,
+            ignored_legacy_values=ignored_legacy_values,
+        )
+
+    @classmethod
+    def _parse_workbook(cls, workbook_file):
+        try:
+            workbook_file.seek(0)
+            workbook = load_workbook(
+                workbook_file,
+                read_only=True,
+                data_only=True,
+            )
+        except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
+            raise ValidationError(
+                {"file": _("A valid XLSX file is required.")}
+            ) from exc
+
+        try:
+            worksheet = workbook.worksheets[0]
+            rows = worksheet.iter_rows(values_only=True)
+            try:
+                header_row = next(rows)
+            except StopIteration as exc:
+                raise ValidationError(
+                    {"file": _("The XLSX file must include a header row.")}
+                ) from exc
+
+            headers = [cls._header_value(value) for value in header_row]
+            cls._validate_headers(headers)
+            candidates = {}
+            ignored_legacy_values = 0
+            rows_processed = 0
+
+            for row_number, values in enumerate(rows, start=2):
+                rows_processed += 1
+                row = dict(zip(headers, values))
+                ignored_legacy_values += cls._count_ignored_values(row)
+                ignored_legacy_values += cls._collect_row(
+                    row=row,
+                    row_number=row_number,
+                    candidates=candidates,
+                )
+        finally:
+            workbook.close()
+
+        return candidates, rows_processed, ignored_legacy_values
+
+    @classmethod
+    def _validate_headers(cls, headers):
+        required_headers = cls._required_headers()
+        missing = sorted(required_headers - set(headers))
+        if missing:
+            raise ValidationError(
+                {
+                    "file": _(
+                        "The XLSX file is missing required pedigree headers: %(headers)s"
+                    )
+                    % {"headers": ", ".join(missing)}
+                }
+            )
+
+    @classmethod
+    def _collect_row(cls, *, row, row_number, candidates):
+        ignored_sentinels = 0
+        slots = {
+            1: {
+                "ring": cls.clean_legacy_ring(row[cls.ROOT_RING_HEADER]),
+                "sex": cls._legacy_sex(
+                    row[cls.ROOT_SEX_HEADER],
+                    row_number=row_number,
+                ),
+                "description": cls._clean_legacy_text(
+                    row.get(cls.ROOT_DESCRIPTION_HEADER)
+                ),
+            }
+        }
+        ignored_sentinels += cls._is_legacy_ring_sentinel(row[cls.ROOT_RING_HEADER])
+
+        for index in range(1, 8):
+            for relation, node in (("Father", index * 2), ("Mother", index * 2 + 1)):
+                ring_header = f"Estok_{relation}{index}No"
+                slots[node] = {
+                    "ring": cls.clean_legacy_ring(row[ring_header]),
+                    "description": cls._clean_legacy_text(
+                        row.get(f"Estok_{relation}{index}")
+                    ),
+                }
+                ignored_sentinels += cls._is_legacy_ring_sentinel(row[ring_header])
+
+        for index in range(1, 9):
+            target_node = 7 + index
+            for relation, node in (
+                ("Father", target_node * 2),
+                ("Mother", target_node * 2 + 1),
+            ):
+                prefix = f"Estok_Father_{relation}{index}"
+                ring_header = f"{prefix}_N"
+                slots[node] = {
+                    "ring": cls.clean_legacy_ring(row[ring_header]),
+                    "description": cls._clean_legacy_text(row.get(f"{prefix}_D")),
+                }
+                ignored_sentinels += cls._is_legacy_ring_sentinel(row[ring_header])
+
+        if slots[1]["ring"] is None:
+            raise ValidationError(
+                {
+                    "file": _("Row %(row)s requires a valid Estok_No ring number.")
+                    % {"row": row_number}
+                }
+            )
+
+        cls._collect_reachable_node(
+            node=1,
+            slots=slots,
+            candidates=candidates,
+        )
+        return ignored_sentinels
+
+    @classmethod
+    def _collect_reachable_node(cls, *, node, slots, candidates):
+        node_data = slots.get(node)
+        if node_data is None or node_data["ring"] is None:
+            return
+
+        candidate = cls._candidate_for(
+            candidates=candidates,
+            ring_number=node_data["ring"],
+        )
+        cls._merge_candidate_scalar(
+            candidate=candidate,
+            field="sex",
+            value=node_data.get("sex"),
+        )
+        cls._merge_candidate_description(
+            candidate=candidate,
+            value=node_data.get("description"),
+            prefer=node == 1,
+        )
+
+        for relation, child_node in (("father", node * 2), ("mother", node * 2 + 1)):
+            child = slots.get(child_node)
+            if child is None or child["ring"] is None:
+                continue
+            cls._merge_candidate_scalar(
+                candidate=candidate,
+                field=f"{relation}_ring",
+                value=child["ring"],
+            )
+            cls._collect_reachable_node(
+                node=child_node,
+                slots=slots,
+                candidates=candidates,
+            )
+
+    @classmethod
+    def _candidate_for(cls, *, candidates, ring_number):
+        candidate = candidates.get(ring_number)
+        if candidate is None:
+            candidate = _PedigreeSpreadsheetCandidate(ring_number=ring_number)
+            candidates[ring_number] = candidate
+        return candidate
+
+    @staticmethod
+    def _merge_candidate_scalar(*, candidate, field, value):
+        if value is None:
+            return
+        current = getattr(candidate, field)
+        if current is None:
+            setattr(candidate, field, value)
+            return
+        if current != value:
+            raise ValidationError(
+                {
+                    "file": _(
+                        "Conflicting %(field)s values were supplied for ring %(ring)s."
+                    )
+                    % {"field": field, "ring": candidate.ring_number}
+                }
+            )
+
+    @staticmethod
+    def _merge_candidate_description(*, candidate, value, prefer=False):
+        if value is None:
+            return
+        if candidate.description is None or prefer:
+            candidate.description = value
+
+    @classmethod
+    def _enrich_existing_bird(cls, *, bird, candidate, owner):
+        changed_fields = []
+        if candidate.sex is not None and candidate.sex != bird.sex:
+            if bird.sex != PedigreeBirdSex.UNKNOWN:
+                cls._raise_existing_conflict(
+                    field="sex",
+                    ring_number=bird.ring_number,
+                )
+            bird.sex = candidate.sex
+            changed_fields.append("sex")
+        if candidate.description is not None and not bird.description:
+            bird.description = candidate.description
+            changed_fields.append("description")
+        if changed_fields:
+            PedigreeBirdValidator.validate(
+                attrs={field: getattr(bird, field) for field in changed_fields},
+                owner=owner,
+                instance=bird,
+            )
+            bird.save(update_fields=[*changed_fields, "modified"])
+
+    @classmethod
+    def _connect_relationships(cls, *, candidates, birds_by_ring, owner):
+        created_count = 0
+        unchanged_count = 0
+        for normalized_ring, candidate in candidates.items():
+            bird = birds_by_ring[normalized_ring]
+            relation_attrs = {}
+            for relation in ("father", "mother"):
+                parent_ring = getattr(candidate, f"{relation}_ring")
+                if parent_ring is None:
+                    continue
+                parent = birds_by_ring[parent_ring]
+                current_parent_id = getattr(bird, f"{relation}_id")
+                if current_parent_id == parent.pk:
+                    unchanged_count += 1
+                    continue
+                if current_parent_id is not None:
+                    cls._raise_existing_conflict(
+                        field=relation,
+                        ring_number=bird.ring_number,
+                    )
+                relation_attrs[relation] = parent
+
+            if not relation_attrs:
+                continue
+            PedigreeBirdValidator.validate(
+                attrs=relation_attrs,
+                owner=owner,
+                instance=bird,
+            )
+            for relation, parent in relation_attrs.items():
+                setattr(bird, relation, parent)
+            bird.save(update_fields=[*relation_attrs, "modified"])
+            created_count += len(relation_attrs)
+        return created_count, unchanged_count
+
+    @staticmethod
+    def _raise_existing_conflict(*, field, ring_number):
+        raise ValidationError(
+            {
+                "file": _("Existing %(field)s data conflicts for ring %(ring)s.")
+                % {"field": field, "ring": ring_number}
+            }
+        )
+
+    @classmethod
+    def _resolve_owner(cls, user):
+        profiles = list(
+            Profile.objects.select_for_update()
+            .filter(
+                user_id=user.pk,
+                type__in=[ProfileType.CUSTOMER, ProfileType.SELLER],
+                activated=True,
+                is_valid=True,
+                deleted__isnull=True,
+            )
+            .order_by("pk")
+        )
+        if len(profiles) != 1:
+            raise ValidationError(
+                {
+                    "user": _(
+                        "The selected user must have exactly one eligible customer or seller profile."
+                    )
+                }
+            )
+        return profiles[0]
+
+    @classmethod
+    def _legacy_sex(cls, value, *, row_number):
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return cls.SEX_BY_LEGACY_VALUE[text]
+        except KeyError as exc:
+            raise ValidationError(
+                {
+                    "file": _("Row %(row)s has an unsupported Estok_Type value.")
+                    % {"row": row_number}
+                }
+            ) from exc
+
+    @classmethod
+    def _required_headers(cls):
+        headers = {cls.ROOT_RING_HEADER, cls.ROOT_SEX_HEADER}
+        for index in range(1, 8):
+            headers.update(
+                {
+                    f"Estok_Father{index}No",
+                    f"Estok_Mother{index}No",
+                }
+            )
+        for index in range(1, 9):
+            headers.update(
+                {
+                    f"Estok_Father_Father{index}_N",
+                    f"Estok_Father_Mother{index}_N",
+                }
+            )
+        return headers
+
+    @classmethod
+    def _used_headers(cls):
+        headers = set(cls._required_headers())
+        headers.add(cls.ROOT_DESCRIPTION_HEADER)
+        for index in range(1, 8):
+            headers.update(
+                {
+                    f"Estok_Father{index}",
+                    f"Estok_Mother{index}",
+                }
+            )
+        for index in range(1, 9):
+            headers.update(
+                {
+                    f"Estok_Father_Father{index}_D",
+                    f"Estok_Father_Mother{index}_D",
+                }
+            )
+        return headers
+
+    @classmethod
+    def _count_ignored_values(cls, row):
+        return sum(
+            1
+            for header, value in row.items()
+            if header not in cls._used_headers() and cls._has_value(value)
+        )
+
+    @classmethod
+    def clean_legacy_ring(cls, value):
+        if cls._is_legacy_ring_sentinel(value):
+            return None
+        return normalize_ring_number(str(value).strip())
+
+    @classmethod
+    def _clean_legacy_text(cls, value):
+        if cls._is_legacy_sentinel(value):
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @classmethod
+    def _is_legacy_sentinel(cls, value):
+        if value is None:
+            return True
+        if isinstance(value, Number) and not isinstance(value, bool):
+            if value in {0, 102}:
+                return True
+        text = str(value).strip()
+        return not text or text.casefold() in cls.NO_DATA_SENTINELS
+
+    @classmethod
+    def _is_legacy_ring_sentinel(cls, value):
+        if cls._is_legacy_sentinel(value):
+            return True
+        text = str(value).strip()
+        folded = text.casefold()
+        if set(folded) == {"0"} or folded in cls.COUNTRY_ONLY_RING_SENTINELS:
+            return True
+        return any("\u0600" <= ch <= "\u06FF" for ch in text) and not any(
+            ch.isdigit() for ch in text
+        )
+
+    @staticmethod
+    def _has_value(value):
+        return value is not None and bool(str(value).strip())
+
+    @staticmethod
+    def _header_value(value):
+        return str(value).strip() if value is not None else ""
+
+
 class PedigreeReviewedBirdService:
     """Persist user-reviewed OCR nodes into the canonical PedigreeBird graph."""
 
@@ -505,9 +966,7 @@ class PedigreeReviewedBirdService:
 
     @classmethod
     @transaction.atomic
-    def save_reviewed_pedigree(
-        cls, *, document_id, actor_profile, reviewed_nodes
-    ):
+    def save_reviewed_pedigree(cls, *, document_id, actor_profile, reviewed_nodes):
         document = PedigreeDocumentService.lock_document_for_actor(
             document_id,
             actor_profile,
@@ -518,11 +977,9 @@ class PedigreeReviewedBirdService:
         merged_by_ring, path_to_ring = cls._merge_nodes_by_normalized_ring(
             reviewed_nodes
         )
-        birds_by_ring, created_ids, scalar_updated_ids = (
-            cls._create_or_update_birds(
-                owner=owner,
-                merged_by_ring=merged_by_ring,
-            )
+        birds_by_ring, created_ids, scalar_updated_ids = cls._create_or_update_birds(
+            owner=owner,
+            merged_by_ring=merged_by_ring,
         )
         path_to_bird = {
             path: birds_by_ring[normalized_ring]
@@ -537,9 +994,7 @@ class PedigreeReviewedBirdService:
             subject_bird=subject_bird,
         )
         document = PedigreeDocumentService.get_document(document.pk)
-        existing_ids = {
-            bird.pk for bird in birds_by_ring.values()
-        } - created_ids
+        existing_ids = {bird.pk for bird in birds_by_ring.values()} - created_ids
         updated_existing_ids = (
             scalar_updated_ids | relationship_updated_ids
         ) - created_ids
@@ -564,16 +1019,12 @@ class PedigreeReviewedBirdService:
         for node in reviewed_nodes:
             normalized_ring = normalize_ring_number(node["ring_number"])
             if not normalized_ring:
-                raise ValidationError(
-                    {"ring_number": _("Ring number is required.")}
-                )
+                raise ValidationError({"ring_number": _("Ring number is required.")})
             path_to_ring[node["path"]] = normalized_ring
 
             if normalized_ring not in merged_by_ring:
                 merged_by_ring[normalized_ring] = {
-                    field: node[field]
-                    for field in cls.SCALAR_FIELDS
-                    if field in node
+                    field: node[field] for field in cls.SCALAR_FIELDS if field in node
                 }
                 continue
 
@@ -631,9 +1082,7 @@ class PedigreeReviewedBirdService:
 
             if changed_fields:
                 PedigreeBirdValidator.validate(
-                    attrs={
-                        field: getattr(bird, field) for field in changed_fields
-                    },
+                    attrs={field: getattr(bird, field) for field in changed_fields},
                     owner=owner,
                     instance=bird,
                 )
@@ -655,14 +1104,9 @@ class PedigreeReviewedBirdService:
                 parent = path_to_bird.get(f"{path}{edge}")
                 if parent is None:
                     continue
-                desired = desired_by_child.setdefault(
-                    child.pk, {"bird": child}
-                )
+                desired = desired_by_child.setdefault(child.pk, {"bird": child})
                 existing_parent = desired.get(relation)
-                if (
-                    existing_parent is not None
-                    and existing_parent.pk != parent.pk
-                ):
+                if existing_parent is not None and existing_parent.pk != parent.pk:
                     raise ValidationError(
                         {
                             relation: _(
@@ -754,9 +1198,7 @@ class PedigreeTreeService:
             return None
         seen = seen or set()
         if bird.pk in seen:
-            raise ValidationError(
-                {"subject": _("Pedigree tree contains a cycle.")}
-            )
+            raise ValidationError({"subject": _("Pedigree tree contains a cycle.")})
         seen.add(bird.pk)
 
         node = {
@@ -930,12 +1372,8 @@ class PedigreeReportMapper:
                 generation_depth,
             )
         )
-        parameters.update(
-            cls._owner_parameters(owner or {})
-        )
-        parameters.update(
-            cls._customization_parameters(customization or {})
-        )
+        parameters.update(cls._owner_parameters(owner or {}))
+        parameters.update(cls._customization_parameters(customization or {}))
 
         parameters["PrintDate"] = timezone.localdate().isoformat()
 
@@ -956,16 +1394,13 @@ class PedigreeReportMapper:
             # Subject ring
             "Farkh_No": cls._ring(subject),
             "Farth_No": cls._ring(subject),
-
             # Subject
             "Esmah_Name": cls._name(subject),
             "Esmah_FullNo": cls._description(subject),
-
             # Direct father
             "Farth_FatherNo": cls._ring(father),
             "Father_Name": cls._name(father),
             "Father_Info": cls._description(father),
-
             # Direct mother
             "Farth_MotherNo": cls._ring(mother),
             "Mother_Name": cls._name(mother),
@@ -1073,9 +1508,7 @@ class PedigreeProviderSyntheticPayloadBuilder:
             description_field,
         ) in ANCESTOR_FIELD_MAPPING.items():
             parameters[ring_field] = f"PPW-TEST-{path}"
-            parameters[f"{description_field}_Name"] = (
-                f"PPW Synthetic Ancestor {path}"
-            )
+            parameters[f"{description_field}_Name"] = f"PPW Synthetic Ancestor {path}"
             parameters[description_field] = cls.DIAGNOSTIC_DESCRIPTION
 
         return parameters
@@ -1144,9 +1577,7 @@ class PedigreeProviderDiagnosticService:
                 "health_status_code": health["status_code"],
                 "health_duration_seconds": health["response_time_seconds"],
                 "generation_status_code": generation["status_code"],
-                "generation_duration_seconds": generation[
-                    "response_time_seconds"
-                ],
+                "generation_duration_seconds": generation["response_time_seconds"],
                 "pdf_size_bytes": generation["pdf_size_bytes"],
                 "valid_pdf": generation["valid_pdf"],
                 "shape": cls.TEST_SHAPE,
@@ -1197,18 +1628,14 @@ class PedigreeProviderDiagnosticService:
                 accept="application/pdf",
             )
         except PedigreeReportConfigurationError:
-            return cls._generation_failure(
-                started_at, "configuration_error"
-            )
+            return cls._generation_failure(started_at, "configuration_error")
         except Exception as exc:
             import requests
 
             if isinstance(exc, requests.exceptions.Timeout):
                 return cls._generation_failure(started_at, "timeout")
             if isinstance(exc, requests.exceptions.ConnectionError):
-                return cls._generation_failure(
-                    started_at, "connection_error"
-                )
+                return cls._generation_failure(started_at, "connection_error")
             logger.exception(
                 "Unexpected pedigree provider generation diagnostic error.",
                 extra={"operation": "provider-test-generation"},
@@ -1297,17 +1724,11 @@ class PedigreeProviderDiagnosticService:
         elif generation["error"] == "timeout":
             generation_feedback = "Pedigree PDF generation timed out."
         elif generation["error"] == "invalid_pdf":
-            generation_feedback = (
-                "Pedigree PDF generation returned an invalid PDF."
-            )
+            generation_feedback = "Pedigree PDF generation returned an invalid PDF."
         elif generation["error"] == "configuration_error":
-            generation_feedback = (
-                "Pedigree PDF generation configuration is incomplete."
-            )
+            generation_feedback = "Pedigree PDF generation configuration is incomplete."
         else:
-            generation_feedback = (
-                "Pedigree PDF generation is currently failing."
-            )
+            generation_feedback = "Pedigree PDF generation is currently failing."
 
         if health["ok"] and generation["ok"]:
             service = "Pedigree server is reachable and healthy."

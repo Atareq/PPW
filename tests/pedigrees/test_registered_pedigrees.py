@@ -104,14 +104,17 @@ def test_manager_creates_public_and_private_registered_pedigrees():
 
     assert public.status_code == 201
     assert public.data["is_public"] is True
+    assert public.data["access_type"] == "public"
     assert public.data["user_ids"] == []
     assert private.status_code == 201
     assert private.data["is_public"] is False
+    assert private.data["access_type"] == "custom"
     assert sorted(private.data["user_ids"]) == sorted([user_a.pk, user_b.pk])
     assert set(private.data) == {
         "id",
         "pedigree_id",
         "is_public",
+        "access_type",
         "user_ids",
         "created",
         "modified",
@@ -274,7 +277,11 @@ def test_users_see_public_union_their_assigned_private_only(scenario):
         2,
     ]
     for item in response_a.data["results"]:
-        assert set(item) == {"id", "pedigree_id", "is_public"}
+        assert set(item) == {"id", "pedigree_id", "is_public", "access_type"}
+    by_id = {item["pedigree_id"]: item for item in response_a.data["results"]}
+    assert by_id[1]["access_type"] == "public"
+    assert by_id[2]["access_type"] == "public"
+    assert by_id[3]["access_type"] == "custom"
 
 
 def test_detail_returns_404_for_private_pedigrees_of_others(scenario):
@@ -448,8 +455,69 @@ def test_registry_is_documented_in_openapi(authenticated_client, settings):
         "patch",
         "delete",
     }
+    assert set(schema["paths"]["/api/pedigrees/available/"]) >= {"get"}
+    assert set(schema["paths"]["/api/pedigrees/available/{pedigree_id}/"]) >= {
+        "get"
+    }
     components = schema["components"]["schemas"]
     assert {"pedigree_id", "is_public", "user_ids"} <= set(
         components["RegisteredPedigreeAdminRequest"]["properties"]
     )
     assert "user_ids" not in components["RegisteredPedigree"]["properties"]
+    assert "access_type" in components["RegisteredPedigree"]["properties"]
+
+
+def test_available_endpoint_lists_and_retrieves_by_pedigree_id(
+    scenario, api_client
+):
+    assert api_client.get("/api/pedigrees/available/").status_code == 401
+    assert api_client.get("/api/pedigrees/available/1/").status_code == 401
+
+    client_a = authenticated_client(scenario["a"])
+    list_res = client_a.get("/api/pedigrees/available/")
+    assert visible_ids(list_res) == [1, 2, 3]
+    by_id = {item["pedigree_id"]: item for item in list_res.data["results"]}
+    assert by_id[1]["access_type"] == "public"
+    assert by_id[3]["access_type"] == "custom"
+
+    pub_detail = client_a.get("/api/pedigrees/available/1/")
+    assert pub_detail.status_code == 200
+    assert pub_detail.data["pedigree_id"] == 1
+    assert pub_detail.data["is_public"] is True
+    assert pub_detail.data["access_type"] == "public"
+    assert "user_ids" not in pub_detail.data
+
+    priv_assigned = client_a.get("/api/pedigrees/available/3/")
+    assert priv_assigned.status_code == 200
+    assert priv_assigned.data["pedigree_id"] == 3
+    assert priv_assigned.data["is_public"] is False
+    assert priv_assigned.data["access_type"] == "custom"
+    assert "user_ids" not in priv_assigned.data
+
+    assert client_a.get("/api/pedigrees/available/4/").status_code == 404
+    assert client_a.get("/api/pedigrees/available/5/").status_code == 404
+    assert client_a.get("/api/pedigrees/available/999/").status_code == 404
+
+
+def test_generate_accepts_pedigree_id_field_alias(provider):
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    create_report_subscription(user.active_profile)
+    subject = PedigreeBirdFactory(owner=user.active_profile)
+    register(7, is_public=False, users=[user])
+    payload = generation_request(subject.pk)
+    payload["pedigree_id"] = payload.pop("pdf_id")
+    upstream = UpstreamResponse(
+        content=b"%PDF-1.4",
+        headers={"Content-Type": "application/pdf"},
+    )
+
+    with patch("requests.post", return_value=upstream) as post:
+        response = authenticated_client(user).post(
+            "/api/pedigrees/generate/",
+            payload,
+            format="json",
+        )
+
+    assert response.status_code == 200
+    post.assert_called_once()
+

@@ -26,6 +26,7 @@ from apps.notifications.models import Notification
 from apps.packages.models import Package
 from apps.packages.services import SellerPackageService
 from apps.payments.models import PaymentRequest
+from apps.pedigrees.models import RegisteredPedigree
 from apps.promotions.models import (
     CashbackTransaction,
     OfferTriggerType,
@@ -1325,6 +1326,8 @@ def test_51_regression_be_pro_02_loft_discounts_unchanged():
         price=Decimal("100.00"),
         is_active=True,
     )
+    RegisteredPedigree.objects.create(pedigree_id=1)
+    RegisteredPedigree.objects.create(pedigree_id=2)
     selection = {
         "duration_id": duration.pk,
         "pedigree_package_id": pedigree_pkg.pk,

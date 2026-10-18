@@ -1,4 +1,5 @@
 from datetime import timedelta
+import importlib
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -18,6 +19,7 @@ from apps.loft_subscriptions.models import (
 )
 from apps.pedigrees.models import (
     PedigreeBird,
+    PedigreeBirdLifeStatus,
     PedigreeBirdSex,
     PedigreeDocument,
     PedigreeDocumentStatus,
@@ -1439,3 +1441,112 @@ def test_provider_diagnostic_pdf_validation(response, valid):
         PedigreeProviderDiagnosticService.is_valid_pdf_response(response)
         is valid
     )
+
+
+def test_new_pedigree_bird_defaults_to_unidentified_life_status():
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+
+    model_bird = PedigreeBirdFactory(owner=user.active_profile)
+    response = authenticated_client(user).post(
+        "/api/pedigrees/birds/",
+        {"ring_number": "EG 2026 9001"},
+        format="json",
+    )
+
+    assert model_bird.life_status == PedigreeBirdLifeStatus.UNIDENTIFIED
+    assert response.status_code == 201
+    assert response.data["life_status"] == PedigreeBirdLifeStatus.UNIDENTIFIED
+
+
+def test_existing_life_statuses_are_kept_and_migration_does_not_rewrite_rows():
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    client = authenticated_client(user)
+    statuses = [
+        PedigreeBirdLifeStatus.ALIVE,
+        PedigreeBirdLifeStatus.DECEASED,
+        PedigreeBirdLifeStatus.MISSING,
+    ]
+    birds = [
+        PedigreeBirdFactory(owner=user.active_profile, life_status=status)
+        for status in statuses
+    ]
+
+    for bird in birds:
+        response = client.patch(
+            f"/api/pedigrees/birds/{bird.pk}/",
+            {"name": "Renamed"},
+            format="json",
+        )
+        assert response.status_code == 200
+
+    assert [
+        PedigreeBird.objects.get(pk=bird.pk).life_status for bird in birds
+    ] == statuses
+    migration = importlib.import_module(
+        "apps.pedigrees.migrations.0006_alter_pedigreebird_life_status"
+    ).Migration
+    assert [type(op).__name__ for op in migration.operations] == ["AlterField"]
+
+
+def test_life_status_is_returned_writable_and_filterable():
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    client = authenticated_client(user)
+    alive = PedigreeBirdFactory(
+        owner=user.active_profile,
+        life_status=PedigreeBirdLifeStatus.ALIVE,
+    )
+    unidentified = PedigreeBirdFactory(owner=user.active_profile)
+
+    detail = client.get(f"/api/pedigrees/birds/{alive.pk}/")
+    updated = client.patch(
+        f"/api/pedigrees/birds/{alive.pk}/",
+        {"life_status": PedigreeBirdLifeStatus.UNIDENTIFIED},
+        format="json",
+    )
+    restored = client.patch(
+        f"/api/pedigrees/birds/{alive.pk}/",
+        {"life_status": PedigreeBirdLifeStatus.ALIVE},
+        format="json",
+    )
+    unidentified_list = client.get(
+        "/api/pedigrees/birds/", {"life_status": "unidentified"}
+    )
+    alive_list = client.get("/api/pedigrees/birds/", {"life_status": "alive"})
+    invalid = client.get("/api/pedigrees/birds/", {"life_status": "zombie"})
+
+    assert detail.data["life_status"] == PedigreeBirdLifeStatus.ALIVE
+    assert updated.data["life_status"] == PedigreeBirdLifeStatus.UNIDENTIFIED
+    assert restored.data["life_status"] == PedigreeBirdLifeStatus.ALIVE
+    assert [row["id"] for row in unidentified_list.data["results"]] == [
+        unidentified.pk
+    ]
+    assert [row["id"] for row in alive_list.data["results"]] == [alive.pk]
+    assert invalid.status_code == 400
+
+
+def test_review_creates_unidentified_birds_and_keeps_reused_life_status():
+    user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    owner = user.active_profile
+    father = PedigreeBirdFactory(
+        owner=owner,
+        ring_number="EGY 16-761 C",
+        life_status=PedigreeBirdLifeStatus.DECEASED,
+    )
+    document = PedigreeDocumentFactory(owner=owner, uploaded_by=user)
+
+    response = authenticated_client(user).patch(
+        f"/api/pedigrees/documents/{document.pk}/review/",
+        {
+            "birds": [
+                {"path": "", "ring_number": "EGY 21-3033 H"},
+                {"path": "F", "ring_number": "EGY 16-761 C"},
+            ]
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    subject = PedigreeBird.objects.get(normalized_ring_number="EGY 21-3033 H")
+    father.refresh_from_db()
+    assert subject.life_status == PedigreeBirdLifeStatus.UNIDENTIFIED
+    assert father.life_status == PedigreeBirdLifeStatus.DECEASED

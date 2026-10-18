@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django.db import models
@@ -411,3 +412,101 @@ TRUSTED_BUYER_PURCHASE_THRESHOLD = 10
 TRUSTED_SELLER_SALE_THRESHOLD = 10
 TRUSTED_BADGE_VALID_DAYS = 90
 AWARD_LAST_MINUTE_POINTS_PER_BID = True
+
+
+# ============================================================================
+# BE-LTY-01A: Permanent Buyer & Seller Levels Foundation
+# ============================================================================
+LEVEL_METRIC_CURRENCY_BLOCKER_CODE = "LEVEL METRIC CURRENCY UNIT — BLOCKED"
+LEVEL_BENEFIT_BLOCKER_CODE = "LEVEL BENEFIT — BLOCKED"
+
+
+@dataclass(frozen=True)
+class PermanentLevelSpec:
+    """Verified static threshold, level name, and display-only benefit metadata (BE-LTY-01A)."""
+
+    level_number: int
+    code: str
+    threshold: Decimal
+    level_name: str
+    benefit_label: str
+    benefit_status: str = "BLOCKED"
+
+
+# Ordered ascending by threshold; evaluation resolves highest inclusive threshold.
+SELLER_LEVEL_TABLE: tuple[PermanentLevelSpec, ...] = (
+    PermanentLevelSpec(
+        level_number=1,
+        code="verified_account",
+        threshold=Decimal("100"),
+        level_name="حساب موثّق",
+        benefit_label="شارة + ثقة",
+    ),
+    PermanentLevelSpec(
+        level_number=2,
+        code="certified_seller",
+        threshold=Decimal("500"),
+        level_name="بائع معتمد",
+        benefit_label="شارة + ترتيب أعلى",
+    ),
+    PermanentLevelSpec(
+        level_number=3,
+        code="golden_seller",
+        threshold=Decimal("1000"),
+        level_name="بائع ذهبي",
+        benefit_label="حجل ذهبي + إبراز",
+    ),
+    PermanentLevelSpec(
+        level_number=4,
+        code="elite_seller",
+        threshold=Decimal("5000"),
+        level_name="بائع نخبة",
+        benefit_label="Banner + عمولة أقل",
+    ),
+    PermanentLevelSpec(
+        level_number=5,
+        code="legendary_seller",
+        threshold=Decimal("10000"),
+        level_name="أسطوري",
+        benefit_label="توثيق دائم + دعم P",
+    ),
+)
+
+BUYER_LEVEL_TABLE: tuple[PermanentLevelSpec, ...] = (
+    PermanentLevelSpec(
+        level_number=1,
+        code="trusted_buyer",
+        threshold=Decimal("100"),
+        level_name="مشتري موثوق",
+        benefit_label="مزايدة بدون عربون",
+    ),
+    PermanentLevelSpec(
+        level_number=2,
+        code="active_buyer",
+        threshold=Decimal("500"),
+        level_name="مشتري نشط",
+        benefit_label="خصم 2%",
+    ),
+    PermanentLevelSpec(
+        level_number=3,
+        code="golden_buyer",
+        threshold=Decimal("1000"),
+        level_name="مشتري ذهبي",
+        benefit_label="كاش باك 1%",
+    ),
+    PermanentLevelSpec(
+        level_number=4,
+        code="ep_buyer",
+        threshold=Decimal("5000"),
+        level_name="مشتري EP",
+        benefit_label="مهلة سداد أطول",
+    ),
+    PermanentLevelSpec(
+        level_number=5,
+        code="elite_buyer",
+        threshold=Decimal("10000"),
+        level_name="Elite Buyer",
+        benefit_label="دعوات خاصة + شحن مجاني",
+    ),
+)
+
