@@ -187,7 +187,10 @@ class CheckoutViewSet(viewsets.GenericViewSet):
     def post(self, request):
         serializer = CheckoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        order = OrderCheckoutService.checkout_cart(request.user.active_profile)
+        order = OrderCheckoutService.checkout_cart(
+            request.user.active_profile,
+            source=serializer.validated_data["source"],
+        )
         return Response(
             OrderSummarySerializer(order).data,
             status=status.HTTP_201_CREATED,

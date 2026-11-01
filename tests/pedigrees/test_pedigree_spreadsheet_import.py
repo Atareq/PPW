@@ -186,9 +186,15 @@ def test_import_creates_root_sex_descriptions_and_recursive_relationships():
     assert response.data["rows_processed"] == 3
     assert response.data["birds_created"] == 7
     owner = target.profiles.get(type=ProfileType.CUSTOMER)
-    child = PedigreeBird.objects.get(owner=owner, normalized_ring_number="CHILD")
-    father = PedigreeBird.objects.get(owner=owner, normalized_ring_number="FATHER")
-    mother = PedigreeBird.objects.get(owner=owner, normalized_ring_number="MOTHER")
+    child = PedigreeBird.objects.get(
+        registered_by=owner, normalized_ring_number="CHILD"
+    )
+    father = PedigreeBird.objects.get(
+        registered_by=owner, normalized_ring_number="FATHER"
+    )
+    mother = PedigreeBird.objects.get(
+        registered_by=owner, normalized_ring_number="MOTHER"
+    )
     assert child.description == "Root description"
     assert child.sex == PedigreeBirdSex.UNKNOWN
     assert father.sex == PedigreeBirdSex.MALE
@@ -221,7 +227,7 @@ def test_import_uses_binary_pairing_for_deep_generation_columns():
 
     assert response.status_code == 200
     owner = target.profiles.get(type=ProfileType.CUSTOMER)
-    node_8 = PedigreeBird.objects.get(owner=owner, normalized_ring_number="N8")
+    node_8 = PedigreeBird.objects.get(registered_by=owner, normalized_ring_number="N8")
     assert node_8.father.normalized_ring_number == "N16"
     assert node_8.mother.normalized_ring_number == "N17"
 
@@ -256,11 +262,13 @@ def test_import_reuses_owner_scoped_rings_sentinels_and_ignored_columns():
 
     assert response.status_code == 200
     owner = target.profiles.get(type=ProfileType.CUSTOMER)
-    imported = PedigreeBird.objects.get(owner=owner, normalized_ring_number="SHARED")
+    imported = PedigreeBird.objects.get(
+        registered_by=owner, normalized_ring_number="SHARED"
+    )
     assert imported.father_id is None
     assert imported.mother_id is None
     assert imported.pk != other_bird.pk
-    assert PedigreeBird.objects.filter(owner=owner).count() == 1
+    assert PedigreeBird.objects.filter(registered_by=owner).count() == 1
     assert response.data["ignored_legacy_values"] >= 14
 
 
@@ -294,9 +302,11 @@ def test_import_prefers_root_description_and_tolerates_ancestor_note_variations(
 
     assert response.status_code == 200
     owner = target.profiles.get(type=ProfileType.CUSTOMER)
-    sire = PedigreeBird.objects.get(owner=owner, normalized_ring_number="EG 16-2284")
+    sire = PedigreeBird.objects.get(
+        registered_by=owner, normalized_ring_number="EG 16-2284"
+    )
     ancestor = PedigreeBird.objects.get(
-        owner=owner,
+        registered_by=owner,
         normalized_ring_number="NLD 05-1412614",
     )
     assert sire.sex == PedigreeBirdSex.MALE
@@ -325,7 +335,7 @@ def test_import_reuses_existing_birds_is_idempotent_and_has_no_commerce_side_eff
     assert second.data["birds_reused"] == 2
     assert second.data["relationships_created"] == 0
     assert second.data["relationships_unchanged"] == 1
-    assert PedigreeBird.objects.filter(owner__user=target).count() == 2
+    assert PedigreeBird.objects.filter(registered_by__user=target).count() == 2
     assert Bird.objects.count() == 0
     assert CompletedDeal.objects.count() == 0
 
@@ -336,7 +346,7 @@ def test_import_rejects_unknown_supported_sex_atomically():
     response = import_file(manager, target, row("root", sex="legacy-code"))
 
     assert response.status_code == 400
-    assert PedigreeBird.objects.filter(owner__user=target).count() == 0
+    assert PedigreeBird.objects.filter(registered_by__user=target).count() == 0
 
 
 @pytest.mark.parametrize(
@@ -357,7 +367,7 @@ def test_import_rejects_conflicting_parents_atomically(first_parent, second_pare
     )
 
     assert response.status_code == 400
-    assert PedigreeBird.objects.filter(owner__user=target).count() == 0
+    assert PedigreeBird.objects.filter(registered_by__user=target).count() == 0
 
 
 @pytest.mark.parametrize(
@@ -370,7 +380,7 @@ def test_import_rejects_self_parent_and_rolls_back(field):
     response = import_file(manager, target, row("root", **{field: "root"}))
 
     assert response.status_code == 400
-    assert PedigreeBird.objects.filter(owner__user=target).count() == 0
+    assert PedigreeBird.objects.filter(registered_by__user=target).count() == 0
 
 
 def test_import_rejects_cycles_using_existing_pedigree_validator():
@@ -384,7 +394,7 @@ def test_import_rejects_cycles_using_existing_pedigree_validator():
     )
 
     assert response.status_code == 400
-    assert PedigreeBird.objects.filter(owner__user=target).count() == 0
+    assert PedigreeBird.objects.filter(registered_by__user=target).count() == 0
 
 
 def test_import_creates_unidentified_birds_and_keeps_reused_life_status():
@@ -410,7 +420,9 @@ def test_import_creates_unidentified_birds_and_keeps_reused_life_status():
     assert response.status_code == 200
     assert response.data["birds_created"] == 1
     assert response.data["birds_reused"] == 1
-    new_bird = PedigreeBird.objects.get(owner=owner, normalized_ring_number="NEW")
+    new_bird = PedigreeBird.objects.get(
+        registered_by=owner, normalized_ring_number="NEW"
+    )
     reused.refresh_from_db()
     untouched.refresh_from_db()
     assert new_bird.life_status == PedigreeBirdLifeStatus.UNIDENTIFIED

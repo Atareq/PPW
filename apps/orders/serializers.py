@@ -6,12 +6,27 @@ from rest_framework import serializers
 
 from apps.assets.models import Asset
 from apps.general.serializers import AssetMediaSerializer
-from apps.orders.models import Cart, CartItem, Order, OrderItem
+from apps.orders.models import Cart, CartItem, Order, OrderItem, OrderSource
 from apps.orders.services import OrderCheckoutService
+
+# Clients identify themselves with these; `unknown` is server-assigned only.
+CLIENT_ORDER_SOURCES = [
+    (OrderSource.MOBILE.value, OrderSource.MOBILE.label),
+    (OrderSource.WEB.value, OrderSource.WEB.label),
+]
 
 
 def format_money(value):
     return f"{value:.2f}"  # noqa
+
+
+def order_source_field():
+    return serializers.ChoiceField(
+        choices=CLIENT_ORDER_SOURCES,
+        required=False,
+        default=OrderSource.UNKNOWN,
+        help_text="Checkout client. Omitted means `unknown`; set once at creation.",
+    )
 
 
 class OrderItemCreateInputSerializer(serializers.ModelSerializer):
@@ -28,12 +43,14 @@ class OrderItemCreateInputSerializer(serializers.ModelSerializer):
 
 class OrderCreateSerializer(WritableNestedModelSerializer):
     items = OrderItemCreateInputSerializer(many=True, allow_empty=False)
+    source = order_source_field()
 
     class Meta:
         model = Order
         fields = [
             "id",
             "status",
+            "source",
             "items",
         ]
         read_only_fields = [
@@ -48,11 +65,12 @@ class OrderCreateSerializer(WritableNestedModelSerializer):
         return OrderCheckoutService.create_order_from_items(
             customer,
             items_payload,
+            source=validated_data["source"],
         )
 
 
 class CheckoutSerializer(serializers.Serializer):
-    pass
+    source = order_source_field()
 
 
 class CartItemCreateSerializer(serializers.Serializer):
@@ -236,6 +254,7 @@ class OrderListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "status",
+            "source",
             "total_price",
             "item_count",
             "total_amount",
@@ -272,6 +291,7 @@ class OrderSummarySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "status",
+            "source",
             "total_price",
             "sellers_involved",
             "items",

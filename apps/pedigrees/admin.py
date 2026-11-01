@@ -8,6 +8,7 @@ class PedigreeBirdAdmin(admin.ModelAdmin):
     list_display = [
         "id",
         "owner",
+        "registered_by",
         "ring_number",
         "sex",
         "life_status",

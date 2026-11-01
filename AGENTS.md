@@ -371,7 +371,7 @@ Current model shape:
   - `sold`
   - `inactive`
 - `Bird`, `Supply`, `Accessory`, `Feed`, and `Supplement` are subclasses of `Asset`
-- asset `sale_channel` values are `seller_market` and `platform`
+- asset `sale_channel` values are `seller_market` and `platform`; it records who operates/supplies the listing, is unrelated to `Order.source` (where a checkout came from), and must not be repurposed for order attribution
 - `Supply` is platform-controlled: sellers cannot create supply products through the API
 - platform supplies are owned by a hidden platform seller profile and use `sale_channel=platform`; manager/superuser creators are tracked through `managed_by` when an active manager profile exists
 - `Bird.public_id` is a stable UUID for public bird identity and QR payload URLs
@@ -490,10 +490,10 @@ Current order API:
 - `/api/orders/cart/clear/`
   - `DELETE`: customer clears all active cart items
 - `/api/orders/checkout/`
-  - `POST`: customer converts the full active cart into an order after validating stock availability
+  - `POST`: customer converts the full active cart into an order after validating stock availability; optional `source` (`mobile` | `web`) records the checkout client, omitted means `unknown`, and any other value (including `unknown`) is rejected
 - `/api/orders/`
   - `GET`: paginated customer list of own orders or manager list of all orders; supports exact `status` filtering
-  - `POST`: compatibility alias for direct order creation from market-listed seller assets; validates stock availability without decrementing stock
+  - `POST`: compatibility alias for direct order creation from market-listed seller assets; validates stock availability without decrementing stock; accepts the same optional `source` as checkout
 - `/api/orders/<id>/`
   - `GET`: customer retrieves own order; manager retrieves any order
 - `/api/orders/items/`
@@ -521,6 +521,9 @@ Current order behavior:
 - order item detail asset summaries use nested `media` from `AssetMedia`; they no longer expose `thumbnail_url`
 - checkout and direct `POST /api/orders/` validate stock but do not decrement `Asset.count`
 - checkout and direct `POST /api/orders/` do not mark assets `sold` and do not unlist assets from the market
+- `Order.source` (`mobile`, `web`, `unknown`) is the historical checkout origin for attribution/analytics only: it is set once when the order is created, is read-only in every order response, has no update API, and never affects price, promotions, stock, seller approval, payment requests, or `CompletedDeal`; client-declared values are accepted because nothing depends on them
+- orders created before `Order.source` existed, and internal/service-created orders without a source, are `unknown`; historical origin is not reconstructed
+- auctions do not create `Order` rows, so auction sales carry no `Order.source`
 - checkout and direct `POST /api/orders/` calculate `gross_total`, apply the best active `DiscountOffer`, store `discount_offer` and `discount_amount`, and store discounted `total_price`
 - checkout and direct `POST /api/orders/` do not redeem or earn cashback
 - checkout and direct `POST /api/orders/` create best-effort in-app notifications for each seller with a pending order item
@@ -1060,21 +1063,25 @@ Current responsibilities:
 - internal pedigree document upload records
 - current image-box detection plus per-box OCR extraction for uploaded pedigree documents
 - document retrieval and manual review of extracted values
-- independent private `PedigreeBird` records owned by the active customer or seller profile
+- independent private `PedigreeBird` records registered by the active customer or seller profile (`registered_by`), with separate, nullable physical ownership (`owner`)
 - synchronous external FastReport reports-list and PDF/image generation proxying
 - `RegisteredPedigree` registry of FastReport pedigree ids (`pdf_id` / `shape`) with public/private visibility and `UserAccount` assignments; it is the PPW authorization source of truth for every user-facing endpoint that uses a pedigree id
 
 Important note:
 
-This app owns private pedigree-bird workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. `PedigreeBird` father/mother links are the canonical current pedigree graph. PPW does not persist report templates, generated certificates, generated files, report jobs, provider request history, or provider response history; it stores only registered pedigree ids plus their visibility. Report generation is a synchronous proxy call to the external FastReport provider using current `PedigreeBird` data.
+This app owns private pedigree-bird workflows alongside the OCR document workflow. `PedigreeBird` is independent from `apps.assets.models.Bird`; marketplace and auction flows must not depend on it. `PedigreeBird` father/mother links are the canonical current pedigree graph. PPW does not persist report templates, generated certificates, generated files, report jobs, provider request history, or provider response history; it stores only registered pedigree ids plus their visibility, and each bird's report `default_color`. Report generation is a synchronous proxy call to the external FastReport provider using current `PedigreeBird` data.
 
 Current pedigree API:
 
 - `/api/pedigrees/birds/`
-  - `GET`: customer/seller lists only own private pedigree birds; manager lists with `pedigrees.birds.list`
-  - `POST`: active customer or seller creates a private pedigree bird owned by the active profile
+  - `GET`: customer/seller lists only pedigree birds registered by the active profile, owned or not; optional `?owner_id=<profile_id>` only narrows that registration scope to physically owned birds; manager lists all with `pedigrees.birds.list`
+  - `POST`: active customer or seller creates a private pedigree bird registered by the active profile; optional `owner` may be omitted/`null` (stored as `owner=NULL`, `ownership_status=unknown`) or the active profile itself (`owned`)
 - `/api/pedigrees/birds/<id>/`
-  - `GET` / `PATCH` / `DELETE`: owner-scoped private pedigree bird detail, update, and soft delete; managers require explicit bird permissions
+  - `GET` / `PATCH` / `DELETE`: registration-scoped (`registered_by`) private pedigree bird detail, update, and soft delete; managers require explicit bird permissions and may assign, reassign, or clear `owner` (any customer/seller profile) with `pedigrees.birds.update`
+- `/api/pedigrees/birds/public/<public_id>/claim/`
+  - `POST`: active customer/seller takes physical ownership of any live unowned pedigree bird by `public_id`, including one registered by another profile; sets only `owner` and `ownership_status=owned`, is idempotent for the current owner, returns `404` for missing birds and birds owned by someone else, and grants no pedigree visibility; managers are denied
+- `/api/pedigrees/birds/public/<public_id>/release/`
+  - `POST`: the current owner gives up ownership (`owner=NULL`, `owned` becomes `unknown`); anyone else gets `404`; managers are denied
 - `/api/pedigrees/birds/import/`
   - `POST`: manager/superuser-only multipart XLSX import using exactly `file` and `user` (`UserAccount` id); reuses `pedigrees.birds.create` manager permission and returns aggregate import counts only
 - `/api/pedigrees/registered/` and `/api/pedigrees/available/`
@@ -1094,7 +1101,7 @@ Current pedigree API:
 - `/api/pedigrees/templates/<shape>/style-parameters/`
   - `GET`: authenticated raw proxy to `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/style-parameters?pedigreeType=<shape>&generation=<generation>`; same registry gate as schema; returns provider-owned style metadata without local persistence or reshaping
 - `/api/pedigrees/generate/`
-  - `POST`: returns `404` for customer/seller unless `pdf_id` (or alias `pedigree_id`) is a visible registered pedigree, then synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without local storage
+  - `POST`: returns `404` for customer/seller unless `pdf_id` (or alias `pedigree_id`) is a visible registered pedigree, then synchronously merges current local pedigree bird parameters into the frontend-supplied report object, verifies the active Loft Manager subscription allows the selected `pdf_id`, calls `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/{pdf_id}`, and returns the upstream status/body/content type without storing the report; an explicit `color` is saved as the subject's `default_color` only after a 2xx provider response
 - `/api/pedigrees/provider-test/`
   - `POST`: manager-only dashboard diagnostic that calls provider `/health`, renders one deterministic in-memory Shape 04 Generation 6 synthetic PDF through `{PEDIGREE_REPORT_BASE_URL}/api/reports/fastreport/pdf/4`, validates the returned PDF, discards the bytes, and returns compact JSON health/generation timing and status data
 - `/api/pedigrees/documents/`
@@ -1106,15 +1113,24 @@ Current pedigree API:
 
 Current pedigree behavior:
 
-- `PedigreeBird` inherits `OwnerBaseModel`; owner is always the currently active customer or seller profile on create and is read-only in API input
+- `PedigreeBird` keeps three independent concepts:
+  - `registered_by` (required, server-assigned, read-only in API input, never changed by ownership operations) is the registration authority: it alone controls visibility/queryset scope, ring reuse/matching, normalized ring uniqueness, and which birds may be linked as father/mother
+  - `owner` (nullable, `SET_NULL`) is physical/business ownership only and is never used for visibility, matching, or parent links
+  - `ownership_status` (`owned`, `sold`, `gifted`, `unknown`; default `unknown`) is the ownership state; `owner=NULL` with `ownership_status=unknown` is a first-class valid state, and `owned` without an owner is rejected
+- parentage never implies ownership: becoming a father/mother/ancestor never changes `owner` or `ownership_status`
+- a registered pedigree's subject is registered and owned by the registering profile (`owned`); every ancestor it creates (parents, grandparents, great-grandparents, and deeper) is registered by that profile with `owner=NULL` and `ownership_status=unknown`
+- customers/sellers may set `owner` only to their own active profile or `NULL` and may never overwrite or clear another profile's ownership; managers may assign any customer/seller profile; owner changes keep `owned`/`unknown` in step but preserve explicit `sold`/`gifted`
+- claiming a bird grants no pedigree visibility; a claimed bird stays visible only to its `registered_by` profile
+- historical rows were backfilled with `registered_by = owner` and keep their owners: historical subjects and ancestors cannot be told apart, so no ownership is inferred or cleared
 - `PedigreeBird.public_id` is UUID-backed and read-only
 - pedigree bird ring numbers are normalized by trimming, uppercasing, and collapsing whitespace into `normalized_ring_number`
-- one live pedigree bird per owner can use a normalized ring number; soft-deleted birds do not block reuse and ring numbers are not globally unique
-- `PedigreeBird` parent links are self-FKs for father and mother and are owner-scoped
-- pedigree bird validation rejects future birthday/record dates, self parents, same father/mother, cross-owner parents, wrong known parent sex, parent birthdays not before child birthdays, deleted parents, and direct or indirect cycles
+- one live pedigree bird per `registered_by` profile can use a normalized ring number; soft-deleted birds do not block reuse and ring numbers are not globally unique
+- `PedigreeBird` parent links are self-FKs for father and mother and require `parent.registered_by == child.registered_by`; parent choices are scoped so another registrant's bird is indistinguishable from a missing one
+- pedigree bird validation rejects future birthday/record dates, self parents, same father/mother, parents registered by another profile, wrong known parent sex, parent birthdays not before child birthdays, deleted parents, and direct or indirect cycles
 - the manager XLSX adapter imports only the verified legacy ring tree, root sex (`ذكر` / `أنثى` / `مجهول`), and canonical description text into `PedigreeBird`; it ignores all other legacy columns, sentinels (`0`, `102`, `ffffffff`, blanks), and `Estok_Date`, creates no marketplace `Bird` records, and has no commerce side effects
-- the XLSX adapter uses selected `UserAccount` ownership without consulting or switching `active_profile`: the target must have exactly one eligible live customer/seller profile; none or more than one is rejected rather than choosing a profile implicitly
-- XLSX import is fully transactional and idempotently reuses same-owner normalized rings; conflicting supplied/existing non-empty canonical scalar or parent data is rejected, while missing known parent links may be filled through `PedigreeBirdValidator`
+- the XLSX adapter uses the selected `UserAccount` without consulting or switching `active_profile`: the target must have exactly one eligible live customer/seller profile, which becomes `registered_by` for every imported bird; none or more than one is rejected rather than choosing a profile implicitly
+- XLSX rows are subjects: a ring that is the root (`Estok_No`) of any row is owned by the target profile, and every other imported ring is an ancestor with `owner=NULL` / `unknown`
+- XLSX import is fully transactional and idempotently reuses normalized rings registered by the target profile only; a reused unowned subject is claimed, while reused ancestors and existing non-null owners are never changed; conflicting supplied/existing non-empty canonical scalar or parent data is rejected, while missing known parent links may be filled through `PedigreeBirdValidator`
 - `PEDIGREE_REPORT_BASE_URL` is required for report proxy calls and must come from environment configuration; Python code must not default to the provider IP
 - `PEDIGREE_REPORT_API_KEY` is required for FastReport provider calls and must only be sent backend-to-provider as `X-Api-Key`; do not expose it through PPW APIs, serializers, logs, or frontend configuration
 - `PEDIGREE_REPORT_TIMEOUT` is the single report-provider timeout setting
@@ -1136,6 +1152,10 @@ Current pedigree behavior:
 - report generation validates registry visibility of `pdf_id`, local subject-bird access, minimal request shape, and active subscription template entitlement; it does not validate `pdf_id`, `report.generation`, provider parameter names, file names, or report metadata against the external reports list
 - generation depth counts total pedigree levels with the subject as depth `1`; depth `2` includes only direct parents and depth is capped by the platform pedigree maximum
 - `PedigreeReportMapper` deep-copies the frontend report object, preserves unknown report fields and unknown parameters, then overwrites only PPW-owned bird, owner, customization, and print-date parameters
+- `PedigreeBird.colour` is the bird's biological/plumage colour; `PedigreeBird.default_color` (nullable `#RRGGBB`) is unrelated report styling: the last explicit report colour of a successful generation for that bird
+- report colour precedence: explicit request `color` (`#RRGGBB`, normalized to upper case), then the subject's stored `default_color`, then `PEDIGREE_REPORT_DEFAULT_COLOR` (`#1D4ED8`, the BackColor of PPW's existing provider-diagnostic theme); omitted and `null` behave the same, and invalid values return `400` before any provider call
+- the resolved colour fills `{Field}_BackColor` for every bird box field PPW writes (subject, parents, and mapped ancestors: ring, name, and description) only when the frontend did not send that per-field style or sent `null`; explicit frontend per-field styles always win, other styles (`TextColor`, `BoxBackColor`, `BorderColor`, `BoxShape`) and non-bird fields are untouched, and the FastReport template default never applies to the filled fields
+- only an explicit `color` is persisted, only after every generation gate (registered-pedigree visibility, `registered_by` subject scope or manager `pedigrees.reports.generate`, subscription entitlement) and a 2xx provider response, as one unlocked last-write-wins update; failed or errored generations, fallback colours, and stored defaults are never written, and `default_color` is read-only on the bird CRUD API and untouched by OCR/XLSX
 - `PedigreeReportClient` performs raw `GET /api/reports/fastreport/reports`, metadata `GET`, and `POST /api/reports/fastreport/pdf/{pdf_id}` calls with `X-Api-Key`, no MIME/file-signature validation, no generated-file storage, no Celery retry, and no response wrapping
 - provider diagnostics are administrative infrastructure checks, not customer generation: they must not use `PedigreeBird` rows, profile pedigree data, documents, subscription entitlement, template allowance, AI quota, file storage, Celery, or database persistence
 - provider diagnostics use deterministic synthetic owner/bird/style values only; do not include real user data, API keys, full provider payloads, or PDF bytes in responses or logs
@@ -1150,18 +1170,20 @@ Current pedigree behavior:
 - no detected boxes marks the document `failed` with a clear error response
 - successful processing stores `extracted_boxes` with normalized box coordinates, OCR lines, and per-box OCR errors, then marks the document `processed`
 - review accepts a `birds` list with `path` values such as `""`, `F`, `M`, `FF`, and `FM`; paths may contain only `F` and `M`, require existing prefixes, and are limited to six total levels including the subject
-- review creates or reuses one live same-owner `PedigreeBird` per normalized ring number, never reuses another owner profile's bird, updates only explicitly supplied fields, and treats explicit blank text as an intentional value
+- review creates or reuses one live `PedigreeBird` per normalized ring number registered by the document owner, never reuses another profile's registered bird, updates only explicitly supplied fields, and treats explicit blank text as an intentional value
+- review registers every node with `registered_by = document.owner`; a new subject (path `""`) gets `owner = document.owner` / `owned`, while new ancestors get `owner=NULL` / `unknown` (the subject's owner is never propagated); a reused unowned subject is claimed, reused ancestors and existing non-null owners are never changed, and an explicit `ownership_status=owned` on an owner-less node is rejected
 - repeated normalized rings may appear at more than one path for inbreeding; conflicting scalar values or conflicting derived parent assignments are rejected
 - review derives father/mother links exclusively from paths, preserves missing existing parent links when no child path is supplied, stores subject ring/description on the document, preserves OCR boxes/raw data, marks the document `reviewed`, and sets `reviewed_at`
 
 Current pedigree service implementation names:
 
-- `PedigreeBirdValidator` owns database-dependent pedigree bird validation, ownership checks, parent rules, and cycle detection
+- `PedigreeBirdValidator` owns database-dependent pedigree bird validation, `registered_by`-scoped ring uniqueness and parent rules, the owned-without-owner check, and cycle detection
+- `PedigreeBirdOwnershipService` owns physical ownership only: `registration_ownership()` (subject owned / ancestor `NULL` + `unknown` for OCR and XLSX), `validate_owner_change()`, `status_for_owner()`, and locked `claim()` / `release()` by `public_id`; it never changes `registered_by`
 - `PedigreeReviewedBirdService.save_reviewed_pedigree()` transactionally saves reviewed OCR nodes into the canonical `PedigreeBird` graph
 - `PedigreeTreeService` builds in-memory generation data and F/M path lookups from current `PedigreeBird` relations
 - `PedigreeReportMapper` maps generation data into the irregular external report payload parameter names while preserving unrelated frontend report data
 - `PedigreeReportClient` owns raw external reports-list and PDF-generation HTTP calls
-- `PedigreeReportGenerationService` loads the accessible subject bird and builds the provider payload for synchronous generation
+- `PedigreeReportGenerationService` loads the accessible subject bird, resolves the report colour, and builds the provider payload for synchronous generation; `remember_report_color()` saves an explicit colour after provider success within the same subject scope
 - `RegisteredPedigreeService.visible_queryset()` returns registered pedigrees visible to a user (all for managers) and `require_visible()` raises `404` for customer/seller pedigree ids outside it
 - `PedigreeImageBoxDetectionService` detects OCR boxes in uploaded pedigree documents
 - `PedigreeBoxOCRService` extracts text lines for each detected document box
@@ -2077,6 +2099,7 @@ Current design choice:
 - an order may contain items from multiple sellers
 - `Order.status` is an aggregate summary field, not the primary business decision unit
 - `Order.total_price` is a stored checkout-time decimal snapshot
+- `Order.source` is a checkout-time attribution snapshot (`mobile`, `web`, `unknown`) and is never edited afterwards
 - there is no seller field on `Order`
 
 #### OrderItem
@@ -2780,6 +2803,8 @@ Current pedigree permission pattern:
 - managers can retrieve pedigree documents with `pedigrees.documents.retrieve` and review documents with `pedigrees.documents.review`; upload/create remains a profile-owned customer/seller flow
 - retrieve uses scoped read access only after `get_queryset()` limits non-manager reads to the active profile owner
 - review relies on profile ownership through `owner_id` and service-level actor validation
+- `PedigreeBirdViewSet` uses `HasAppAccess` with `permission_resource = "PEDIGREE_BIRD"` and `permission_owner_field = "registered_by_id"`, so customer/seller object checks follow the registration scope and unowned ancestors stay editable by their registrant
+- `PedigreeBirdOwnershipViewSet` (claim/release) uses `HasAppAccess` with `permission_resource = "PEDIGREE_BIRD"` mapped to `create` and declares no manager permission, so managers are denied by default and change owners through `PATCH` instead
 - `RegisteredPedigreeViewSet` uses `HasAppAccess` with `permission_resource = "REGISTERED_PEDIGREE"` and `allow_scoped_read_access = True`; customers and sellers have `list` and `retrieve` only, scoped by `RegisteredPedigreeService.visible_queryset()`
 - managers use exact `pedigrees.registered.list`, `pedigrees.registered.retrieve`, `pedigrees.registered.create`, `pedigrees.registered.update`, and `pedigrees.registered.delete` permissions
 

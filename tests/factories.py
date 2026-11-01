@@ -40,6 +40,7 @@ from apps.packages.models import (
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdColour,
+    PedigreeBirdOwnershipStatus,
     PedigreeBirdSex,
     PedigreeDocument,
     PedigreeDocumentStatus,
@@ -220,6 +221,13 @@ class PedigreeBirdFactory(factory.django.DjangoModelFactory):
         model = PedigreeBird
 
     owner = factory.SubFactory(CustomerProfileFactory)
+    # Unowned birds (owner=None) must pass registered_by explicitly.
+    registered_by = factory.SelfAttribute("owner")
+    ownership_status = factory.LazyAttribute(
+        lambda bird: PedigreeBirdOwnershipStatus.OWNED
+        if bird.owner
+        else PedigreeBirdOwnershipStatus.UNKNOWN
+    )
     ring_number = factory.Sequence(lambda n: f"EG 2026 {n:04d}")
     ring_code = "EG"
     name = factory.Sequence(lambda n: f"Pedigree Bird {n}")

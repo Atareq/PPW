@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.pedigrees.views import (
+    PedigreeBirdOwnershipViewSet,
     PedigreeBirdViewSet,
     PedigreeDocumentReviewViewSet,
     PedigreeDocumentViewSet,
@@ -41,6 +42,16 @@ urlpatterns = [
         "birds/<int:pk>/",
         PedigreeBirdViewSet.as_view(RETRIEVE_UPDATE_DESTROY_ACTION),
         name="pedigree-bird-detail",
+    ),
+    path(
+        "birds/public/<uuid:public_id>/claim/",
+        PedigreeBirdOwnershipViewSet.as_view(CREATE_ACTION, command="claim"),
+        name="pedigree-bird-claim",
+    ),
+    path(
+        "birds/public/<uuid:public_id>/release/",
+        PedigreeBirdOwnershipViewSet.as_view(CREATE_ACTION, command="release"),
+        name="pedigree-bird-release",
     ),
     path(
         "registered/",
