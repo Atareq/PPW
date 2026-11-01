@@ -18,6 +18,7 @@ from apps.orders.models import (
     OrderEventType,
     OrderItem,
     OrderItemStatus,
+    OrderSource,
     OrderStatus,
 )
 from apps.orders.validators import (
@@ -199,10 +200,11 @@ class OrderService:
     """Read orders and maintain aggregate order state."""
 
     @staticmethod
-    def create_order(customer, items_payload):
+    def create_order(customer, items_payload, *, source=OrderSource.UNKNOWN):
         return OrderCheckoutService.create_order_from_items(
             customer,
             items_payload,
+            source=source,
         )
 
     @staticmethod
@@ -261,7 +263,7 @@ class OrderCheckoutService:
 
     @staticmethod
     @transaction.atomic
-    def checkout_cart(customer):
+    def checkout_cart(customer, *, source=OrderSource.UNKNOWN):
         customer_profile = PurchaseRuleValidator.get_customer_profile(customer)
         try:
             cart = Cart.objects.select_for_update().get(
@@ -295,6 +297,7 @@ class OrderCheckoutService:
             item_payloads,
             asset_map,
             validator.seller_map,
+            source=source,
         )
 
         cart.status = CartStatus.CONVERTED
@@ -303,7 +306,7 @@ class OrderCheckoutService:
 
     @staticmethod
     @transaction.atomic
-    def create_order_from_items(customer, items_payload):
+    def create_order_from_items(customer, items_payload, *, source=OrderSource.UNKNOWN):
         validator = OrderCreationValidator(
             customer,
             items_payload,
@@ -314,6 +317,7 @@ class OrderCheckoutService:
             items_payload,
             validator.asset_map,
             validator.seller_map,
+            source=source,
         )
 
     @staticmethod
@@ -333,13 +337,17 @@ class OrderCheckoutService:
         items_payload,
         asset_map,
         seller_map,
+        *,
+        source,
     ):
-        """Snapshot current prices without reducing stock at order creation."""
+        """Snapshot current prices and the checkout source without reducing
+        stock at order creation."""
 
         order = Order.objects.create(
             owner=customer_profile,
             status=OrderStatus.PENDING,
             total_price=Decimal("0.00"),
+            source=source,
         )
 
         order_items = []

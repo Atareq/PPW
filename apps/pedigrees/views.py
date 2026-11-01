@@ -22,6 +22,7 @@ from apps.pedigrees.models import (
     RegisteredPedigree,
 )
 from apps.pedigrees.serializers import (
+    PedigreeBirdOwnershipSerializer,
     PedigreeBirdSerializer,
     PedigreeDocumentDetailSerializer,
     PedigreeDocumentReviewResponseSerializer,
@@ -35,6 +36,7 @@ from apps.pedigrees.serializers import (
     RegisteredPedigreeSerializer,
 )
 from apps.pedigrees.services import (
+    PedigreeBirdOwnershipService,
     PedigreeDocumentService,
     PedigreeProviderDiagnosticService,
     PedigreeReportClient,
@@ -248,10 +250,15 @@ class PedigreeSpreadsheetImportViewSet(
     ),
 )
 class PedigreeBirdViewSet(viewsets.ModelViewSet):
-    """Private profile-owned pedigree bird CRUD, independent from assets.Bird."""
+    """Private pedigree bird CRUD, independent from assets.Bird.
+
+    Customers/sellers see and edit the birds they registered, whether or not
+    they own them; `?owner_id=` only narrows that registration scope.
+    """
 
     permission_classes = [HasAppAccess]
     permission_resource = "PEDIGREE_BIRD"
+    permission_owner_field = "registered_by_id"
     manager_permission_map = {
         "list": "pedigrees.birds.list",
         "retrieve": "pedigrees.birds.retrieve",
@@ -276,13 +283,51 @@ class PedigreeBirdViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = PedigreeBird.objects.select_related(
             "owner",
+            "registered_by",
             "father",
             "mother",
         ).order_by("-created")
         active_profile = self.request.user.active_profile
         if active_profile.type == ProfileType.MANAGER:
             return queryset
-        return queryset.filter(owner_id=active_profile.pk)
+        return queryset.filter(registered_by_id=active_profile.pk)
+
+
+@extend_schema_view(
+    create=extend_schema(
+        tags=["Pedigrees"],
+        request=None,
+        responses={200: PedigreeBirdOwnershipSerializer},
+    ),
+)
+class PedigreeBirdOwnershipViewSet(viewsets.GenericViewSet):
+    """Customer/seller claim or release of physical ownership by `public_id`.
+
+    Only `owner`/`ownership_status` change; `registered_by` and pedigree
+    visibility never do. Managers reassign owners through PATCH instead.
+    """
+
+    permission_classes = [HasAppAccess]
+    permission_resource = "PEDIGREE_BIRD"
+    serializer_class = PedigreeBirdOwnershipSerializer
+    queryset = PedigreeBird.objects.none()
+    http_method_names = ["post"]
+    command = None
+
+    def create(self, request, *args, **kwargs):
+        service_command = (
+            PedigreeBirdOwnershipService.claim
+            if self.command == "claim"
+            else PedigreeBirdOwnershipService.release
+        )
+        bird = service_command(
+            public_id=kwargs["public_id"],
+            actor_profile=request.user.active_profile,
+        )
+        return Response(
+            PedigreeBirdOwnershipSerializer(bird).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 REGISTERED_PEDIGREE_READ_DESCRIPTION = (
@@ -563,7 +608,11 @@ class PedigreeProviderTestViewSet(viewsets.GenericViewSet):
     ),
 )
 class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
-    """Synchronously generate one external report without local persistence."""
+    """Synchronously generate one external report without storing it.
+
+    The only local write is an explicit `color`, saved as the subject's
+    `default_color` after the provider succeeds.
+    """
 
     permission_classes = [HasAppAccess]
     permission_resource = "PEDIGREE_REPORT"
@@ -584,6 +633,7 @@ class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericVie
             report=data["report"],
             owner=data.get("owner") or {},
             customization=data.get("customization") or {},
+            color=data.get("color"),
         )
         SubscriptionAccessService.require_pedigree_template(
             profile=request.user.active_profile,
@@ -613,6 +663,12 @@ class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericVie
                 generation_depth=data["generation_depth"],
             )
             return _provider_gateway_response()
+        if data.get("color") and status.is_success(upstream_response.status_code):
+            PedigreeReportGenerationService.remember_report_color(
+                subject_bird_id=data["subject_bird_id"],
+                actor_profile=request.user.active_profile,
+                color=data["color"],
+            )
         return _raw_provider_response(upstream_response)
 
 

@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.pedigrees.constants import (
     PEDIGREE_MAX_ANCESTOR_PATH_LENGTH,
     PEDIGREE_MAX_GENERATION_DEPTH,
+    PEDIGREE_REPORT_COLOR_PATTERN,
 )
 from apps.pedigrees.models import (
     PedigreeBird,
@@ -18,7 +19,12 @@ from apps.pedigrees.models import (
     PedigreeDocument,
     RegisteredPedigree,
 )
-from apps.pedigrees.services import PedigreeBirdValidator
+from apps.pedigrees.services import (
+    PedigreeBirdOwnershipService,
+    PedigreeBirdValidator,
+)
+from apps.users.constants import ProfileType
+from apps.users.models import Profile
 
 
 class RejectUnknownFieldsMixin:
@@ -237,14 +243,27 @@ class PedigreeDocumentReviewResponseSerializer(serializers.Serializer):
 
 
 class PedigreeBirdSerializer(serializers.ModelSerializer):
-    owner = serializers.IntegerField(source="owner_id", read_only=True)
+    """`registered_by` is server-assigned; `owner` is optional ownership.
+
+    Parent and owner choices are scoped in `get_fields()`, so another
+    registrant's bird is indistinguishable from a missing one.
+    """
+
+    owner = serializers.PrimaryKeyRelatedField(
+        queryset=Profile.objects.none(),
+        required=False,
+        allow_null=True,
+    )
+    registered_by = serializers.IntegerField(
+        source="registered_by_id", read_only=True
+    )
     father = serializers.PrimaryKeyRelatedField(
-        queryset=PedigreeBird.objects.all(),
+        queryset=PedigreeBird.objects.none(),
         required=False,
         allow_null=True,
     )
     mother = serializers.PrimaryKeyRelatedField(
-        queryset=PedigreeBird.objects.all(),
+        queryset=PedigreeBird.objects.none(),
         required=False,
         allow_null=True,
     )
@@ -254,6 +273,7 @@ class PedigreeBirdSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "owner",
+            "registered_by",
             "public_id",
             "ring_number",
             "normalized_ring_number",
@@ -264,6 +284,7 @@ class PedigreeBirdSerializer(serializers.ModelSerializer):
             "birthday",
             "sex",
             "colour",
+            "default_color",
             "life_status",
             "ownership_status",
             "activity_status",
@@ -275,25 +296,91 @@ class PedigreeBirdSerializer(serializers.ModelSerializer):
             "modified",
         ]
         read_only_fields = [
-            "owner",
+            "registered_by",
+            "default_color",
             "public_id",
             "normalized_ring_number",
             "created",
             "modified",
         ]
 
-    def validate(self, attrs):
+    def get_fields(self):
+        fields = super().get_fields()
         request = self.context.get("request")
-        owner = request.user.active_profile
+        if request is None or not request.user.is_authenticated:
+            return fields
+
+        registration_scope = self._registration_scope()
+        parents = PedigreeBird.objects.filter(registered_by=registration_scope)
+        fields["father"].queryset = parents
+        fields["mother"].queryset = parents
+
+        active_profile = request.user.active_profile
+        if active_profile.type == ProfileType.MANAGER:
+            fields["owner"].queryset = Profile.objects.filter(
+                type__in=PedigreeBirdOwnershipService.OWNER_PROFILE_TYPES
+            )
+        else:
+            fields["owner"].queryset = Profile.objects.filter(pk=active_profile.pk)
+        return fields
+
+    def _registration_scope(self):
+        if isinstance(self.instance, PedigreeBird):
+            return self.instance.registered_by
+        return self.context["request"].user.active_profile
+
+    def validate(self, attrs):
+        if self.instance is None:
+            if "ownership_status" not in attrs:
+                attrs["ownership_status"] = (
+                    PedigreeBirdOwnershipStatus.OWNED
+                    if attrs.get("owner")
+                    else PedigreeBirdOwnershipStatus.UNKNOWN
+                )
+        elif "owner" in attrs:
+            new_owner = attrs["owner"]
+            PedigreeBirdOwnershipService.validate_owner_change(
+                actor_profile=self.context["request"].user.active_profile,
+                bird=self.instance,
+                new_owner=new_owner,
+            )
+            new_owner_id = new_owner.pk if new_owner else None
+            if (
+                new_owner_id != self.instance.owner_id
+                and "ownership_status" not in attrs
+            ):
+                attrs["ownership_status"] = (
+                    PedigreeBirdOwnershipService.status_for_owner(
+                        new_owner,
+                        self.instance.ownership_status,
+                    )
+                )
+
         return PedigreeBirdValidator.validate(
             attrs=attrs,
-            owner=owner,
+            registered_by=self._registration_scope(),
             instance=self.instance,
         )
 
     def create(self, validated_data):
-        validated_data["owner"] = self.context["request"].user.active_profile
+        validated_data["registered_by"] = self._registration_scope()
         return super().create(validated_data)
+
+
+class PedigreeBirdOwnershipSerializer(serializers.ModelSerializer):
+    """Ownership summary returned by claim/release; no pedigree data."""
+
+    owner = serializers.IntegerField(
+        source="owner_id", read_only=True, allow_null=True
+    )
+    registered_by = serializers.IntegerField(
+        source="registered_by_id", read_only=True
+    )
+
+    class Meta:
+        model = PedigreeBird
+        fields = ["id", "public_id", "owner", "registered_by", "ownership_status"]
+        read_only_fields = fields
 
 
 from django.utils.translation import gettext_lazy as _
@@ -363,6 +450,19 @@ class PedigreeReportGenerateSerializer(serializers.Serializer):
     report = serializers.DictField()
     owner = serializers.DictField(required=False)
     customization = serializers.DictField(required=False)
+    color = serializers.RegexField(
+        PEDIGREE_REPORT_COLOR_PATTERN,
+        required=False,
+        allow_null=True,
+        help_text=(
+            "Report colour `#RRGGBB`. Omitted or null uses the subject's "
+            "`default_color`, then the backend fallback; an explicit value is "
+            "saved as `default_color` after a successful generation."
+        ),
+    )
+
+    def validate_color(self, value):
+        return value.upper() if value else None
 
     def validate(self, attrs):
         pdf_id = attrs.get("pdf_id") or attrs.get("pedigree_id")

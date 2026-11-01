@@ -22,9 +22,11 @@ import pytesseract
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from apps.assets.models import Bird
+from apps.pedigrees.constants import PEDIGREE_REPORT_DEFAULT_COLOR
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdLifeStatus,
+    PedigreeBirdOwnershipStatus,
     PedigreeBirdSex,
     PedigreeDocument,
     PedigreeDocumentStatus,
@@ -307,16 +309,20 @@ class RegisteredPedigreeService:
 
 
 class PedigreeBirdValidator:
-    """Database-aware validation for private pedigree birds and parents."""
+    """Database-aware validation for private pedigree birds and parents.
+
+    `registered_by` is the pedigree scope for ring uniqueness and parent
+    links; ownership never widens or narrows that scope.
+    """
 
     ALLOWED_OWNER_TYPES = {ProfileType.CUSTOMER, ProfileType.SELLER}
 
     @classmethod
-    def validate(cls, *, attrs, owner, instance=None):
-        if instance is None and owner.type not in cls.ALLOWED_OWNER_TYPES:
+    def validate(cls, *, attrs, registered_by, instance=None):
+        if instance is None and registered_by.type not in cls.ALLOWED_OWNER_TYPES:
             raise ValidationError(
                 {
-                    "owner": _(
+                    "registered_by": _(
                         "Only active customer or seller profiles can create birds."
                     )
                 }
@@ -324,8 +330,11 @@ class PedigreeBirdValidator:
 
         merged = cls._merged_attrs(attrs, instance)
         cls._validate_dates(merged)
-        cls._validate_unique_ring(merged, owner=owner, instance=instance)
-        cls._validate_parents(merged, owner=owner, instance=instance)
+        cls._validate_ownership_status(merged)
+        cls._validate_unique_ring(
+            merged, registered_by=registered_by, instance=instance
+        )
+        cls._validate_parents(merged, registered_by=registered_by, instance=instance)
         return attrs
 
     @staticmethod
@@ -339,9 +348,25 @@ class PedigreeBirdValidator:
             "record_date": instance.record_date,
             "father": instance.father,
             "mother": instance.mother,
+            "owner": instance.owner,
+            "ownership_status": instance.ownership_status,
         }
         merged.update(attrs)
         return merged
+
+    @staticmethod
+    def _validate_ownership_status(data):
+        if (
+            data.get("owner") is None
+            and data.get("ownership_status") == PedigreeBirdOwnershipStatus.OWNED
+        ):
+            raise ValidationError(
+                {
+                    "ownership_status": _(
+                        "A bird without an owner cannot be marked as owned."
+                    )
+                }
+            )
 
     @staticmethod
     def _validate_dates(data):
@@ -356,10 +381,10 @@ class PedigreeBirdValidator:
             )
 
     @staticmethod
-    def _validate_unique_ring(data, *, owner, instance=None):
+    def _validate_unique_ring(data, *, registered_by, instance=None):
         normalized = normalize_ring_number(data.get("ring_number"))
         queryset = PedigreeBird.objects.filter(
-            owner_id=owner.pk,
+            registered_by_id=registered_by.pk,
             normalized_ring_number=normalized,
             deleted__isnull=True,
         )
@@ -371,7 +396,7 @@ class PedigreeBirdValidator:
             )
 
     @classmethod
-    def _validate_parents(cls, data, *, owner, instance=None):
+    def _validate_parents(cls, data, *, registered_by, instance=None):
         father = data.get("father")
         mother = data.get("mother")
 
@@ -387,7 +412,7 @@ class PedigreeBirdValidator:
         for field, parent in (("father", father), ("mother", mother)):
             if parent is None:
                 continue
-            if parent.owner_id != owner.pk:
+            if parent.registered_by_id != registered_by.pk:
                 raise ValidationError({field: _("Parent bird was not found.")})
             if parent.deleted is not None:
                 raise ValidationError(
@@ -466,6 +491,101 @@ class PedigreeBirdValidator:
         )
 
 
+class PedigreeBirdOwnershipService:
+    """Physical ownership changes; `registered_by` and pedigree scope never change.
+
+    Claiming a bird grants no pedigree visibility: list/detail stay scoped by
+    `registered_by`, so a claimer only sees the ownership summary.
+    """
+
+    OWNER_PROFILE_TYPES = {ProfileType.CUSTOMER, ProfileType.SELLER}
+
+    @staticmethod
+    def registration_ownership(*, is_subject, registered_by):
+        """Ownership for a bird newly created by OCR review or XLSX import:
+        only the subject is owned by the registering profile."""
+        if is_subject:
+            return {
+                "owner": registered_by,
+                "ownership_status": PedigreeBirdOwnershipStatus.OWNED,
+            }
+        return {
+            "owner": None,
+            "ownership_status": PedigreeBirdOwnershipStatus.UNKNOWN,
+        }
+
+    @staticmethod
+    def status_for_owner(owner, current_status):
+        """Keep owned/unknown in step with an owner change; sold/gifted stay."""
+        if owner is None and current_status == PedigreeBirdOwnershipStatus.OWNED:
+            return PedigreeBirdOwnershipStatus.UNKNOWN
+        if owner is not None and current_status == PedigreeBirdOwnershipStatus.UNKNOWN:
+            return PedigreeBirdOwnershipStatus.OWNED
+        return current_status
+
+    @classmethod
+    def validate_owner_change(cls, *, actor_profile, bird, new_owner):
+        """Customers/sellers may set themselves or NULL but never displace or
+        assign another profile; managers may assign any customer/seller."""
+        if actor_profile.type == ProfileType.MANAGER:
+            if new_owner is not None and new_owner.type not in cls.OWNER_PROFILE_TYPES:
+                raise ValidationError(
+                    {"owner": _("Owner must be a customer or seller profile.")}
+                )
+            return
+
+        if new_owner is not None and new_owner.pk != actor_profile.pk:
+            raise ValidationError(
+                {"owner": _("You can only set your own profile as the owner.")}
+            )
+        if bird.owner_id is not None and bird.owner_id != actor_profile.pk:
+            raise ValidationError(
+                {"owner": _("This bird is owned by another profile.")}
+            )
+
+    @classmethod
+    @transaction.atomic
+    def claim(cls, *, public_id, actor_profile):
+        """Take ownership of a live unowned bird, even one registered by
+        another profile. A bird owned by someone else looks like a missing one."""
+        validate_pedigree_owner_profile(actor_profile)
+        bird = cls._lock_live_bird(public_id)
+        if bird.owner_id not in (None, actor_profile.pk):
+            raise NotFound(_("Pedigree bird was not found."))
+
+        if (
+            bird.owner_id != actor_profile.pk
+            or bird.ownership_status != PedigreeBirdOwnershipStatus.OWNED
+        ):
+            bird.owner = actor_profile
+            bird.ownership_status = PedigreeBirdOwnershipStatus.OWNED
+            bird.save(update_fields=["owner", "ownership_status", "modified"])
+        return bird
+
+    @classmethod
+    @transaction.atomic
+    def release(cls, *, public_id, actor_profile):
+        """Give up ownership of a bird the actor currently owns."""
+        bird = cls._lock_live_bird(public_id)
+        if bird.owner_id is None or bird.owner_id != actor_profile.pk:
+            raise NotFound(_("Pedigree bird was not found."))
+
+        bird.owner = None
+        bird.ownership_status = cls.status_for_owner(None, bird.ownership_status)
+        bird.save(update_fields=["owner", "ownership_status", "modified"])
+        return bird
+
+    @staticmethod
+    def _lock_live_bird(public_id):
+        try:
+            return PedigreeBird.objects.select_for_update().get(
+                public_id=public_id,
+                deleted__isnull=True,
+            )
+        except PedigreeBird.DoesNotExist as exc:
+            raise NotFound(_("Pedigree bird was not found.")) from exc
+
+
 @dataclass
 class PedigreeSpreadsheetImportResult:
     rows_processed: int
@@ -483,10 +603,15 @@ class _PedigreeSpreadsheetCandidate:
     description: str | None = None
     father_ring: str | None = None
     mother_ring: str | None = None
+    is_subject: bool = False
 
 
 class PedigreeSpreadsheetImportService:
-    """Adapt the verified legacy XLSX layout into the PedigreeBird graph."""
+    """Adapt the verified legacy XLSX layout into the PedigreeBird graph.
+
+    Every imported bird is registered by the target profile, but only row
+    roots (subjects) are owned by it; ancestors are owner=NULL/unknown.
+    """
 
     ROOT_RING_HEADER = "Estok_No"
     ROOT_SEX_HEADER = "Estok_Type"
@@ -506,11 +631,11 @@ class PedigreeSpreadsheetImportService:
         )
 
         with transaction.atomic():
-            owner = cls._resolve_owner(user)
+            registered_by = cls._resolve_registering_profile(user)
             birds_by_ring = {
                 bird.normalized_ring_number: bird
                 for bird in PedigreeBird.objects.select_for_update().filter(
-                    owner_id=owner.pk,
+                    registered_by_id=registered_by.pk,
                     normalized_ring_number__in=candidates,
                     deleted__isnull=True,
                 )
@@ -521,10 +646,14 @@ class PedigreeSpreadsheetImportService:
             for normalized_ring, candidate in candidates.items():
                 bird = birds_by_ring.get(normalized_ring)
                 if bird is None:
-                    # Only new birds get a status; reused birds keep theirs.
+                    # Only new birds get statuses; reused birds keep theirs.
                     attrs = {
                         "ring_number": candidate.ring_number,
                         "life_status": PedigreeBirdLifeStatus.UNIDENTIFIED,
+                        **PedigreeBirdOwnershipService.registration_ownership(
+                            is_subject=candidate.is_subject,
+                            registered_by=registered_by,
+                        ),
                     }
                     if candidate.sex is not None:
                         attrs["sex"] = candidate.sex
@@ -532,10 +661,10 @@ class PedigreeSpreadsheetImportService:
                         attrs["description"] = candidate.description
                     PedigreeBirdValidator.validate(
                         attrs=attrs,
-                        owner=owner,
+                        registered_by=registered_by,
                     )
                     birds_by_ring[normalized_ring] = PedigreeBird.objects.create(
-                        owner=owner,
+                        registered_by=registered_by,
                         **attrs,
                     )
                     created_count += 1
@@ -545,13 +674,13 @@ class PedigreeSpreadsheetImportService:
                 cls._enrich_existing_bird(
                     bird=bird,
                     candidate=candidate,
-                    owner=owner,
+                    registered_by=registered_by,
                 )
 
             relationships_created, relationships_unchanged = cls._connect_relationships(
                 candidates=candidates,
                 birds_by_ring=birds_by_ring,
-                owner=owner,
+                registered_by=registered_by,
             )
 
         return PedigreeSpreadsheetImportResult(
@@ -688,6 +817,8 @@ class PedigreeSpreadsheetImportService:
             candidates=candidates,
             ring_number=node_data["ring"],
         )
+        if node == 1:
+            candidate.is_subject = True
         cls._merge_candidate_scalar(
             candidate=candidate,
             field="sex",
@@ -748,7 +879,7 @@ class PedigreeSpreadsheetImportService:
             candidate.description = value
 
     @classmethod
-    def _enrich_existing_bird(cls, *, bird, candidate, owner):
+    def _enrich_existing_bird(cls, *, bird, candidate, registered_by):
         changed_fields = []
         if candidate.sex is not None and candidate.sex != bird.sex:
             if bird.sex != PedigreeBirdSex.UNKNOWN:
@@ -761,16 +892,22 @@ class PedigreeSpreadsheetImportService:
         if candidate.description is not None and not bird.description:
             bird.description = candidate.description
             changed_fields.append("description")
+        # A reused subject is claimed only while unowned; existing owners and
+        # reused ancestors keep their ownership untouched.
+        if candidate.is_subject and bird.owner_id is None:
+            bird.owner = registered_by
+            bird.ownership_status = PedigreeBirdOwnershipStatus.OWNED
+            changed_fields.extend(["owner", "ownership_status"])
         if changed_fields:
             PedigreeBirdValidator.validate(
                 attrs={field: getattr(bird, field) for field in changed_fields},
-                owner=owner,
+                registered_by=registered_by,
                 instance=bird,
             )
             bird.save(update_fields=[*changed_fields, "modified"])
 
     @classmethod
-    def _connect_relationships(cls, *, candidates, birds_by_ring, owner):
+    def _connect_relationships(cls, *, candidates, birds_by_ring, registered_by):
         created_count = 0
         unchanged_count = 0
         for normalized_ring, candidate in candidates.items():
@@ -796,7 +933,7 @@ class PedigreeSpreadsheetImportService:
                 continue
             PedigreeBirdValidator.validate(
                 attrs=relation_attrs,
-                owner=owner,
+                registered_by=registered_by,
                 instance=bird,
             )
             for relation, parent in relation_attrs.items():
@@ -815,7 +952,7 @@ class PedigreeSpreadsheetImportService:
         )
 
     @classmethod
-    def _resolve_owner(cls, user):
+    def _resolve_registering_profile(cls, user):
         profiles = list(
             Profile.objects.select_for_update()
             .filter(
@@ -946,7 +1083,11 @@ class PedigreeSpreadsheetImportService:
 
 
 class PedigreeReviewedBirdService:
-    """Persist user-reviewed OCR nodes into the canonical PedigreeBird graph."""
+    """Persist user-reviewed OCR nodes into the canonical PedigreeBird graph.
+
+    Every node is registered by the document owner, but only the subject
+    (path "") is owned by it; ancestors are owner=NULL/unknown.
+    """
 
     SCALAR_FIELDS = [
         "ring_number",
@@ -971,15 +1112,16 @@ class PedigreeReviewedBirdService:
             document_id,
             actor_profile,
         )
-        owner = document.owner
-        validate_pedigree_owner_profile(owner)
+        registered_by = document.owner
+        validate_pedigree_owner_profile(registered_by)
 
         merged_by_ring, path_to_ring = cls._merge_nodes_by_normalized_ring(
             reviewed_nodes
         )
         birds_by_ring, created_ids, scalar_updated_ids = cls._create_or_update_birds(
-            owner=owner,
+            registered_by=registered_by,
             merged_by_ring=merged_by_ring,
+            subject_ring=path_to_ring[""],
         )
         path_to_bird = {
             path: birds_by_ring[normalized_ring]
@@ -1048,11 +1190,11 @@ class PedigreeReviewedBirdService:
         return merged_by_ring, path_to_ring
 
     @classmethod
-    def _create_or_update_birds(cls, *, owner, merged_by_ring):
+    def _create_or_update_birds(cls, *, registered_by, merged_by_ring, subject_ring):
         existing_birds = {
             bird.normalized_ring_number: bird
             for bird in PedigreeBird.objects.select_for_update().filter(
-                owner_id=owner.pk,
+                registered_by_id=registered_by.pk,
                 normalized_ring_number__in=merged_by_ring.keys(),
                 deleted__isnull=True,
             )
@@ -1062,14 +1204,26 @@ class PedigreeReviewedBirdService:
         updated_ids = set()
 
         for normalized_ring, attrs in merged_by_ring.items():
+            is_subject = normalized_ring == subject_ring
             bird = existing_birds.get(normalized_ring)
             if bird is None:
+                # An explicitly reviewed ownership_status wins over the default.
+                create_attrs = {
+                    **PedigreeBirdOwnershipService.registration_ownership(
+                        is_subject=is_subject,
+                        registered_by=registered_by,
+                    ),
+                    **attrs,
+                }
                 PedigreeBirdValidator.validate(
-                    attrs=attrs,
-                    owner=owner,
+                    attrs=create_attrs,
+                    registered_by=registered_by,
                     instance=None,
                 )
-                bird = PedigreeBird.objects.create(owner=owner, **attrs)
+                bird = PedigreeBird.objects.create(
+                    registered_by=registered_by,
+                    **create_attrs,
+                )
                 created_ids.add(bird.pk)
                 birds_by_ring[normalized_ring] = bird
                 continue
@@ -1080,10 +1234,22 @@ class PedigreeReviewedBirdService:
                     setattr(bird, field, value)
                     changed_fields.append(field)
 
+            # A reused subject is claimed only while unowned; existing owners
+            # and reused ancestors keep their ownership untouched.
+            if is_subject and bird.owner_id is None:
+                bird.owner = registered_by
+                changed_fields.append("owner")
+                if (
+                    "ownership_status" not in attrs
+                    and bird.ownership_status != PedigreeBirdOwnershipStatus.OWNED
+                ):
+                    bird.ownership_status = PedigreeBirdOwnershipStatus.OWNED
+                    changed_fields.append("ownership_status")
+
             if changed_fields:
                 PedigreeBirdValidator.validate(
                     attrs={field: getattr(bird, field) for field in changed_fields},
-                    owner=owner,
+                    registered_by=registered_by,
                     instance=bird,
                 )
                 update_fields = [*changed_fields, "modified"]
@@ -1131,7 +1297,7 @@ class PedigreeReviewedBirdService:
             }
             PedigreeBirdValidator.validate(
                 attrs=relation_attrs,
-                owner=child.owner,
+                registered_by=child.registered_by,
                 instance=child,
             )
 
@@ -1341,6 +1507,9 @@ class PedigreeReportMapper:
         "bird_type": "BirdType",
     }
 
+    # The report colour drives this per-field style of every bird box field.
+    REPORT_COLOR_STYLE_SUFFIX = "BackColor"
+
     @classmethod
     def merge_payload(
         cls,
@@ -1350,6 +1519,7 @@ class PedigreeReportMapper:
         generation_depth,
         owner=None,
         customization=None,
+        report_color=None,
     ):
         payload = deepcopy(frontend_report)
 
@@ -1366,18 +1536,28 @@ class PedigreeReportMapper:
             generation_depth=generation_depth,
         )
 
-        parameters.update(
-            cls._bird_parameters(
-                pedigree_data,
-                generation_depth,
-            )
+        bird_parameters = cls._bird_parameters(
+            pedigree_data,
+            generation_depth,
         )
+        parameters.update(bird_parameters)
+        if report_color:
+            cls._fill_report_color(parameters, bird_parameters, report_color)
         parameters.update(cls._owner_parameters(owner or {}))
         parameters.update(cls._customization_parameters(customization or {}))
 
         parameters["PrintDate"] = timezone.localdate().isoformat()
 
         return payload
+
+    @classmethod
+    def _fill_report_color(cls, parameters, bird_parameters, report_color):
+        """Explicit frontend per-field styles win; missing or null ones get
+        the report colour, so the template default never applies to them."""
+        for name in bird_parameters:
+            style_name = f"{name}_{cls.REPORT_COLOR_STYLE_SUFFIX}"
+            if parameters.get(style_name) is None:
+                parameters[style_name] = report_color
 
     @classmethod
     def _bird_parameters(cls, pedigree_data, generation_depth):
@@ -1943,6 +2123,7 @@ class PedigreeReportGenerationService:
         report,
         owner=None,
         customization=None,
+        color=None,
     ):
         subject_bird = cls._get_subject_bird(subject_bird_id, actor_profile)
         logger.info(
@@ -1959,19 +2140,41 @@ class PedigreeReportGenerationService:
             generation_depth=generation_depth,
             owner=owner,
             customization=customization,
+            report_color=(
+                color or subject_bird.default_color or PEDIGREE_REPORT_DEFAULT_COLOR
+            ),
         )
 
+    @classmethod
+    def remember_report_color(cls, *, subject_bird_id, actor_profile, color):
+        """Persist an explicit colour as the subject's default.
+
+        Call only after the provider succeeded. It reuses the generation
+        scope, so it opens no new authorization path, and it is one plain
+        UPDATE (last successful request wins) with no lock held across the
+        provider call.
+        """
+        cls._accessible_birds(actor_profile).filter(pk=subject_bird_id).exclude(
+            default_color=color
+        ).update(default_color=color, modified=timezone.now())
+
     @staticmethod
-    def _get_subject_bird(subject_bird_id, actor_profile):
-        queryset = PedigreeBird.objects.select_related(
+    def _accessible_birds(actor_profile):
+        queryset = PedigreeBird.objects.filter(deleted__isnull=True)
+        if actor_profile.type != ProfileType.MANAGER:
+            queryset = queryset.filter(registered_by_id=actor_profile.pk)
+        return queryset
+
+    @classmethod
+    def _get_subject_bird(cls, subject_bird_id, actor_profile):
+        queryset = cls._accessible_birds(actor_profile).select_related(
             "owner",
+            "registered_by",
             "father",
             "mother",
         )
-        if actor_profile.type != ProfileType.MANAGER:
-            queryset = queryset.filter(owner_id=actor_profile.pk)
         try:
-            return queryset.get(pk=subject_bird_id, deleted__isnull=True)
+            return queryset.get(pk=subject_bird_id)
         except PedigreeBird.DoesNotExist as exc:
             raise NotFound(_("Subject bird was not found.")) from exc
 

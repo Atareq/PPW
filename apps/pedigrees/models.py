@@ -65,6 +65,7 @@ class PedigreeBirdOwnershipStatus(models.TextChoices):
     OWNED = "owned", _("Owned")
     SOLD = "sold", _("Sold")
     GIFTED = "gifted", _("Gifted")
+    UNKNOWN = "unknown", _("Unknown")
 
 
 class PedigreeBirdActivityStatus(models.TextChoices):
@@ -86,6 +87,27 @@ def normalize_ring_number(value):
 
 
 class PedigreeBird(OwnerBaseModel):
+    """A pedigree record.
+
+    `registered_by` is the pedigree authority: it alone decides visibility,
+    ring reuse/uniqueness, and which birds may be linked as father/mother.
+    `owner` is physical/business ownership only and may be unknown (NULL);
+    parentage never implies ownership.
+    """
+
+    owner = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_pedigreebirds",
+        db_index=True,
+    )
+    registered_by = models.ForeignKey(
+        "users.Profile",
+        on_delete=models.CASCADE,
+        related_name="registered_pedigree_birds",
+    )
     public_id = models.UUIDField(
         unique=True, default=uuid.uuid4, editable=False
     )
@@ -101,11 +123,16 @@ class PedigreeBird(OwnerBaseModel):
         choices=PedigreeBirdSex.choices,
         default=PedigreeBirdSex.UNKNOWN,
     )
+    # Biological/plumage colour of the bird.
     colour = models.CharField(
         max_length=40,
         choices=PedigreeBirdColour.choices,
         default=PedigreeBirdColour.UNKNOWN,
     )
+    # Report styling, unrelated to `colour`: the last explicit `#RRGGBB`
+    # colour of a successful pedigree generation for this bird. NULL means
+    # generation falls back to PEDIGREE_REPORT_DEFAULT_COLOR.
+    default_color = models.CharField(max_length=7, null=True, blank=True)
     life_status = models.CharField(
         max_length=20,
         choices=PedigreeBirdLifeStatus.choices,
@@ -114,7 +141,7 @@ class PedigreeBird(OwnerBaseModel):
     ownership_status = models.CharField(
         max_length=20,
         choices=PedigreeBirdOwnershipStatus.choices,
-        default=PedigreeBirdOwnershipStatus.OWNED,
+        default=PedigreeBirdOwnershipStatus.UNKNOWN,
     )
     activity_status = models.CharField(
         max_length=30,
@@ -151,8 +178,8 @@ class PedigreeBird(OwnerBaseModel):
                 name="ped_bird_norm_ring_idx",
             ),
             models.Index(
-                fields=["owner", "normalized_ring_number"],
-                name="ped_bird_owner_ring_idx",
+                fields=["registered_by", "normalized_ring_number"],
+                name="ped_bird_reg_ring_idx",
             ),
             models.Index(fields=["life_status"], name="ped_bird_life_idx"),
             models.Index(fields=["ownership_status"], name="ped_bird_own_idx"),
@@ -166,9 +193,9 @@ class PedigreeBird(OwnerBaseModel):
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["owner", "normalized_ring_number"],
+                fields=["registered_by", "normalized_ring_number"],
                 condition=Q(deleted__isnull=True),
-                name="uniq_live_pedigree_bird_ring_per_owner",
+                name="uniq_live_pedigree_bird_ring_per_registrant",
             ),
         ]
 

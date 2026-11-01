@@ -279,7 +279,8 @@ def test_review_reuses_and_updates_same_owner_birds_without_clearing_omitted_fie
     assert subject.description == "Existing description"
     assert subject.father_id == father.pk
     assert subject.mother.normalized_ring_number == "KT 19-1035 H"
-    assert subject.mother.owner_id == owner.pk
+    assert subject.mother.registered_by_id == owner.pk
+    assert subject.mother.owner_id is None
     assert response.data["created_count"] == 1
     assert response.data["updated_count"] == 1
 
@@ -348,10 +349,12 @@ def test_review_repeated_ancestor_with_compatible_parents_reuses_one_bird():
         response.data["path_to_bird_id"]["FF"]
         == response.data["path_to_bird_id"]["MF"]
     )
-    assert PedigreeBird.objects.filter(owner=user.active_profile).count() == 4
+    assert (
+        PedigreeBird.objects.filter(registered_by=user.active_profile).count() == 4
+    )
 
 
-def test_customer_can_create_pedigree_bird_and_owner_is_active_profile():
+def test_customer_can_create_pedigree_bird_registered_by_active_profile():
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     client = authenticated_client(user)
 
@@ -363,9 +366,11 @@ def test_customer_can_create_pedigree_bird_and_owner_is_active_profile():
 
     assert response.status_code == 201
     bird = PedigreeBird.objects.get()
-    assert bird.owner_id == user.active_profile.pk
+    assert bird.registered_by_id == user.active_profile.pk
+    assert bird.owner_id is None
     assert bird.normalized_ring_number == "EG 2026 0007"
-    assert response.data["owner"] == user.active_profile.pk
+    assert response.data["registered_by"] == user.active_profile.pk
+    assert response.data["owner"] is None
 
 
 def test_duplicate_live_ring_number_rejected_per_owner_but_allowed_for_other_owner():

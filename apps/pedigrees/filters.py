@@ -11,6 +11,8 @@ class PedigreeBirdFilter(django_filters.FilterSet):
     )
     name = django_filters.CharFilter(field_name="name", lookup_expr="icontains")
     search = django_filters.CharFilter(method="filter_search")
+    # Narrows the registration-scoped queryset to physically owned birds only.
+    owner_id = django_filters.NumberFilter(field_name="owner_id")
 
     class Meta:
         model = PedigreeBird

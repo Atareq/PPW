@@ -23,6 +23,19 @@ class OrderStatus(models.TextChoices):
     PARTIAL_REJECTED = "partial_rejected", _("Partial Rejected")
 
 
+class OrderSource(models.TextChoices):
+    """Client surface an order was checked out from (attribution only).
+
+    Unrelated to `Asset.sale_channel`, which records who operates a listing.
+    `unknown` covers orders created before attribution existed and checkouts
+    that do not identify their client.
+    """
+
+    MOBILE = "mobile", _("Mobile")
+    WEB = "web", _("Web")
+    UNKNOWN = "unknown", _("Unknown")
+
+
 class OrderItemStatus(models.TextChoices):
     PENDING_SELLER = "pending_seller", _("Pending Seller")
     APPROVED = "approved", _("Approved")
@@ -138,6 +151,13 @@ class Order(OwnerBaseModel):
         decimal_places=2,
         default=Decimal("0.00"),
         validators=[MinValueValidator(0)],
+    )
+    # Snapshot taken at order creation; no API updates it afterwards.
+    source = models.CharField(
+        max_length=20,
+        choices=OrderSource.choices,
+        default=OrderSource.UNKNOWN,
+        editable=False,
     )
 
     class Meta:
