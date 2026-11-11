@@ -130,8 +130,8 @@ class PedigreeBird(OwnerBaseModel):
         default=PedigreeBirdColour.UNKNOWN,
     )
     # Report styling, unrelated to `colour`: the last explicit `#RRGGBB`
-    # colour of a successful pedigree generation for this bird. NULL means
-    # generation falls back to PEDIGREE_REPORT_DEFAULT_COLOR.
+    # colour of a successful pedigree generation that printed this bird. NULL
+    # means its report box gets no colour unless the request sends one.
     default_color = models.CharField(max_length=7, null=True, blank=True)
     life_status = models.CharField(
         max_length=20,

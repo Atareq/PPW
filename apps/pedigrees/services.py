@@ -22,7 +22,6 @@ import pytesseract
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from apps.assets.models import Bird
-from apps.pedigrees.constants import PEDIGREE_REPORT_DEFAULT_COLOR
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdLifeStatus,
@@ -1368,6 +1367,9 @@ class PedigreeTreeService:
         seen.add(bird.pk)
 
         node = {
+            "id": bird.pk,
+            "registered_by_id": bird.registered_by_id,
+            "default_color": bird.default_color,
             "ring_number": bird.ring_number,
             "ring_code": bird.ring_code,
             "name": bird.name,
@@ -1489,6 +1491,17 @@ ANCESTOR_FIELD_MAPPING = {
     "MMMMM": ("Mother6_16_NO", "Mother6_16"),
 }
 
+# Every report parameter of one bird box, keyed by the bird's F/M path.
+REPORT_BOX_FIELDS = {
+    "": ("Farkh_No", "Farth_No", "Esmah_Name", "Esmah_FullNo"),
+    "F": ("Farth_FatherNo", "Father_Name", "Father_Info"),
+    "M": ("Farth_MotherNo", "Mother_Name", "Mother_Info"),
+    **{
+        path: (ring_field, f"{description_field}_Name", description_field)
+        for path, (ring_field, description_field) in ANCESTOR_FIELD_MAPPING.items()
+    },
+}
+
 
 class PedigreeReportMapper:
     OWNER_PARAMETER_MAP = {
@@ -1519,7 +1532,7 @@ class PedigreeReportMapper:
         generation_depth,
         owner=None,
         customization=None,
-        report_color=None,
+        color=None,
     ):
         payload = deepcopy(frontend_report)
 
@@ -1531,18 +1544,21 @@ class PedigreeReportMapper:
             parameters = {}
             payload["parameters"] = parameters
 
-        pedigree_data = PedigreeTreeService.build_generation_data(
-            subject_bird=subject_bird,
-            generation_depth=generation_depth,
+        lookup = PedigreeTreeService.build_path_lookup(
+            PedigreeTreeService.build_generation_data(
+                subject_bird=subject_bird,
+                generation_depth=generation_depth,
+            ),
+            max_generation=generation_depth,
         )
 
-        bird_parameters = cls._bird_parameters(
-            pedigree_data,
-            generation_depth,
+        parameters.update(cls._bird_parameters(lookup))
+        cls._fill_bird_colors(
+            parameters,
+            lookup,
+            registered_by_id=subject_bird.registered_by_id,
+            color=color,
         )
-        parameters.update(bird_parameters)
-        if report_color:
-            cls._fill_report_color(parameters, bird_parameters, report_color)
         parameters.update(cls._owner_parameters(owner or {}))
         parameters.update(cls._customization_parameters(customization or {}))
 
@@ -1551,21 +1567,28 @@ class PedigreeReportMapper:
         return payload
 
     @classmethod
-    def _fill_report_color(cls, parameters, bird_parameters, report_color):
-        """Explicit frontend per-field styles win; missing or null ones get
-        the report colour, so the template default never applies to them."""
-        for name in bird_parameters:
-            style_name = f"{name}_{cls.REPORT_COLOR_STYLE_SUFFIX}"
-            if parameters.get(style_name) is None:
-                parameters[style_name] = report_color
+    def _fill_bird_colors(cls, parameters, lookup, *, registered_by_id, color):
+        """Colour each bird box with the request colour, else the bird's own
+        saved colour (only for birds of the subject's registrant), else
+        nothing. Non-blank frontend per-field styles always win."""
+        for path, fields in REPORT_BOX_FIELDS.items():
+            node = lookup.get(path)
+            saved_color = (
+                node["default_color"]
+                if node and node["registered_by_id"] == registered_by_id
+                else None
+            )
+            box_color = color or saved_color
+            if not box_color:
+                continue
+            for field in fields:
+                style_name = f"{field}_{cls.REPORT_COLOR_STYLE_SUFFIX}"
+                value = parameters.get(style_name)
+                if value is None or (isinstance(value, str) and not value.strip()):
+                    parameters[style_name] = box_color
 
     @classmethod
-    def _bird_parameters(cls, pedigree_data, generation_depth):
-        lookup = PedigreeTreeService.build_path_lookup(
-            pedigree_data,
-            max_generation=generation_depth,
-        )
-
+    def _bird_parameters(cls, lookup):
         subject = lookup.get("")
         father = lookup.get("F")
         mother = lookup.get("M")
@@ -2134,29 +2157,48 @@ class PedigreeReportGenerationService:
                 "generation_depth": generation_depth,
             },
         )
-        return PedigreeReportMapper.merge_payload(
+        payload = PedigreeReportMapper.merge_payload(
             frontend_report=report,
             subject_bird=subject_bird,
             generation_depth=generation_depth,
             owner=owner,
             customization=customization,
-            report_color=(
-                color or subject_bird.default_color or PEDIGREE_REPORT_DEFAULT_COLOR
-            ),
+            color=color,
         )
+        return payload, cls._printed_bird_ids(subject_bird, generation_depth)
 
     @classmethod
-    def remember_report_color(cls, *, subject_bird_id, actor_profile, color):
-        """Persist an explicit colour as the subject's default.
+    def remember_report_color(cls, *, bird_ids, actor_profile, color):
+        """Persist an explicit colour as the default of every printed bird.
 
-        Call only after the provider succeeded. It reuses the generation
-        scope, so it opens no new authorization path, and it is one plain
-        UPDATE (last successful request wins) with no lock held across the
-        provider call.
+        Call only after the provider succeeded, with the ids returned by
+        `build_provider_payload`. It reuses the generation scope, so it opens
+        no new authorization path, and it is one plain UPDATE (last successful
+        request wins) with no lock held across the provider call.
         """
-        cls._accessible_birds(actor_profile).filter(pk=subject_bird_id).exclude(
+        cls._accessible_birds(actor_profile).filter(pk__in=bird_ids).exclude(
             default_color=color
         ).update(default_color=color, modified=timezone.now())
+
+    @staticmethod
+    def _printed_bird_ids(subject_bird, generation_depth):
+        """Ids of the printed birds registered by the subject's registrant.
+
+        The parent relations are already cached on the subject instance by
+        the payload build, so this walks the tree again without new queries.
+        """
+        lookup = PedigreeTreeService.build_path_lookup(
+            PedigreeTreeService.build_generation_data(
+                subject_bird=subject_bird,
+                generation_depth=generation_depth,
+            ),
+            max_generation=generation_depth,
+        )
+        return {
+            node["id"]
+            for node in lookup.values()
+            if node and node["registered_by_id"] == subject_bird.registered_by_id
+        }
 
     @staticmethod
     def _accessible_birds(actor_profile):

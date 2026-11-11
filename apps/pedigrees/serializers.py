@@ -455,9 +455,10 @@ class PedigreeReportGenerateSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         help_text=(
-            "Report colour `#RRGGBB`. Omitted or null uses the subject's "
-            "`default_color`, then the backend fallback; an explicit value is "
-            "saved as `default_color` after a successful generation."
+            "Report colour `#RRGGBB` for every bird box. Omitted or null gives "
+            "each box its bird's own `default_color`, or no colour; an explicit "
+            "value is saved as `default_color` of every printed bird after a "
+            "successful generation."
         ),
     )
 

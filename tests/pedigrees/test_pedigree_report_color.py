@@ -5,7 +5,6 @@ import requests
 from rest_framework.test import APIClient
 
 from apps.authentication.services import build_token_for_user
-from apps.pedigrees.constants import PEDIGREE_REPORT_DEFAULT_COLOR
 from apps.pedigrees.models import (
     PedigreeBird,
     PedigreeBirdColour,
@@ -105,7 +104,7 @@ def test_explicit_color_drives_bird_box_back_colors_and_is_saved():
     assert "OwnerLoftName_BackColor" not in sent
     assert "BackgroundImage_BackColor" not in sent
     assert stored_color(subject) == "#FF0000"
-    assert stored_color(father) is None
+    assert stored_color(father) == "#FF0000"
     assert stored_color(unrelated) == "#ABCDEF"
 
 
@@ -122,21 +121,25 @@ def test_null_or_omitted_color_uses_the_stored_default(color):
 
 
 @pytest.mark.parametrize("color", [None, OMITTED])
-def test_missing_color_everywhere_uses_backend_fallback_without_saving_it(color):
+def test_missing_color_everywhere_prints_without_color_and_saves_nothing(color):
     user = subscribed_customer()
     subject = PedigreeBirdFactory(owner=user.active_profile)
 
     response, sent = generate(user, subject, color=color)
 
     assert response.status_code == 200
-    assert sent["Farkh_No_BackColor"] == PEDIGREE_REPORT_DEFAULT_COLOR
+    assert not [key for key in sent if key.endswith("_BackColor")]
     assert stored_color(subject) is None
 
 
 @pytest.mark.parametrize("status_code", [400, 500, 503])
 def test_failed_provider_response_does_not_change_default_color(status_code):
     user = subscribed_customer()
-    subject = PedigreeBirdFactory(owner=user.active_profile, default_color="#00AA00")
+    profile = user.active_profile
+    mother = PedigreeBirdFactory(owner=None, registered_by=profile)
+    subject = PedigreeBirdFactory(
+        owner=profile, mother=mother, default_color="#00AA00"
+    )
 
     response, sent = generate(
         user, subject, color="#FF0000", upstream=pdf_response(status_code)
@@ -145,6 +148,7 @@ def test_failed_provider_response_does_not_change_default_color(status_code):
     assert response.status_code == status_code
     assert sent["Farkh_No_BackColor"] == "#FF0000"
     assert stored_color(subject) == "#00AA00"
+    assert stored_color(mother) is None
 
 
 @pytest.mark.parametrize(
@@ -185,6 +189,125 @@ def test_frontend_per_field_styles_win_over_the_report_color():
     assert sent["Farkh_No_TextColor"] == "#FFFFFF"
     assert sent["Father1_NO_BackColor"] == "#FF0000"
     assert sent["Esmah_Name_BackColor"] == "#FF0000"
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_frontend_styles_get_the_box_color(blank):
+    user = subscribed_customer()
+    profile = user.active_profile
+    grandmother = PedigreeBirdFactory(owner=None, registered_by=profile)
+    mother = PedigreeBirdFactory(
+        owner=None, registered_by=profile, mother=grandmother
+    )
+    subject = PedigreeBirdFactory(owner=profile, mother=mother)
+    grandmother_styles = (
+        "Mother2_1_NO_BackColor",
+        "Mother2_1_Name_BackColor",
+        "Mother2_1_BackColor",
+    )
+
+    response, sent = generate(
+        user,
+        subject,
+        color="#FF0000",
+        parameters={style: blank for style in grandmother_styles},
+    )
+
+    assert response.status_code == 200
+    assert sent["Farth_MotherNo_BackColor"] == "#FF0000"
+    for style in grandmother_styles:
+        assert sent[style] == "#FF0000"
+
+
+def test_without_request_color_each_box_uses_its_own_bird_saved_color():
+    user = subscribed_customer()
+    profile = user.active_profile
+    grandmother = PedigreeBirdFactory(
+        owner=None, registered_by=profile, default_color="#00AA00"
+    )
+    mother = PedigreeBirdFactory(
+        owner=None, registered_by=profile, mother=grandmother
+    )
+    subject = PedigreeBirdFactory(
+        owner=profile, mother=mother, default_color="#0000FF"
+    )
+
+    response, sent = generate(
+        user, subject, color=None, parameters={"Mother2_1_BackColor": ""}
+    )
+
+    assert response.status_code == 200
+    assert sent["Farkh_No_BackColor"] == "#0000FF"
+    assert sent["Esmah_FullNo_BackColor"] == "#0000FF"
+    # The mother has no saved colour, so her box is left uncoloured.
+    assert "Farth_MotherNo_BackColor" not in sent
+    assert "Mother_Info_BackColor" not in sent
+    assert sent["Mother2_1_NO_BackColor"] == "#00AA00"
+    assert sent["Mother2_1_Name_BackColor"] == "#00AA00"
+    assert sent["Mother2_1_BackColor"] == "#00AA00"
+    # Nothing explicit was sent, so nothing is written.
+    assert stored_color(subject) == "#0000FF"
+    assert stored_color(mother) is None
+    assert stored_color(grandmother) == "#00AA00"
+
+
+def test_bird_color_follows_it_from_mother_to_grandmother():
+    user = subscribed_customer()
+    profile = user.active_profile
+    bird = PedigreeBirdFactory(owner=None, registered_by=profile)
+    child = PedigreeBirdFactory(owner=None, registered_by=profile, mother=bird)
+    grandchild = PedigreeBirdFactory(owner=profile, mother=child)
+
+    as_mother, _ = generate(user, child, color="#FF0000")
+    after_mother_print = stored_color(bird)
+    as_grandmother, sent = generate(user, grandchild, color=None)
+    recoloured, _ = generate(user, grandchild, color="#0000FF")
+
+    assert as_mother.status_code == 200
+    assert after_mother_print == "#FF0000"
+    assert as_grandmother.status_code == 200
+    assert sent["Mother2_1_NO_BackColor"] == "#FF0000"
+    assert recoloured.status_code == 200
+    assert stored_color(bird) == "#0000FF"
+    assert stored_color(child) == "#0000FF"
+    assert stored_color(grandchild) == "#0000FF"
+
+
+def test_explicit_color_is_saved_only_on_printed_birds_of_the_registrant():
+    user = subscribed_customer()
+    profile = user.active_profile
+    other_profile = UserAccountFactory(
+        with_profile=ProfileType.CUSTOMER
+    ).active_profile
+    beyond_depth = PedigreeBirdFactory(
+        owner=None, registered_by=profile, default_color="#ABCDEF"
+    )
+    grandmother = PedigreeBirdFactory(
+        owner=None, registered_by=profile, mother=beyond_depth
+    )
+    # Legacy link to a bird another profile registered: never read or written.
+    foreign_father = PedigreeBirdFactory(
+        owner=other_profile, default_color="#00AA00"
+    )
+    mother = PedigreeBirdFactory(
+        owner=None,
+        registered_by=profile,
+        mother=grandmother,
+        father=foreign_father,
+    )
+    subject = PedigreeBirdFactory(owner=profile, mother=mother)
+
+    without_color, sent = generate(user, subject, color=None)
+    with_color, _ = generate(user, subject, color="#FF0000")
+
+    assert without_color.status_code == 200
+    assert "Father2_1_NO_BackColor" not in sent
+    assert with_color.status_code == 200
+    assert stored_color(subject) == "#FF0000"
+    assert stored_color(mother) == "#FF0000"
+    assert stored_color(grandmother) == "#FF0000"
+    assert stored_color(foreign_father) == "#00AA00"
+    assert stored_color(beyond_depth) == "#ABCDEF"
 
 
 @pytest.mark.parametrize("color", ["red", "#12345", "#GGGGGG", "FF0000"])

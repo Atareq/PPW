@@ -610,8 +610,9 @@ class PedigreeProviderTestViewSet(viewsets.GenericViewSet):
 class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     """Synchronously generate one external report without storing it.
 
-    The only local write is an explicit `color`, saved as the subject's
-    `default_color` after the provider succeeds.
+    The only local write is an explicit `color`, saved as the `default_color`
+    of every printed bird of the subject's registrant after the provider
+    succeeds.
     """
 
     permission_classes = [HasAppAccess]
@@ -626,7 +627,10 @@ class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericVie
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         RegisteredPedigreeService.require_visible(request.user, data["pdf_id"])
-        provider_payload = PedigreeReportGenerationService.build_provider_payload(
+        (
+            provider_payload,
+            printed_bird_ids,
+        ) = PedigreeReportGenerationService.build_provider_payload(
             subject_bird_id=data["subject_bird_id"],
             actor_profile=request.user.active_profile,
             generation_depth=data["generation_depth"],
@@ -665,7 +669,7 @@ class PedigreeReportGenerateViewSet(mixins.CreateModelMixin, viewsets.GenericVie
             return _provider_gateway_response()
         if data.get("color") and status.is_success(upstream_response.status_code):
             PedigreeReportGenerationService.remember_report_color(
-                subject_bird_id=data["subject_bird_id"],
+                bird_ids=printed_bird_ids,
                 actor_profile=request.user.active_profile,
                 color=data["color"],
             )
