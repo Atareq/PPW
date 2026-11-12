@@ -511,7 +511,7 @@ class LuckyWheelSpinService:
 
             selected = LuckyWheelPrizeSelector.select(available, rng=rng)
             prize = (
-                LuckyWheelPrize.all_objects.select_for_update()
+                LuckyWheelPrize.all_objects.select_for_update(of=("self",))
                 .select_related("discount_offer", "cashback_offer")
                 .get(pk=selected.pk)
             )

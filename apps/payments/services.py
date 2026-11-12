@@ -65,7 +65,7 @@ class PaymentRequestService:
 
         PaymentRequestValidator.ensure_customer(buyer_profile)
         item = (
-            AuctionItem.objects.select_for_update()
+            AuctionItem.objects.select_for_update(of=("self",))
             .select_related(
                 "auction",
                 "auction__owner",
@@ -398,7 +398,9 @@ class PaymentRequestService:
         """Transfer the sold auction bird pair, if any, after seller approval."""
 
         auction_request = (
-            AuctionPaymentRequest.objects.select_for_update()
+            AuctionPaymentRequest.objects.select_for_update(
+                of=("self", "paymentrequest_ptr")
+            )
             .select_related(
                 "auction_item",
                 "auction_item__auction",
@@ -408,7 +410,7 @@ class PaymentRequestService:
             .get(pk=payment_request.pk)
         )
         auction_item = (
-            AuctionItem.objects.select_for_update()
+            AuctionItem.objects.select_for_update(of=("self",))
             .select_related("auction", "bird", "paired_bird", "winner")
             .get(pk=auction_request.auction_item_id)
         )

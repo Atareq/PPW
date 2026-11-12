@@ -111,7 +111,7 @@ class ChatService:
 
         try:
             with transaction.atomic():
-                conversation, _ = Conversation.objects.get_or_create(
+                conversation, _created = Conversation.objects.get_or_create(
                     customer_id=customer.pk,
                     seller_id=seller.pk,
                     defaults={"created_by": sender},

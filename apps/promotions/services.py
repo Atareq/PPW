@@ -488,7 +488,7 @@ class CashbackService:
     @staticmethod
     def _get_locked_order_item(order_item_id):
         return (
-            OrderItem.objects.select_for_update()
+            OrderItem.objects.select_for_update(of=("self",))
             .select_related("order", "order__owner", "asset", "cashback_offer")
             .get(pk=order_item_id)
         )
@@ -1127,7 +1127,9 @@ class PromotionCampaignEffectService:
     @staticmethod
     def _get_locked_effect(effect, *, campaign=None):
         effect_id = getattr(effect, "pk", effect)
-        queryset = PromotionCampaignEffect.objects.select_for_update().select_related(
+        queryset = PromotionCampaignEffect.objects.select_for_update(
+            of=("self",)
+        ).select_related(
             "campaign",
             "target_package",
             "target_subscription_duration",
@@ -1724,7 +1726,7 @@ class OnboardingHighlightBenefitService:
                 pk=resolved_user.pk
             )
             existing = (
-                UserPromotionGrant.objects.select_for_update()
+                UserPromotionGrant.objects.select_for_update(of=("self",))
                 .select_related("discount_offer", "user", "profile")
                 .filter(user=locked_user, idempotency_key=key)
                 .first()
@@ -2058,7 +2060,7 @@ class OnboardingHighlightBenefitService:
                 pk=resolved_user.pk
             )
             locked_grant = (
-                UserPromotionGrant.objects.select_for_update()
+                UserPromotionGrant.objects.select_for_update(of=("self",))
                 .select_related("discount_offer", "user", "profile")
                 .filter(user=locked_user, idempotency_key=key)
                 .first()

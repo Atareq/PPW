@@ -40,3 +40,13 @@ celerybeat-schedule
 
 .coverage
 htmlcov/
+
+
+# AI tools 
+
+.playwright-mcp
+.codex
+.pytest_cache
+.aws
+.agents
+.claude
