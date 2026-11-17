@@ -47,7 +47,10 @@ def create_draft_season():
         ),
     ],
 )
-def test_api_locale_selection_for_custom_validation(headers, path, expected_message):
+def test_api_locale_selection_for_custom_validation(
+    headers, path, expected_message, settings
+):
+    settings.LANGUAGE_CODE = "ar"  # production default
     customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     response = auth_client(customer).post(
         path,

@@ -927,7 +927,10 @@ def test_29_another_user_cannot_read_or_mark_recipients_congratulatory_notificat
     assert notif.is_read is False
 
 
-def test_30_notification_copy_supports_arabic_default_and_english_request_localization():
+def test_30_notification_copy_supports_arabic_default_and_english_request_localization(
+    settings,
+):
+    settings.LANGUAGE_CODE = "ar"  # production default
     user = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
     profile = user.active_profile
 

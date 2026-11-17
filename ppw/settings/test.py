@@ -55,3 +55,6 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     }
 }
+
+# Assertions are written in English; i18n tests select Arabic explicitly.
+LANGUAGE_CODE = "en"
