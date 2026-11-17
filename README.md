@@ -1,213 +1,132 @@
-# PPW (Bird Auction & Marketplace Platform)
+# PPW: Pigeon Auction and Marketplace Backend
 
-## 📌 Overview
+Backend for a racing-pigeon platform: breeders auction birds, sell supplies
+in a marketplace, and follow races, seasons and pedigrees. One account can
+switch between a customer profile and a seller profile.
 
-PPW is a scalable backend system designed for:
+Python 3.11 · Django 4.2 · Django REST Framework · PostgreSQL · Celery ·
+Redis · Django Channels · Firebase Cloud Messaging · Docker Compose
 
-* **Bird auctions (live bidding system)**
-* **E-commerce marketplace** for bird supplements and accessories
+## What it does
 
-The platform supports a unified user model with **role switching (customer ↔ seller)** and shared features such as comments, assets, and listings.
+- **Auctions:** single-bird, pair, multi-bird and racing-group listings,
+  public or silent (sealed-bid), with minimum increments, reserve and buy-now
+  prices, optional auto-extension, and a Celery Beat job that closes expired
+  auctions every minute.
+- **Marketplace:** cart, checkout, per-item seller approval, and stock that
+  is reduced only when a payment is approved.
+- **Payments:** manual payment requests. The buyer uploads proof of payment,
+  the seller approves or rejects it, and approval transfers ownership.
+  There is no card gateway.
+- **Engagement:** comments and ratings, follows and a feed, chat, loyalty
+  points and badges, referrals, prize draws, a lucky wheel and seasons.
+- **Pedigrees:** pedigree registration and OCR-based pedigree reading
+  (OpenCV and Tesseract).
+- **Notifications:** stored in the database, pushed through FCM, and sent
+  live to a per-profile WebSocket at `/ws/notifications/`.
 
----
+## Architecture
 
-## 🏗 Architecture Principles
+A Django monolith with one app per domain under [`apps/`](apps/).
 
-* **Modular Django apps structure**
-* **Asset-centric design** (core entity for birds & products)
-* **Separation of concerns** (assets, users, logs, etc.)
-* **Scalable foundation** for future real-time bidding and payments
+- **Business rules live in service classes** (`apps/*/services.py`); views
+  stay thin.
+- **Access control:** each user has customer, seller and manager profiles.
+  `HasAppAccess` checks the active profile's role against an action matrix
+  in [`apps/general/constants.py`](apps/general/constants.py), and managers
+  have their own permission map.
+- **Async work:** Celery on Redis runs push delivery, chat and loyalty side
+  effects and the scheduled jobs. Channels serves the notification socket.
+- **Runtime:** gunicorn with Uvicorn workers on ASGI, Nginx in front in
+  production. The container entrypoint runs migrations and `collectstatic`.
 
----
+## Reliability
 
-## ⚙️ Tech Stack
+- **Bids** are re-validated under a row lock on the auction item
+  (`BiddingService.place_bid`), covered by `test_bid_is_revalidated_under_lock`.
+- **Closing an auction** locks the auction and its items and returns early
+  if it is already closed (`test_close_auction_is_idempotent`).
+- **Payment approval** is a locked state machine. Ownership transfer and
+  stock reduction happen inside the approval transaction.
+- **Side effects** (notifications, push, loyalty) run in
+  `transaction.on_commit`, and notifications carry an idempotency key backed
+  by a unique constraint.
+- Money uses `Decimal` throughout.
 
-* Python 3.11 (managed via pyenv)
-* Django
-* Django REST Framework
-* PostgreSQL
-* pre-commit (code quality automation)
+## Testing
 
----
+About 1,900 pytest tests across the apps:
 
-## 🚀 Setup Instructions
-
-### 1. Clone the repository
-
-```
-git clone git@github.com:Atareq/PPW.git
-cd PPW
-```
-
----
-
-### 2. Setup Python environment
-
-** You can use `pyenv` or `venv`**
-```
-pyenv install 3.11.8
-pyenv virtualenv 3.11.8 ppw-env
-pyenv local ppw-env
-```
-
----
-
-### 3. Install dependencies
-
-Development:
-
-```
+```bash
 pip install -r requirements/dev.txt
+pytest
 ```
 
----
+Tests use in-memory SQLite with migrations disabled, so they do not exercise
+PostgreSQL row locks. Assertions are written in English; the i18n tests
+switch to Arabic, the production default, explicitly.
 
-### 4. Setup environment variables
-
-Use `.env.example` as the template for every environment:
+## Running locally
 
 ```bash
 cp .env.example .env
-```
-
-For production, create `.env.prod` from the same template and switch:
-
-- `DJANGO_SETTINGS_MODULE=ppw.settings.production`
-- `DEBUG=False`
-- database and host values to the production ones
-
-
-### 5. Setup PostgreSQL
-
-Create database and user:
-
----
-
-### 6. Run migrations
-
----
-
-### 7. Run server
-
-This project uses one shared Compose base file plus environment-specific
-overrides.
-
-Local:
-
-```bash
 docker compose -f compose.yaml -f compose.local.yaml up --build
 ```
 
-Production:
+Local Compose runs PostgreSQL (`db`), Redis, the app, a Celery worker and
+Celery Beat. Migrations run on container start. For production, create
+`.env.prod` from the same template with
+`DJANGO_SETTINGS_MODULE=ppw.settings.production` and `DEBUG=False`, then:
 
 ```bash
 docker compose -f compose.yaml -f compose.prod.yaml up -d --build
 ```
 
-The shared services are:
+Production Compose adds Nginx, which also serves `/media/`.
 
-- `app` for Django/Gunicorn
-- `celery_worker` for task execution
-- `celery_beat` for scheduled jobs
-- `redis` as the broker/backend
+Without Docker, use Python 3.11 and a local PostgreSQL configured through the
+`DB_*` values in `.env`:
 
-Local also adds:
+```bash
+pip install -r requirements/dev.txt
+python manage.py migrate
+python manage.py runserver
+```
 
-- `db` for PostgreSQL
+### Creating a superuser
 
-Production also adds:
-
-- `nginx` in front of the Django app
-
-The periodic auction closing job runs once per minute through Celery Beat.
-
-### 8. Craete super_user
-
-python manage.py shell_plus
-
-
+```python
+# python manage.py shell_plus
 from apps.authentication.models import UserAccount
 
-user = UserAccount.objects.create_superuser(
+UserAccount.objects.create_superuser(
     username="super_user",
     phone_number="012345678",
-    password="123",
+    password="change-me",
 )
-
-print("Superuser created:", user.id)
-
----------------------------------------------------------
-
----
-
-## 🔧 Development Tools
-
-### Pre-commit hooks
-
-Install hooks:
-
 ```
+
+API tokens carry the active profile, so create a profile for the user
+before calling business endpoints.
+
+## Development tools
+
+```bash
 pre-commit install
-```
-
-Run manually:
-
-```
 pre-commit run --all-files
 ```
 
-Includes:
+The hooks run black, isort, flake8, and the test suite.
 
-* black (formatter)
-* isort (imports)
-* flake8 (linting)
-* pytest (test suite)
+## Limitations
 
----
+- Bidding is plain REST; clients learn about new bids through notifications,
+  not a live bidding stream.
+- Payments are confirmed manually by sellers.
+- Uploaded files are stored on the server's disk (`MEDIA_ROOT`), not in
+  object storage.
+- The test database does not prove locking behaviour (see Testing).
 
-## 🧠 Core Concepts
+## License
 
-### Asset-Based System
-
-All marketplace entities derive from a central **Asset model**:
-
-* Birds
-* Product items
-
-This allows:
-
-* unified comments
-* shared images
-* consistent listings
-
----
-
-### Role Switching
-
-A single user can act as:
-
-* Customer
-* Seller
-
-Without re-authentication, while maintaining:
-
-* separate wallets (future)
-* isolated logs and actions
-
----
-
-
-## ⚠️ Notes
-
-* No payment system implemented yet (logs only)
-* No KYC or reporting system (by design for Phase 1)
-* Images stored in S3 (only paths saved in DB)
-
----
-
-
-## 📄 License
-
-Private project (for now)
-
----
+The source is public for review. No open-source license is granted.
