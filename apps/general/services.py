@@ -11,6 +11,7 @@ from apps.general.models import (
     AdminAnnouncement,
     AnnouncementDismissal,
     AnnouncementDurationUnit,
+    AppSettings,
 )
 
 
@@ -63,6 +64,7 @@ class AnnouncementService:
             starts_at=starts_at,
             expires_at=expires_at,
             is_active=data.get("is_active", True),
+            show_in_bar=data.get("show_in_bar", True),
             created_by=created_by,
         )
         try:
@@ -82,7 +84,13 @@ class AnnouncementService:
         duration_value = data.pop("duration_value", None)
         duration_unit = data.pop("duration_unit", None)
 
-        for field in ("text", "starts_at", "expires_at", "is_active"):
+        for field in (
+            "text",
+            "starts_at",
+            "expires_at",
+            "is_active",
+            "show_in_bar",
+        ):
             if field in data:
                 setattr(announcement, field, data[field])
 
@@ -164,3 +172,26 @@ class AnnouncementService:
                 existing.undelete()
             return existing
 
+
+class AppSettingsService:
+    """Read and update the single platform settings row."""
+
+    @staticmethod
+    def get() -> AppSettings:
+        """Return the settings row, creating it with defaults on first use."""
+        app_settings, _created = AppSettings.objects.get_or_create(
+            pk=AppSettings.SINGLETON_ID
+        )
+        return app_settings
+
+    @classmethod
+    @transaction.atomic
+    def update(cls, validated_data: dict) -> AppSettings:
+        cls.get()
+        app_settings = AppSettings.objects.select_for_update().get(
+            pk=AppSettings.SINGLETON_ID
+        )
+        for field, value in validated_data.items():
+            setattr(app_settings, field, value)
+        app_settings.save()
+        return app_settings

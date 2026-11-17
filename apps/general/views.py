@@ -6,14 +6,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.general.authorizations import HasAppAccess
-from apps.general.models import AdminAnnouncement
+from apps.general.models import AdminAnnouncement, AppSettings
 from apps.general.serializers import (
     AdminAnnouncementSerializer,
+    AdminAppSettingsSerializer,
     AnnouncementDismissResponseSerializer,
     AnnouncementDismissSerializer,
+    AppSettingsSerializer,
     CurrentAnnouncementSerializer,
 )
-from apps.general.services import AnnouncementService
+from apps.general.services import AnnouncementService, AppSettingsService
 
 
 @extend_schema_view(
@@ -35,6 +37,8 @@ class CurrentAnnouncementViewSet(
     }
     serializer_class = CurrentAnnouncementSerializer
     queryset = AdminAnnouncement.objects.none()
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["show_in_bar"]
 
     def get_queryset(self):
         return AnnouncementService.visible_for_user(self.request.user)
@@ -107,7 +111,7 @@ class AdminAnnouncementViewSet(
     serializer_class = AdminAnnouncementSerializer
     queryset = AdminAnnouncement.objects.all()
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ["is_active"]
+    filterset_fields = ["is_active", "show_in_bar"]
     ordering_fields = ["created", "modified", "starts_at", "expires_at"]
     ordering = ["-created", "-id"]
 
@@ -135,3 +139,49 @@ class AdminAnnouncementViewSet(
     def perform_destroy(self, instance):
         AnnouncementService.delete_announcement(instance)
 
+
+@extend_schema_view(
+    retrieve=extend_schema(tags=["App Settings"]),
+)
+class AppSettingsViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Client feature flags, such as whether to show the referral share link."""
+
+    permission_classes = [IsAuthenticated, HasAppAccess]
+    permission_resource = "APP_SETTINGS"
+    manager_permission_map = {
+        "retrieve": "app_settings.retrieve",
+    }
+    serializer_class = AppSettingsSerializer
+    queryset = AppSettings.objects.all()
+
+    def get_object(self):
+        return AppSettingsService.get()
+
+
+@extend_schema_view(
+    retrieve=extend_schema(tags=["App Settings"]),
+    partial_update=extend_schema(tags=["App Settings"]),
+)
+class AdminAppSettingsViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Manager read/update of the single platform settings row."""
+
+    permission_classes = [IsAuthenticated, HasAppAccess]
+    permission_resource = "APP_SETTINGS_ADMIN"
+    manager_permission_map = {
+        "retrieve": "app_settings.retrieve",
+        "partial_update": "app_settings.update",
+    }
+    serializer_class = AdminAppSettingsSerializer
+    queryset = AppSettings.objects.all()
+
+    def get_object(self):
+        return AppSettingsService.get()
+
+    def perform_update(self, serializer):
+        serializer.instance = AppSettingsService.update(
+            serializer.validated_data
+        )

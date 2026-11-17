@@ -1067,6 +1067,20 @@ MANAGER_PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
         _("Delete announcements"),
         _("Delete admin announcement bar records."),
     ),
+    _permission(
+        "app_settings.retrieve",
+        "app_settings",
+        _("App Settings"),
+        _("View app settings"),
+        _("View platform switches such as referral link sharing."),
+    ),
+    _permission(
+        "app_settings.update",
+        "app_settings",
+        _("App Settings"),
+        _("Update app settings"),
+        _("Change platform switches such as referral link sharing."),
+    ),
 )
 
 

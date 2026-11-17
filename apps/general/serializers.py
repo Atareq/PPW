@@ -8,6 +8,7 @@ from apps.general.models import (
     AdminAnnouncement,
     AnnouncementDismissal,
     AnnouncementDurationUnit,
+    AppSettings,
     AssetMedia,
 )
 
@@ -41,6 +42,7 @@ class CurrentAnnouncementSerializer(serializers.ModelSerializer):
             "text",
             "starts_at",
             "expires_at",
+            "show_in_bar",
             "created",
             "modified",
         ]
@@ -104,6 +106,7 @@ class AdminAnnouncementSerializer(serializers.ModelSerializer):
             "duration_value",
             "duration_unit",
             "is_active",
+            "show_in_bar",
             "created_by",
             "created",
             "modified",
@@ -202,3 +205,60 @@ class AdminAnnouncementSerializer(serializers.ModelSerializer):
 
         return attrs
 
+
+class AppSettingsSerializer(serializers.ModelSerializer):
+    """Client-facing feature flags; only the computed visibility is exposed."""
+
+    referral_share_visible = serializers.BooleanField(
+        source="is_referral_share_visible",
+        read_only=True,
+    )
+
+    class Meta:
+        model = AppSettings
+        fields = ["referral_share_visible"]
+        read_only_fields = fields
+
+
+class AdminAppSettingsSerializer(serializers.ModelSerializer):
+    referral_share_visible = serializers.BooleanField(
+        source="is_referral_share_visible",
+        read_only=True,
+    )
+
+    class Meta:
+        model = AppSettings
+        fields = [
+            "referral_share_enabled",
+            "referral_share_starts_at",
+            "referral_share_ends_at",
+            "referral_share_visible",
+            "modified",
+        ]
+        read_only_fields = ["referral_share_visible", "modified"]
+
+    def validate(self, attrs):
+        starts_at = attrs.get(
+            "referral_share_starts_at",
+            getattr(self.instance, "referral_share_starts_at", None),
+        )
+        ends_at = attrs.get(
+            "referral_share_ends_at",
+            getattr(self.instance, "referral_share_ends_at", None),
+        )
+        if (
+            starts_at is not None
+            and ends_at is not None
+            and starts_at >= ends_at
+        ):
+            raise serializers.ValidationError(
+                {
+                    "referral_share_ends_at": [
+                        _(
+                            "Referral share end time must be later than "
+                            "start time."
+                        )
+                    ]
+                }
+            )
+        return attrs

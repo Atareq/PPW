@@ -81,6 +81,10 @@ class AdminAnnouncement(BaseModel):
     starts_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
     is_active = models.BooleanField(default=True, db_index=True)
+    # Extra placement switch on top of is_active: an active ad with
+    # show_in_bar=False is still returned by the current-announcements API but
+    # is not meant for the announcement bar (clients filter ?show_in_bar=true).
+    show_in_bar = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         "users.Profile",
         on_delete=models.SET_NULL,
@@ -186,3 +190,56 @@ class AnnouncementDismissal(BaseModel):
             f"({self.announcement_id} -> {self.user_id})"
         )
 
+
+class AppSettings(TimeStampedModel):
+    """Single-row platform switches that managers control and clients read.
+
+    The referral share link is visible only while ``referral_share_enabled`` is
+    true and the current time is inside the optional
+    ``[referral_share_starts_at, referral_share_ends_at)`` window; a null bound
+    is open-ended. These are display flags only: they do not block referral
+    code creation or redemption.
+    """
+
+    SINGLETON_ID = 1
+
+    referral_share_enabled = models.BooleanField(default=True)
+    referral_share_starts_at = models.DateTimeField(null=True, blank=True)
+    referral_share_ends_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(id=1),
+                name="general_app_settings_singleton_ck",
+            ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(referral_share_starts_at__isnull=True)
+                    | models.Q(referral_share_ends_at__isnull=True)
+                    | models.Q(
+                        referral_share_starts_at__lt=models.F(
+                            "referral_share_ends_at"
+                        )
+                    )
+                ),
+                name="general_app_settings_share_window_ck",
+            ),
+        ]
+
+    def is_referral_share_visible(self, now=None) -> bool:
+        now = now or timezone.now()
+        return (
+            self.referral_share_enabled
+            and (
+                self.referral_share_starts_at is None
+                or self.referral_share_starts_at <= now
+            )
+            and (
+                self.referral_share_ends_at is None
+                or now < self.referral_share_ends_at
+            )
+        )
+
+    def __str__(self):
+        return "AppSettings"

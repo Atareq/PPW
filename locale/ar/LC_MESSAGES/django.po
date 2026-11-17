@@ -4003,3 +4003,20 @@ msgstr "تهانينا! لقد ربحت %(points)s نقطة PP كفائز بال
 msgid "Congratulations! You earned %(points)s PP Coins from Lucky Wheel."
 msgstr "تهانينا! لقد ربحت %(points)s نقطة PP من عجلة الحظ."
 
+msgid "App Settings"
+msgstr "إعدادات التطبيق"
+
+msgid "View app settings"
+msgstr "عرض إعدادات التطبيق"
+
+msgid "View platform switches such as referral link sharing."
+msgstr "عرض مفاتيح تشغيل المنصة مثل مشاركة رابط الإحالة."
+
+msgid "Update app settings"
+msgstr "تحديث إعدادات التطبيق"
+
+msgid "Change platform switches such as referral link sharing."
+msgstr "تغيير مفاتيح تشغيل المنصة مثل مشاركة رابط الإحالة."
+
+msgid "Referral share end time must be later than start time."
+msgstr "يجب أن يكون وقت انتهاء مشاركة رابط الإحالة بعد وقت البدء."

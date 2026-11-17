@@ -127,6 +127,9 @@ SELLER_PERMISSIONS = {
         "list",
         "create",
     ],
+    "APP_SETTINGS": [
+        "retrieve",
+    ],
     "SELLER_ROOM": [
         "list",
         "retrieve",
@@ -268,6 +271,9 @@ CUSTOMER_PERMISSIONS = {
     "ANNOUNCEMENT": [
         "list",
         "create",
+    ],
+    "APP_SETTINGS": [
+        "retrieve",
     ],
     "SELLER_ROOM": [
         "list",

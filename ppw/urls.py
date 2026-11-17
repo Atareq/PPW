@@ -18,6 +18,7 @@ Including another URLconf
 from django.conf import settings
 from django.urls import include, path
 
+from apps.general.urls import app_settings_urlpatterns
 from apps.users.urls import seller_room_urlpatterns
 from ppw.schema import InternalSchemaAPIView, InternalSwaggerUIView
 
@@ -46,6 +47,10 @@ urlpatterns = [
     path("api/seasons/", include("apps.seasons.urls")),
     path("api/prizes/", include("apps.prizes.urls")),
     path("api/announcements/", include("apps.general.urls")),
+    path(
+        "api/app-settings/",
+        include((app_settings_urlpatterns, "app-settings")),
+    ),
     path(
         "api/schema/",
         InternalSchemaAPIView.as_view(),

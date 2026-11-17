@@ -2,7 +2,9 @@ from django.urls import path
 
 from apps.general.views import (
     AdminAnnouncementViewSet,
+    AdminAppSettingsViewSet,
     AnnouncementDismissViewSet,
+    AppSettingsViewSet,
     CurrentAnnouncementViewSet,
 )
 
@@ -14,6 +16,8 @@ DETAIL_UPDATE_DESTROY_ACTION = {
     "patch": "partial_update",
     "delete": "destroy",
 }
+RETRIEVE_ACTION = {"get": "retrieve"}
+RETRIEVE_PARTIAL_UPDATE_ACTION = {"get": "retrieve", "patch": "partial_update"}
 
 urlpatterns = [
     path(
@@ -38,3 +42,17 @@ urlpatterns = [
     ),
 ]
 
+
+# Mounted at /api/app-settings/ from ppw/urls.py.
+app_settings_urlpatterns = [
+    path(
+        "",
+        AppSettingsViewSet.as_view(RETRIEVE_ACTION),
+        name="app-settings",
+    ),
+    path(
+        "admin/",
+        AdminAppSettingsViewSet.as_view(RETRIEVE_PARTIAL_UPDATE_ACTION),
+        name="admin-app-settings",
+    ),
+]

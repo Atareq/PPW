@@ -1807,6 +1807,7 @@ Current referral behavior:
 - on a valid regular `BID_PLACED`, if the bidder's account has a referral that was already `approved` when the bid was placed and this is the account's earliest bid ever (all its profiles, auctions, and items, soft-deleted bids included; buy-now rows, which never emit `BID_PLACED`, are not bid history), the inviter is paid the `REFERRAL_FIRST_BID` rule points (default 200 PP) once per referral, points only, key `reward:referral_first_bid:referral:{referral_id}:inviter`, source `referral_first_bid`, `user`/`profile` = `inviter_user`/`inviter_profile`; the referred bidder gets nothing from it
 - the first-bid referral reward is not retroactive: a bid placed while the referral was pending, a bid made while the rule was disabled, or bids that predate BE-REF-02 never pay later, and approval does not look back at earlier bids; there is no backfill
 - referral redemption and approval do not create a Lucky Wheel attempt
+- whether clients show the referral share link is controlled by the display-only `AppSettings` referral share flag (`GET /api/app-settings/`); referral APIs do not check it
 - a challenge's score for an account is the count of its `approved` referrals (grouped by `Referral.inviter_user`, so customer and seller modes add up) with `starts_at <= redeemed_at < ends_at`; raw shares, clicks, consumed codes, pending, and rejected referrals never count; `redeemed_at` picks the challenge and approval (even during review) decides whether it counts; challenge score is not PP and creates no point transactions
 - challenge status is derived, not stored: `draft` before `starts_at`, `active` inside the window, `review` after `ends_at` until finalized, `finalized` once `finalized_at` is set; periods cannot overlap (adjacent periods are allowed) and `starts_at < ends_at` is a DB constraint
 - ranking is higher score, then the earlier time the account reached that score (latest counted `redeemed_at`), then lower account id (technical tie-break); only accounts with a score appear, Top 10 only
@@ -1921,11 +1922,12 @@ Current responsibilities:
 - permissions / authorization helpers
 - shared constants / helpers
 - admin announcement bar (`AdminAnnouncement`) and per-`UserAccount` dismissal tracking (`AnnouncementDismissal`) (BE-ANN-01)
+- single-row manager-controlled client feature flags (`AppSettings`), currently the referral share link visibility switch and window
 
 Current announcements API:
 
 - `/api/announcements/current/`
-  - `GET`: authenticated user lists currently active (`is_active=True`, `starts_at <= now < expires_at`, `deleted__isnull=True`) announcements not dismissed by `request.user`
+  - `GET`: authenticated user lists currently active (`is_active=True`, `starts_at <= now < expires_at`, `deleted__isnull=True`) announcements not dismissed by `request.user`; each row exposes `show_in_bar`, and `?show_in_bar=true|false` filters by it (the announcement bar uses `?show_in_bar=true`)
 - `/api/announcements/<id>/dismiss/`
   - `POST`: authenticated user records an idempotent dismissal for `request.user` (`UserAccount`); survives `Customer` <-> `Seller` profile switching and rejects client-supplied `user_id`/`profile_id`
 - `/api/announcements/admin/`
@@ -1939,6 +1941,22 @@ Current announcements behavior:
 - expired announcements disappear automatically via `starts_at <= now < expires_at` queryset filtering without a Celery task
 - `AnnouncementDismissal` enforces `unique(announcement, user)` on `UserAccount`; republishing is represented as a new `AdminAnnouncement` row so prior dismissals do not hide republished announcements
 - announcement operations do not create `Notification` rows or trigger push/WebSocket tasks
+- `AdminAnnouncement.show_in_bar` (default `true`, admin-writable on create/`PATCH`, admin-filterable) is an extra placement switch on top of `is_active`: an active announcement with `show_in_bar=false` is still returned by `/api/announcements/current/` but is not meant for the announcement bar; `is_active=false` still hides an announcement everywhere
+
+Current app settings API:
+
+- `/api/app-settings/`
+  - `GET`: authenticated customer/seller (or manager with `app_settings.retrieve`) reads client feature flags: `{"referral_share_visible": <bool>}`
+- `/api/app-settings/admin/`
+  - `GET`: manager with `app_settings.retrieve` reads `referral_share_enabled`, `referral_share_starts_at`, `referral_share_ends_at`, computed `referral_share_visible`, and `modified`
+  - `PATCH`: manager with `app_settings.update` changes any of `referral_share_enabled`, `referral_share_starts_at`, `referral_share_ends_at` (`null` clears a bound)
+
+Current app settings behavior:
+
+- `AppSettings` is one row (`id=1`, enforced by a DB check constraint) created lazily with defaults by `AppSettingsService.get()`; it has no create/delete API and no soft delete
+- `referral_share_visible` is `true` only when `referral_share_enabled` is `true` and `now` is inside the optional half-open `[referral_share_starts_at, referral_share_ends_at)` window; a null bound is open-ended, so hiding the link for a period means setting `referral_share_starts_at` to when it should come back (or `referral_share_ends_at` to when it should disappear)
+- `referral_share_starts_at < referral_share_ends_at` is validated by `AdminAppSettingsSerializer` (against stored values on partial updates) and a DB check constraint
+- the flag is display-only for the frontend: it does not block `POST /api/referrals/codes/`, code redemption, referral approval, or referral challenge scoring
 
 
 ### Shared Abstractions
@@ -2346,6 +2364,7 @@ Mounted API roots:
 - `/api/pedigrees/`
 - `/api/prizes/`
 - `/api/announcements/`
+- `/api/app-settings/`
 
 Current internal API docs endpoints:
 
@@ -2692,6 +2711,8 @@ Current permission resources:
 - `PRIZE_AWARD_ADMIN`
 - `ANNOUNCEMENT`
 - `ANNOUNCEMENT_ADMIN`
+- `APP_SETTINGS`
+- `APP_SETTINGS_ADMIN`
 
 Permission implementation rule:
 

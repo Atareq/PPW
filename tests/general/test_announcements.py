@@ -733,3 +733,76 @@ def test_i18n_arabic_and_english_localization_for_announcements():
 
 
 
+
+
+def test_show_in_bar_defaults_true_and_manager_can_set_it():
+    manager = create_manager_with_permissions(
+        ["announcements.create", "announcements.update"]
+    )
+    client = auth_client(manager)
+
+    default_resp = client.post(
+        "/api/announcements/admin/",
+        {"text": "Bar ad", "duration_value": 2, "duration_unit": "hours"},
+        format="json",
+    )
+    assert default_resp.status_code == status.HTTP_201_CREATED
+    assert default_resp.data["show_in_bar"] is True
+
+    off_resp = client.post(
+        "/api/announcements/admin/",
+        {
+            "text": "Not in bar",
+            "duration_value": 2,
+            "duration_unit": "hours",
+            "show_in_bar": False,
+        },
+        format="json",
+    )
+    assert off_resp.status_code == status.HTTP_201_CREATED
+    assert AdminAnnouncement.objects.get(
+        pk=off_resp.data["id"]
+    ).show_in_bar is False
+
+    patch_resp = client.patch(
+        f"/api/announcements/admin/{off_resp.data['id']}/",
+        {"show_in_bar": True},
+        format="json",
+    )
+    assert patch_resp.status_code == status.HTTP_200_OK
+    assert AdminAnnouncement.objects.get(
+        pk=off_resp.data["id"]
+    ).show_in_bar is True
+
+
+def test_current_announcements_expose_and_filter_show_in_bar():
+    customer = UserAccountFactory(with_profile=ProfileType.CUSTOMER)
+    now = timezone.now()
+    window = {
+        "starts_at": now - timedelta(minutes=5),
+        "expires_at": now + timedelta(hours=1),
+    }
+    bar_ann = AdminAnnouncement.objects.create(text="In bar", **window)
+    off_bar_ann = AdminAnnouncement.objects.create(
+        text="Active, not in bar", show_in_bar=False, **window
+    )
+    AdminAnnouncement.objects.create(
+        text="Inactive bar ad", is_active=False, **window
+    )
+    client = auth_client(customer)
+
+    all_active = response_results(client.get("/api/announcements/current/"))
+    assert {row["id"]: row["show_in_bar"] for row in all_active} == {
+        bar_ann.id: True,
+        off_bar_ann.id: False,
+    }
+
+    bar_only = response_results(
+        client.get("/api/announcements/current/?show_in_bar=true")
+    )
+    assert [row["id"] for row in bar_only] == [bar_ann.id]
+
+    not_bar = response_results(
+        client.get("/api/announcements/current/?show_in_bar=false")
+    )
+    assert [row["id"] for row in not_bar] == [off_bar_ann.id]
